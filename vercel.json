@@ -10,21 +10,21 @@
       }
     },
     {
-      "src": "frontend",
+      "src": "frontend/**",
       "use": "@vercel/static"
     },
     {
-      "src": "models",
+      "src": "models/**",
       "use": "@vercel/static"
     }
   ],
   "routes": [
     {
-      "src": "/socket.io/(.*)",
+      "src": "/socket.io/.*",
       "dest": "src/app.py"
     },
     {
-      "src": "/api/(.*)",
+      "src": "/api/.*",
       "dest": "src/app.py"
     },
     {
