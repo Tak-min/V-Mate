@@ -295,7 +295,9 @@ class AIWifeApp {
      * WebSocket接続の初期化
      */
     initWebSocket() {
-        this.socket = io();
+        this.socket = io({
+            path: '/socket.io'
+        });
         
         this.socket.on('connect', () => {
             console.log('Connected to server');

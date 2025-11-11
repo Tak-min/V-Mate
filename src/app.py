@@ -28,7 +28,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 load_dotenv()
 
 
-app = Flask(__name__, static_folder='../frontend', template_folder='../frontend')
+app = Flask(__name__, static_folder='../frontend', template_folder='../frontend', static_url_path='')
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'default_secret_key')
 socketio = SocketIO(app, cors_allowed_origins="*")
 CORS(app)
@@ -75,7 +75,8 @@ AVAILABLE_VOICES = []
 # データベースパスを現在のディレクトリからの相対パスで設定
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
-DATABASE_PATH = os.getenv('DATABASE_PATH', os.path.join(project_root, 'config', 'memory.db'))
+# Vercelでは/tmpにしか書き込めないため、データベースパスを/tmpに変更
+DATABASE_PATH = '/tmp/memory.db' if os.getenv('VERCEL') else os.getenv('DATABASE_PATH', os.path.join(project_root, 'config', 'memory.db'))
 
 class MemoryManager:
     """AI短期記憶システムの管理クラス"""
@@ -820,7 +821,7 @@ stt_manager = STTManager()
 @app.route('/')
 def index():
     """メインページを表示"""
-    return render_template('index.html')
+    return send_from_directory('../frontend', 'index.html')
 
 @app.route('/models/<path:filename>')
 def serve_models(filename):
@@ -1021,32 +1022,15 @@ def health_check():
     """ヘルスチェックエンドポイント"""
     return jsonify({'status': 'healthy', 'timestamp': datetime.now().isoformat()})
 
-if __name__ == '__main__':
-    # 起動前の初期化処理
-    print("AI Wife Application Starting...")
-    print(f"Project root: {project_root}")
-    print(f"Database path: {DATABASE_PATH}")
-    
-    # 必要なディレクトリの存在確認・作成
-    config_dir = os.path.join(project_root, 'config')
-    models_dir = os.path.join(project_root, 'models')
-    
-    for directory in [config_dir, models_dir]:
-        if not os.path.exists(directory):
-            os.makedirs(directory, exist_ok=True)
-            print(f"Created directory: {directory}")
-    
-    # データベースファイルの存在確認
+if __name__ != '__main__':
+    # Vercel環境での起動
+    print("AI Wife Application Starting for Vercel...")
+    # データベース初期化
     if not os.path.exists(DATABASE_PATH):
-        print("Database not found. Initializing...")
-        # データベース初期化スクリプトを実行
-        init_script = os.path.join(config_dir, 'init_db.py')
-        if os.path.exists(init_script):
-            import subprocess
-            subprocess.run(['python', init_script, DATABASE_PATH])
-        else:
-            print("Warning: Database initialization script not found.")
-    
+        print("Database not found. Initializing for Vercel...")
+        memory_manager.init_database()
+else:
+    # ローカル環境での起動
     port = int(os.environ.get('PORT', 5000))
     print(f"Starting server on port {port}")
     socketio.run(app, host='0.0.0.0', port=port, debug=True, use_reloader=False, allow_unsafe_werkzeug=True)

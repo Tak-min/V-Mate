@@ -7,7 +7,7 @@ google-generativeai
 requests
 python-dotenv
 elevenlabs
-PyAudio
+# PyAudioはVercelでは不要
 websockets
 aiohttp
 json5
@@ -15,3 +15,4 @@ pydub
 PyYAML
 pytest
 pytest-asyncio
+Werkzeug
