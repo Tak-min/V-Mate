@@ -12,4 +12,4 @@ Animation Synchronization: The character performs animations that convey its res
 
 This application provides an interactive experience with a 3D character through text chat.
 
-https://aiwife-test-production.up.railway.app/
+https://aiwife.vercel.app/
