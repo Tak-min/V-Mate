@@ -1487,7 +1487,6 @@ class AIWifeApp {
                 expressionManager.setValue('blink', 0);
                 this.isBlinking = false;
                 this.scheduleNextBlink();
-                console.log(`Blink completed. Current expression: ${this.currentExpression}`);
                 return;
             }
             
