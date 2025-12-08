@@ -1,15 +1,95 @@
 # AIWife-test
+
 This application is a web app for users to interact with a 3D character via text.
 
-Application Features
-3D Character Display: A 3D character is displayed in the web browser.
+## Application Features
 
-Text Chat: Users can send messages to the character through a text input field.
-
-Character Responses: The character responds to user's text input with animations.
-
-Animation Synchronization: The character performs animations that convey its response, and also displays emotion-based animations.
+- **3D Character Display**: A 3D character is displayed in the web browser.
+- **Text Chat**: Users can send messages to the character through a text input field.
+- **Character Responses**: The character responds to user's text input with animations.
+- **Animation Synchronization**: The character performs animations that convey its response, and also displays emotion-based animations.
 
 This application provides an interactive experience with a 3D character through text chat.
 
+## 開発環境セットアップ
+
+### 必要な環境
+- Python 3.8以上
+- Node.js 18以上
+- npm または yarn
+
+### インストール手順
+
+1. **リポジトリをクローン**
+```bash
+git clone <repository-url>
+cd AIWife-test
+```
+
+2. **Python依存関係をインストール**
+```bash
+pip install -r requirements.txt
+```
+
+3. **Node.js依存関係をインストール**
+```bash
+npm install
+```
+
+4. **環境変数の設定**
+`.env`ファイルをプロジェクトルートに作成し、必要なAPIキーを設定:
+```env
+GEMINI_API_KEY=your_gemini_api_key
+ELEVENLABS_API_KEY=your_elevenlabs_api_key
+ASSEMBLYAI_API_KEY=your_assemblyai_api_key
+SECRET_KEY=your_secret_key
+```
+
+### 開発サーバの起動
+
+フロントエンドとバックエンドを同時に起動:
+```bash
+npm run dev
+```
+
+または、個別に起動:
+
+**フロントエンド (Vite)**
+```bash
+npm run dev:frontend
+```
+フロントエンドは `http://localhost:3000` で起動します。
+
+**バックエンド (Flask)**
+```bash
+npm run dev:backend
+```
+バックエンドは `http://localhost:5000` で起動します。
+
+### ビルド
+
+本番用ビルドを作成:
+```bash
+npm run build
+```
+
+ビルドされたファイルは `dist/` ディレクトリに出力されます。
+
+### プレビュー
+
+ビルドしたアプリをプレビュー:
+```bash
+npm run preview
+```
+
+## デプロイ
+
 https://aiwife.vercel.app/
+
+## 技術スタック
+
+- **フロントエンド**: Vite, Three.js, @pixiv/three-vrm
+- **バックエンド**: Flask, Socket.IO
+- **AI**: Google Gemini API
+- **音声合成**: ElevenLabs API
+- **音声認識**: AssemblyAI API
