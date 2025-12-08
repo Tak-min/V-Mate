@@ -6,6 +6,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="stylesheet" href="css/style.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- 認証チェック: ページ読み込み前にチェック -->
+    <script>
+        // アクセストークンの存在確認（ゲストモードも許可）
+        // ログインページでない場合のみチェック
+        (function() {
+            // 認証は任意なので、このチェックを削除またはコメントアウト
+            // const accessToken = localStorage.getItem('access_token');
+            // if (!accessToken) {
+            //     window.location.href = '/auth/login.html';
+            // }
+        })();
+    </script>
 </head>
 <body>
     <!-- ハンバーガーメニュー -->

@@ -123,32 +123,52 @@ class AIWifeApp {
      */
     async init() {
         try {
+            console.log('[Debug] Starting AIWifeApp initialization...');
+            
+            console.log('[Debug] Step 1: Setting up event listeners...');
             this.setupEventListeners();
+            
+            console.log('[Debug] Step 2: Setting up auth UI...');
             this.setupAuthUI();  // 認証UIの設定
+            
+            console.log('[Debug] Step 3: Initializing WebSocket...');
             this.initWebSocket();
+            
+            console.log('[Debug] Step 4: Initializing 3D scene...');
             await this.init3DScene();
+            
+            console.log('[Debug] Step 5: Loading background...');
             await this.loadBackground();
+            
+            console.log('[Debug] Step 6: Loading character...');
             await this.loadCharacter();
+            
+            console.log('[Debug] Step 7: Loading settings...');
             this.loadSettings();
             
             // キャラクター別のデフォルト音声を設定
             this.setCharacterDefaultVoice(this.settings.personality);
             
+            console.log('[Debug] Step 8: Initializing blink timer...');
             this.initBlinkTimer(); // ブリンクタイマー初期化
+            
+            console.log('[Debug] Step 9: Starting render loop...');
             this.startRenderLoop();
             
             // 新しい会話セッションを開始
+            console.log('[Debug] Step 10: Starting new conversation...');
             this.startNewConversation();
             
-            console.log('AI Wife App initialized successfully');
+            console.log('[Success] AI Wife App initialized successfully');
             
             // 初期化完了後の処理を高速化（2秒 → 0.5秒）
             setTimeout(() => {
-                // this.send3DMessage('初めまして！');
+                // this.send3DMessage('初めまして!');
             }, 500);
         } catch (error) {
-            console.error('Failed to initialize app:', error);
-            this.showError('アプリケーションの初期化に失敗しました');
+            console.error('[Error] Failed to initialize app:', error);
+            console.error('[Error] Stack trace:', error.stack);
+            this.showError('アプリケーションの初期化に失敗しました: ' + error.message);
         }
     }
     
@@ -343,7 +363,11 @@ class AIWifeApp {
     initWebSocket() {
         // 認証トークンを含めて接続
         const connectionOptions = {
-            path: '/socket.io'
+            path: '/socket.io',
+            reconnection: true, // 自動再接続を有効
+            reconnectionDelay: 1000, // 再接続までの待機時間（ミリ秒）
+            reconnectionAttempts: 5, // 最大再接続試行回数
+            timeout: 20000 // 接続タイムアウト（ミリ秒）
         };
         
         // 認証済みの場合はトークンをクエリパラメータに追加
@@ -353,22 +377,36 @@ class AIWifeApp {
             };
         }
         
+        console.log('[Debug] Initializing Socket.IO connection...', connectionOptions);
         this.socket = io(connectionOptions);
         
         this.socket.on('connect', () => {
-            console.log('Connected to server');
+            console.log('[Debug] Socket.IO connected successfully');
             this.updateConnectionStatus('connected');
         });
         
-        this.socket.on('disconnect', () => {
-            console.log('Disconnected from server');
+        this.socket.on('disconnect', (reason) => {
+            console.log('[Debug] Socket.IO disconnected. Reason:', reason);
             this.updateConnectionStatus('disconnected');
         });
         
+        this.socket.on('connect_error', (error) => {
+            console.error('[Error] Socket.IO connection error:', error);
+        });
+        
+        this.socket.on('reconnect_attempt', (attemptNumber) => {
+            console.log('[Debug] Socket.IO reconnection attempt:', attemptNumber);
+        });
+        
+        this.socket.on('reconnect_failed', () => {
+            console.error('[Error] Socket.IO reconnection failed after maximum attempts');
+            this.showError('サーバーへの接続に失敗しました。ページを再読み込みしてください。');
+        });
+        
         this.socket.on('connected', (data) => {
-            console.log('Server connected:', data.status);
+            console.log('[Debug] Server connected message received:', data.status);
             if (data.authenticated) {
-                console.log('Authenticated connection established');
+                console.log('[Debug] Authenticated connection established');
             }
         });
         
@@ -3307,5 +3345,8 @@ window.hideErrorToast = () => {
 
 // アプリケーション起動
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('[Debug] DOMContentLoaded event fired');
+    console.log('[Debug] Creating new AIWifeApp instance...');
     window.aiWifeApp = new AIWifeApp();
+    console.log('[Debug] AIWifeApp instance created');
 });
