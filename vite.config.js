@@ -10,7 +10,7 @@ export default defineConfig({
   publicDir: false, // publicDirを無効化して手動で設定
   server: {
     port: 3000,
-    open: false, // 自動的にブラウザを開かないように変更
+    open: true, // 自動的にブラウザを開くように戻す
     strictPort: true, // ポートが使用中の場合はエラーを出す
     proxy: {
       // FlaskバックエンドへのAPI呼び出しをプロキシ

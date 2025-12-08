@@ -52,19 +52,27 @@ SECRET_KEY=your_secret_key
 npm run dev
 ```
 
+このコマンドは以下を自動的に実行します:
+1. バックエンドサーバー (Flask) を起動
+2. バックエンドが完全に起動するまで待機 (wait-on)
+3. フロントエンドサーバー (Vite) を起動してブラウザを開く
+
+**注意**: バックエンドが `http://localhost:5000` で起動するまでフロントエンドは待機します。
+
 または、個別に起動:
 
-**フロントエンド (Vite)**
-```bash
-npm run dev:frontend
-```
-フロントエンドは `http://localhost:3000` で起動します。
-
-**バックエンド (Flask)**
+**バックエンド (Flask) - 先に起動**
 ```bash
 npm run dev:backend
 ```
 バックエンドは `http://localhost:5000` で起動します。
+
+**フロントエンド (Vite) - バックエンド起動後**
+```bash
+npm run dev:frontend
+```
+フロントエンドは `http://localhost:3000` で起動します。  
+このコマンドはバックエンドの起動を待ってから実行されます。
 
 ### ビルド
 

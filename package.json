@@ -4,21 +4,21 @@
   "description": "AI Wife - 3D Character Interaction",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend:delayed\"",
-    "dev:frontend": "vite",
-    "dev:frontend:delayed": "timeout /t 3 /nobreak >nul && vite",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:frontend": "wait-on http://localhost:5000 && vite",
     "dev:backend": "cd src && python app.py",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "three": "^0.160.0",
     "@pixiv/three-vrm": "^3.0.0",
     "@pixiv/three-vrm-animation": "^3.0.0",
-    "socket.io-client": "^4.7.2"
+    "socket.io-client": "^4.7.2",
+    "three": "^0.160.0"
   },
   "devDependencies": {
+    "concurrently": "^8.2.2",
     "vite": "^5.0.0",
-    "concurrently": "^8.2.2"
+    "wait-on": "^7.2.0"
   }
 }
