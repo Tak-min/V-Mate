@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <title>ログイン - AI Wife</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../css/style.css">
+    <link rel="stylesheet" href="../css/auth.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="auth-page">
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <h1><i class="fas fa-heart"></i> AI Wife</h1>
+                <p>あなただけのAIパートナーと会話しよう</p>
+            </div>
+            
+            <div class="auth-tabs">
+                <button class="auth-tab active" data-tab="login">ログイン</button>
+                <button class="auth-tab" data-tab="register">新規登録</button>
+            </div>
+            
+            <!-- ログインフォーム -->
+            <form id="loginForm" class="auth-form active">
+                <div class="form-group">
+                    <label for="loginEmail">
+                        <i class="fas fa-envelope"></i> メールアドレス
+                    </label>
+                    <input type="email" id="loginEmail" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="loginPassword">
+                        <i class="fas fa-lock"></i> パスワード
+                    </label>
+                    <input type="password" id="loginPassword" required>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-sign-in-alt"></i> ログイン
+                    </button>
+                </div>
+                
+                <div class="form-footer">
+                    <a href="#" class="guest-link">ゲストとして続ける</a>
+                </div>
+            </form>
+            
+            <!-- 登録フォーム -->
+            <form id="registerForm" class="auth-form">
+                <div class="form-group">
+                    <label for="registerUsername">
+                        <i class="fas fa-user"></i> ユーザー名
+                    </label>
+                    <input type="text" id="registerUsername" required minlength="3">
+                    <small>3文字以上</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="registerEmail">
+                        <i class="fas fa-envelope"></i> メールアドレス
+                    </label>
+                    <input type="email" id="registerEmail" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="registerPassword">
+                        <i class="fas fa-lock"></i> パスワード
+                    </label>
+                    <input type="password" id="registerPassword" required minlength="6">
+                    <small>6文字以上</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="registerPasswordConfirm">
+                        <i class="fas fa-lock"></i> パスワード確認
+                    </label>
+                    <input type="password" id="registerPasswordConfirm" required minlength="6">
+                </div>
+                
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-user-plus"></i> 新規登録
+                    </button>
+                </div>
+                
+                <div class="form-footer">
+                    <a href="#" class="guest-link">ゲストとして続ける</a>
+                </div>
+            </form>
+            
+            <!-- エラー/成功メッセージ -->
+            <div id="authMessage" class="auth-message"></div>
+        </div>
+    </div>
+    
+    <script type="module" src="../js/auth.js"></script>
+</body>
+</html>

@@ -16,6 +16,10 @@ PyYAML
 pytest
 pytest-asyncio
 Werkzeug
+# 認証関連
+PyJWT
+bcrypt
+email-validator
 # Render/本番環境用
 gunicorn
 gevent

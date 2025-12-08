@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 import { createVRMAnimationClip, VRMAnimationLoaderPlugin, VRMLookAtQuaternionProxy } from '@pixiv/three-vrm-animation';
+import { authService } from './auth.js';
 
 /**
  * AI Wife - 3D Character Interaction App
@@ -16,6 +17,11 @@ class AIWifeApp {
         this.isRecording = false;
         this.mediaRecorder = null;
         this.audioChunks = [];
+        
+        // 認証情報
+        this.authService = authService;
+        this.currentUser = authService.getUser();
+        this.isAuthenticated = authService.isAuthenticated();
         
         // Three.js関連
         this.scene = null;
@@ -118,6 +124,7 @@ class AIWifeApp {
     async init() {
         try {
             this.setupEventListeners();
+            this.setupAuthUI();  // 認証UIの設定
             this.initWebSocket();
             await this.init3DScene();
             await this.loadBackground();
@@ -275,8 +282,47 @@ class AIWifeApp {
     }
     
     /**
-     * AudioContextの初期化（ユーザーインタラクション後）
+     * 認証UIのセットアップ
      */
+    setupAuthUI() {
+        const authButtonsContainer = document.getElementById('authButtons');
+        
+        if (this.isAuthenticated && this.currentUser) {
+            // ログイン済みの場合
+            authButtonsContainer.innerHTML = `
+                <div class="user-info">
+                    <i class="fas fa-user-circle"></i>
+                    <span>${this.currentUser.username}</span>
+                </div>
+                <button class="btn-logout" id="logoutBtn">
+                    <i class="fas fa-sign-out-alt"></i> ログアウト
+                </button>
+            `;
+            
+            // ログアウトボタンのイベント
+            document.getElementById('logoutBtn').addEventListener('click', async () => {
+                try {
+                    await this.authService.logout();
+                    window.location.href = '/auth/login.html';
+                } catch (error) {
+                    console.error('Logout error:', error);
+                }
+            });
+        } else {
+            // 未ログインの場合
+            authButtonsContainer.innerHTML = `
+                <button class="btn-login" id="loginBtn">
+                    <i class="fas fa-sign-in-alt"></i> ログイン
+                </button>
+            `;
+            
+            // ログインボタンのイベント
+            document.getElementById('loginBtn').addEventListener('click', () => {
+                window.location.href = '/auth/login.html';
+            });
+        }
+    }
+    
     /**
      * AudioContextの初期化（ユーザーインタラクション後）
      */
@@ -295,9 +341,19 @@ class AIWifeApp {
      * WebSocket接続の初期化
      */
     initWebSocket() {
-        this.socket = io({
+        // 認証トークンを含めて接続
+        const connectionOptions = {
             path: '/socket.io'
-        });
+        };
+        
+        // 認証済みの場合はトークンをクエリパラメータに追加
+        if (this.isAuthenticated && this.authService.tokens.accessToken) {
+            connectionOptions.query = {
+                token: this.authService.tokens.accessToken
+            };
+        }
+        
+        this.socket = io(connectionOptions);
         
         this.socket.on('connect', () => {
             console.log('Connected to server');
@@ -307,6 +363,13 @@ class AIWifeApp {
         this.socket.on('disconnect', () => {
             console.log('Disconnected from server');
             this.updateConnectionStatus('disconnected');
+        });
+        
+        this.socket.on('connected', (data) => {
+            console.log('Server connected:', data.status);
+            if (data.authenticated) {
+                console.log('Authenticated connection established');
+            }
         });
         
         this.socket.on('message_response', (data) => {
@@ -331,10 +394,6 @@ class AIWifeApp {
         this.socket.on('error', (data) => {
             this.showError(data.message);
             this.hideLoading();
-        });
-        
-        this.socket.on('connected', (data) => {
-            console.log('Server connected:', data.status);
         });
     }
     
@@ -555,12 +614,20 @@ class AIWifeApp {
         // ユーザーメッセージを会話履歴に追加
         this.addMessageToConversation('user', message);
         
-        this.socket.emit('send_message', {
+        // メッセージデータの構築
+        const messageData = {
             session_id: this.sessionId,
             message: message,
             voice_id: this.settings.voiceId,
             personality: this.settings.personality
-        });
+        };
+        
+        // 認証済みの場合はuser_idを追加
+        if (this.isAuthenticated && this.currentUser) {
+            messageData.user_id = this.currentUser.id;
+        }
+        
+        this.socket.emit('send_message', messageData);
     }
     
     /**

@@ -20,6 +20,11 @@ from typing import Dict, List, Optional
 from elevenlabs.client import ElevenLabs
 import tempfile
 import base64
+import re
+
+# 認証関連のインポート
+from src.models.user import User
+from src.auth.auth_manager import AuthManager, token_required, optional_token
 
 # Suppress only the single InsecureRequestWarning from urllib3 needed.
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -818,6 +823,12 @@ memory_manager = MemoryManager(DATABASE_PATH)
 tts_manager = TTSManager()
 stt_manager = STTManager()
 
+# 認証システム初期化
+user_model = User(DATABASE_PATH)
+auth_manager = AuthManager(app.config['SECRET_KEY'], user_model)
+app.config['AUTH_MANAGER'] = auth_manager
+elevenlabs_queue = ElevenLabsQueue()
+
 @app.route('/')
 def index():
     """メインページを表示"""
@@ -838,11 +849,213 @@ def serve_js(filename):
     """JavaScriptファイルを提供"""
     return send_from_directory('../frontend/js', filename)
 
-@app.route('/backgrounds/<path:filename>')
-def serve_backgrounds(filename):
-    """背景画像ファイルを提供"""
-    return send_from_directory('../frontend/backgrounds', filename)
+# ==================== 認証エンドポイント ====================
 
+@app.route('/api/auth/register', methods=['POST'])
+def register():
+    """ユーザー登録"""
+    try:
+        data = request.get_json()
+        
+        username = data.get('username', '').strip()
+        email = data.get('email', '').strip().lower()
+        password = data.get('password', '')
+        
+        # バリデーション
+        if not username or len(username) < 3:
+            return jsonify({'error': 'ユーザー名は3文字以上で入力してください'}), 400
+        
+        if not email or not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
+            return jsonify({'error': '有効なメールアドレスを入力してください'}), 400
+        
+        if not password or len(password) < 6:
+            return jsonify({'error': 'パスワードは6文字以上で入力してください'}), 400
+        
+        # ユーザー作成
+        user_id = user_model.create_user(username, email, password)
+        
+        if not user_id:
+            return jsonify({'error': 'このメールアドレスまたはユーザー名は既に使用されています'}), 409
+        
+        # トークン生成
+        access_token = auth_manager.generate_access_token(user_id, email)
+        refresh_token = auth_manager.generate_refresh_token(user_id)
+        
+        # ユーザー情報取得
+        user = user_model.get_user_by_id(user_id)
+        
+        logger.info(f"New user registered: {username} ({email})")
+        
+        return jsonify({
+            'message': '登録が完了しました',
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'user': {
+                'id': user['id'],
+                'username': user['username'],
+                'email': user['email']
+            }
+        }), 201
+        
+    except Exception as e:
+        logger.error(f"Registration error: {e}")
+        return jsonify({'error': '登録処理中にエラーが発生しました'}), 500
+
+
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    """ログイン"""
+    try:
+        data = request.get_json()
+        
+        email = data.get('email', '').strip().lower()
+        password = data.get('password', '')
+        
+        if not email or not password:
+            return jsonify({'error': 'メールアドレスとパスワードを入力してください'}), 400
+        
+        # パスワード検証
+        user = user_model.verify_password(email, password)
+        
+        if not user:
+            return jsonify({'error': 'メールアドレスまたはパスワードが正しくありません'}), 401
+        
+        # トークン生成
+        access_token = auth_manager.generate_access_token(user['id'], user['email'])
+        refresh_token = auth_manager.generate_refresh_token(user['id'])
+        
+        # 最終ログイン時刻を更新
+        user_model.update_last_login(user['id'])
+        
+        logger.info(f"User logged in: {user['username']} ({user['email']})")
+        
+        return jsonify({
+            'message': 'ログインに成功しました',
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'user': {
+                'id': user['id'],
+                'username': user['username'],
+                'email': user['email']
+            }
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Login error: {e}")
+        return jsonify({'error': 'ログイン処理中にエラーが発生しました'}), 500
+
+
+@app.route('/api/auth/refresh', methods=['POST'])
+def refresh():
+    """トークンリフレッシュ"""
+    try:
+        data = request.get_json()
+        refresh_token = data.get('refresh_token')
+        
+        if not refresh_token:
+            return jsonify({'error': 'リフレッシュトークンが必要です'}), 400
+        
+        # 新しいアクセストークン生成
+        result = auth_manager.refresh_access_token(refresh_token)
+        
+        if not result:
+            return jsonify({'error': '無効または期限切れのリフレッシュトークンです'}), 401
+        
+        return jsonify({
+            'access_token': result['access_token'],
+            'user': {
+                'id': result['user']['id'],
+                'username': result['user']['username'],
+                'email': result['user']['email']
+            }
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Token refresh error: {e}")
+        return jsonify({'error': 'トークン更新中にエラーが発生しました'}), 500
+
+
+@app.route('/api/auth/logout', methods=['POST'])
+@token_required
+def logout(current_user):
+    """ログアウト"""
+    try:
+        # ユーザーの全トークンを無効化
+        auth_manager.revoke_all_user_tokens(current_user['user_id'])
+        
+        logger.info(f"User logged out: {current_user['email']}")
+        
+        return jsonify({'message': 'ログアウトしました'}), 200
+        
+    except Exception as e:
+        logger.error(f"Logout error: {e}")
+        return jsonify({'error': 'ログアウト処理中にエラーが発生しました'}), 500
+
+
+@app.route('/api/auth/me', methods=['GET'])
+@token_required
+def get_current_user(current_user):
+    """現在のユーザー情報を取得"""
+    try:
+        user = user_model.get_user_by_id(current_user['user_id'])
+        
+        if not user:
+            return jsonify({'error': 'ユーザーが見つかりません'}), 404
+        
+        # ユーザー設定も取得
+        settings = user_model.get_user_settings(user['id'])
+        
+        return jsonify({
+            'user': {
+                'id': user['id'],
+                'username': user['username'],
+                'email': user['email'],
+                'created_at': user['created_at'],
+                'last_login': user['last_login']
+            },
+            'settings': settings
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get current user error: {e}")
+        return jsonify({'error': 'ユーザー情報取得中にエラーが発生しました'}), 500
+
+
+@app.route('/api/user/settings', methods=['GET'])
+@token_required
+def get_user_settings_endpoint(current_user):
+    """ユーザー設定を取得"""
+    try:
+        settings = user_model.get_user_settings(current_user['user_id'])
+        
+        if not settings:
+            return jsonify({'error': '設定が見つかりません'}), 404
+        
+        return jsonify({'settings': settings}), 200
+        
+    except Exception as e:
+        logger.error(f"Get user settings error: {e}")
+        return jsonify({'error': '設定取得中にエラーが発生しました'}), 500
+
+
+@app.route('/api/user/settings', methods=['PUT'])
+@token_required
+def update_user_settings_endpoint(current_user):
+    """ユーザー設定を更新"""
+    try:
+        data = request.get_json()
+        settings = data.get('settings', {})
+        
+        user_model.update_user_settings(current_user['user_id'], settings)
+        
+        return jsonify({'message': '設定を更新しました'}), 200
+        
+    except Exception as e:
+        logger.error(f"Update user settings error: {e}")
+        return jsonify({'error': '設定更新中にエラーが発生しました'}), 500
+
+
+# ==================== その他のエンドポイント ====================
 
 @app.route('/api/voices')
 def get_voices():
@@ -894,9 +1107,47 @@ def build_prompt(personality: str, user_input: str) -> str:
 
 @socketio.on('connect')
 def handle_connect():
-    """WebSocket接続時の処理"""
-    logger.info('Client connected')
-    emit('connected', {'status': 'Connected to AI Wife server'})
+    """WebSocket接続時の処理 - トークン認証対応"""
+    try:
+        # クエリパラメータまたはハンドシェイクからトークンを取得
+        token = request.args.get('token')
+        
+        if token:
+            # トークン検証
+            payload = auth_manager.verify_access_token(token)
+            
+            if payload:
+                # 認証成功 - ユーザー情報を保存
+                from flask_socketio import join_room
+                user_id = payload['user_id']
+                join_room(f"user_{user_id}")
+                
+                logger.info(f'Authenticated client connected: user_id={user_id}')
+                emit('connected', {
+                    'status': 'Connected to AI Wife server',
+                    'authenticated': True,
+                    'user_id': user_id
+                })
+            else:
+                logger.warning('Client connected with invalid token')
+                emit('connected', {
+                    'status': 'Connected to AI Wife server',
+                    'authenticated': False
+                })
+        else:
+            # ゲストモード
+            logger.info('Guest client connected (no token)')
+            emit('connected', {
+                'status': 'Connected to AI Wife server',
+                'authenticated': False
+            })
+            
+    except Exception as e:
+        logger.error(f'Connection error: {e}')
+        emit('connected', {
+            'status': 'Connected to AI Wife server',
+            'authenticated': False
+        })
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -905,18 +1156,22 @@ def handle_disconnect():
 
 @socketio.on('send_message')
 def handle_message(data):
-    """テキストメッセージ受信時の処理 - 超シンプル版"""
+    """テキストメッセージ受信時の処理 - 認証対応版"""
     start_time = time.time()
     try:
         session_id = data.get('session_id', 'default')
         message = data.get('message', '')
         personality = data.get('personality', 'yui_natural')
-        # voice_id は削除 - キャラクター別音声を常に使用
+        user_id = data.get('user_id')  # 認証済みユーザーのID (オプション)
         
         if not message.strip():
             return
 
-        logger.info(f"Received message: '{message}' for personality: {personality}")
+        logger.info(f"Received message: '{message}' for personality: {personality}, user_id: {user_id}")
+
+        # 認証済みユーザーの場合、ユーザー別のセッションIDを使用
+        if user_id:
+            session_id = f"user_{user_id}"
 
         # 1. プロンプト構築
         prompt = build_prompt(personality, message)
