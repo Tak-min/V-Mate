@@ -39,11 +39,22 @@ npm install
 4. **環境変数の設定**
 `.env`ファイルをプロジェクトルートに作成し、必要なAPIキーを設定:
 ```env
+# Gemini AI
 GEMINI_API_KEY=your_gemini_api_key
 ELEVENLABS_API_KEY=your_elevenlabs_api_key
 ASSEMBLYAI_API_KEY=your_assemblyai_api_key
+
+# セキュリティ
 SECRET_KEY=your_secret_key
+
+# OAuth 2.0 (オプション)
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+GITHUB_CLIENT_ID=your_github_client_id
+GITHUB_CLIENT_SECRET=your_github_client_secret
 ```
+
+**OAuth 2.0の設定方法**については、[OAUTH_SETUP.md](document/OAUTH_SETUP.md) を参照してください。
 
 ### 開発サーバの起動
 
@@ -98,6 +109,31 @@ https://aiwife.vercel.app/
 
 - **フロントエンド**: Vite, Three.js, @pixiv/three-vrm
 - **バックエンド**: Flask, Socket.IO
+- **認証**: JWT (JSON Web Tokens) + OAuth 2.0 (Google, GitHub)
+- **AI**: Google Gemini API
+- **音声合成**: ElevenLabs API
+- **音声認識**: AssemblyAI API
+
+## 認証機能
+
+### Phase 1: JWT ローカル認証 ✅
+- メールアドレス + パスワード認証
+- JWT トークンベースのセキュアな認証
+- リフレッシュトークンによる自動更新
+
+### Phase 2: OAuth 2.0 統合 ✅
+- **Google OAuth 2.0**: Googleアカウントでログイン
+- **GitHub OAuth**: GitHubアカウントでログイン
+- パスワード不要の安全な認証
+- 複数プロバイダー対応
+
+### セキュリティ機能
+- アクセストークン (有効期限: 15分)
+- リフレッシュトークン (有効期限: 30日)
+- パスワードのbcryptハッシュ化
+- 認証ガード: ログインなしではコンテンツ閲覧不可
+
+詳細な設定方法は [OAUTH_SETUP.md](document/OAUTH_SETUP.md) を参照してください。
 - **AI**: Google Gemini API
 - **音声合成**: ElevenLabs API
 - **音声認識**: AssemblyAI API

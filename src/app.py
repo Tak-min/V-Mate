@@ -25,6 +25,7 @@ import re
 # 認証関連のインポート（相対インポートに修正）
 from models.user import User
 from auth.auth_manager import AuthManager, token_required, optional_token
+from auth.oauth_manager import OAuthManager
 
 # Suppress only the single InsecureRequestWarning from urllib3 needed.
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -827,6 +828,10 @@ stt_manager = STTManager()
 user_model = User(DATABASE_PATH)
 auth_manager = AuthManager(app.config['SECRET_KEY'], user_model)
 app.config['AUTH_MANAGER'] = auth_manager
+
+# OAuthシステム初期化
+oauth_manager = OAuthManager(app, user_model, auth_manager)
+
 elevenlabs_queue = ElevenLabsQueue()
 
 @app.route('/')
@@ -991,6 +996,190 @@ def logout(current_user):
         logger.error(f"Logout error: {e}")
         return jsonify({'error': 'ログアウト処理中にエラーが発生しました'}), 500
 
+
+# ==================== OAuth エンドポイント ====================
+
+@app.route('/api/auth/google', methods=['GET'])
+def google_login():
+    """Google OAuth認証開始"""
+    try:
+        return oauth_manager.get_google_authorize_redirect()
+    except Exception as e:
+        logger.error(f"Google OAuth start error: {e}")
+        return jsonify({'error': 'Google認証の開始に失敗しました'}), 500
+
+
+@app.route('/api/auth/google/callback', methods=['GET'])
+def google_callback():
+    """Google OAuthコールバック"""
+    try:
+        result = oauth_manager.handle_google_callback()
+        
+        # ユーザー最終ログイン更新
+        user_model.update_last_login(result['user']['id'])
+        
+        logger.info(f"Google OAuth login successful: {result['user']['email']}")
+        
+        # JSONを適切にエンコード
+        import json
+        user_json = json.dumps(result['user'])
+        access_token = result['access_token']
+        refresh_token = result['refresh_token']
+        
+        # フロントエンドにリダイレクト
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>認証成功</title>
+            <style>
+                body {{
+                    font-family: Arial, sans-serif;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    height: 100vh;
+                    margin: 0;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                }}
+                .message {{
+                    text-align: center;
+                    font-size: 1.5rem;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="message">
+                <p>✓ 認証成功！</p>
+                <p>リダイレクト中...</p>
+            </div>
+            <script>
+                try {{
+                    // トークンをlocalStorageに保存
+                    localStorage.setItem('access_token', '{access_token}');
+                    localStorage.setItem('refresh_token', '{refresh_token}');
+                    localStorage.setItem('user', `{user_json}`);
+                    
+                    console.log('トークンを保存しました');
+                    
+                    // ホームページにリダイレクト
+                    setTimeout(() => {{
+                        window.location.href = '/';
+                    }}, 500);
+                }} catch (error) {{
+                    console.error('認証エラー:', error);
+                    document.body.innerHTML = '<div class="message"><p>エラーが発生しました</p><a href="/auth/login.html" style="color: white;">ログインページに戻る</a></div>';
+                }}
+            </script>
+        </body>
+        </html>
+        """
+        
+    except Exception as e:
+        logger.error(f"Google OAuth callback error: {e}")
+        return f"""
+        <html>
+        <body>
+            <p>Google認証に失敗しました: {str(e)}</p>
+            <a href="/auth/login.html">ログインページに戻る</a>
+        </body>
+        </html>
+        """, 400
+
+
+@app.route('/api/auth/github', methods=['GET'])
+def github_login():
+    """GitHub OAuth認証開始"""
+    try:
+        return oauth_manager.get_github_authorize_redirect()
+    except Exception as e:
+        logger.error(f"GitHub OAuth start error: {e}")
+        return jsonify({'error': 'GitHub認証の開始に失敗しました'}), 500
+
+
+@app.route('/api/auth/github/callback', methods=['GET'])
+def github_callback():
+    """GitHub OAuthコールバック"""
+    try:
+        result = oauth_manager.handle_github_callback()
+        
+        # ユーザー最終ログイン更新
+        user_model.update_last_login(result['user']['id'])
+        
+        logger.info(f"GitHub OAuth login successful: {result['user']['email']}")
+        
+        # JSONを適切にエンコード
+        import json
+        user_json = json.dumps(result['user'])
+        access_token = result['access_token']
+        refresh_token = result['refresh_token']
+        
+        # フロントエンドにリダイレクト
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>認証成功</title>
+            <style>
+                body {{
+                    font-family: Arial, sans-serif;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    height: 100vh;
+                    margin: 0;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                }}
+                .message {{
+                    text-align: center;
+                    font-size: 1.5rem;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="message">
+                <p>✓ 認証成功！</p>
+                <p>リダイレクト中...</p>
+            </div>
+            <script>
+                try {{
+                    // トークンをlocalStorageに保存
+                    localStorage.setItem('access_token', '{access_token}');
+                    localStorage.setItem('refresh_token', '{refresh_token}');
+                    localStorage.setItem('user', `{user_json}`);
+                    
+                    console.log('トークンを保存しました');
+                    
+                    // ホームページにリダイレクト
+                    setTimeout(() => {{
+                        window.location.href = '/';
+                    }}, 500);
+                }} catch (error) {{
+                    console.error('認証エラー:', error);
+                    document.body.innerHTML = '<div class="message"><p>エラーが発生しました</p><a href="/auth/login.html" style="color: white;">ログインページに戻る</a></div>';
+                }}
+            </script>
+        </body>
+        </html>
+        """
+        
+    except Exception as e:
+        logger.error(f"GitHub OAuth callback error: {e}")
+        return f"""
+        <html>
+        <body>
+            <p>GitHub認証に失敗しました: {str(e)}</p>
+            <a href="/auth/login.html">ログインページに戻る</a>
+        </body>
+        </html>
+        """, 400
+
+
+# ==================== ユーザー情報エンドポイント ====================
 
 @app.route('/api/auth/me', methods=['GET'])
 @token_required

@@ -29,11 +29,28 @@ class User:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     username TEXT UNIQUE NOT NULL,
                     email TEXT UNIQUE NOT NULL,
-                    password_hash TEXT NOT NULL,
+                    password_hash TEXT,
+                    avatar_url TEXT,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     last_login DATETIME,
                     is_active BOOLEAN DEFAULT 1,
                     is_verified BOOLEAN DEFAULT 0
+                )
+            ''')
+            
+            # 既存テーブルへのカラム追加（マイグレーション）
+            self._migrate_users_table(cursor)
+            
+            # OAuthアカウントテーブル
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS oauth_accounts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    provider TEXT NOT NULL,
+                    provider_user_id TEXT NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                    UNIQUE(provider, provider_user_id)
                 )
             ''')
             
@@ -81,6 +98,16 @@ class User:
                 ON refresh_tokens (user_id)
             ''')
             
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_oauth_accounts_user_id 
+                ON oauth_accounts (user_id)
+            ''')
+            
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_oauth_accounts_provider 
+                ON oauth_accounts (provider, provider_user_id)
+            ''')
+            
             conn.commit()
             conn.close()
             logger.info("User tables initialized successfully")
@@ -88,6 +115,24 @@ class User:
         except sqlite3.Error as e:
             logger.error(f"Failed to initialize user tables: {e}")
             raise
+    
+    def _migrate_users_table(self, cursor):
+        """既存のusersテーブルにavatar_urlカラムを追加（マイグレーション）"""
+        try:
+            # テーブルの構造を確認
+            cursor.execute("PRAGMA table_info(users)")
+            columns = [column[1] for column in cursor.fetchall()]
+            
+            # avatar_urlカラムが存在しない場合は追加
+            if 'avatar_url' not in columns:
+                cursor.execute('''
+                    ALTER TABLE users ADD COLUMN avatar_url TEXT
+                ''')
+                logger.info("Added avatar_url column to users table")
+                
+        except sqlite3.Error as e:
+            # カラムが既に存在する場合はエラーを無視
+            logger.debug(f"Migration note: {e}")
     
     def create_user(self, username: str, email: str, password: str) -> Optional[int]:
         """新規ユーザーを作成"""
@@ -392,3 +437,137 @@ class User:
             
         except Exception as e:
             logger.error(f"Failed to delete user refresh tokens: {e}")
+    
+    def create_oauth_user(self, username: str, email: str, provider: str, 
+                         provider_user_id: str, avatar_url: str = None) -> Optional[int]:
+        """OAuth認証でユーザーを新規作成"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # パスワードなしでユーザーを作成（OAuthのみ）
+            cursor.execute('''
+                INSERT INTO users (username, email, password_hash, avatar_url, is_verified)
+                VALUES (?, ?, NULL, ?, 1)
+            ''', (username, email, avatar_url))
+            
+            user_id = cursor.lastrowid
+            
+            # OAuthアカウント情報を保存
+            cursor.execute('''
+                INSERT INTO oauth_accounts (user_id, provider, provider_user_id)
+                VALUES (?, ?, ?)
+            ''', (user_id, provider, provider_user_id))
+            
+            # デフォルト設定を作成
+            cursor.execute('''
+                INSERT INTO user_settings (user_id)
+                VALUES (?)
+            ''', (user_id,))
+            
+            conn.commit()
+            conn.close()
+            
+            logger.info(f"OAuth user created: {username} via {provider} (ID: {user_id})")
+            return user_id
+            
+        except sqlite3.IntegrityError as e:
+            logger.error(f"OAuth user creation failed (duplicate): {e}")
+            return None
+        except Exception as e:
+            logger.error(f"OAuth user creation failed: {e}")
+            return None
+    
+    def get_user_by_oauth(self, provider: str, provider_user_id: str) -> Optional[Dict]:
+        """OAuth情報からユーザーを取得"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT u.id, u.username, u.email, u.avatar_url, u.created_at, 
+                       u.last_login, u.is_active
+                FROM users u
+                INNER JOIN oauth_accounts oa ON u.id = oa.user_id
+                WHERE oa.provider = ? AND oa.provider_user_id = ?
+            ''', (provider, provider_user_id))
+            
+            result = cursor.fetchone()
+            conn.close()
+            
+            if result:
+                return {
+                    'id': result[0],
+                    'username': result[1],
+                    'email': result[2],
+                    'avatar_url': result[3],
+                    'created_at': result[4],
+                    'last_login': result[5],
+                    'is_active': bool(result[6])
+                }
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to get user by OAuth: {e}")
+            return None
+    
+    def link_oauth_account(self, user_id: int, provider: str, 
+                          provider_user_id: str, avatar_url: str = None):
+        """既存ユーザーにOAuthアカウントをリンク"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # OAuthアカウントを追加
+            cursor.execute('''
+                INSERT INTO oauth_accounts (user_id, provider, provider_user_id)
+                VALUES (?, ?, ?)
+            ''', (user_id, provider, provider_user_id))
+            
+            # アバターURLを更新（提供されている場合）
+            if avatar_url:
+                cursor.execute('''
+                    UPDATE users
+                    SET avatar_url = ?
+                    WHERE id = ?
+                ''', (avatar_url, user_id))
+            
+            conn.commit()
+            conn.close()
+            
+            logger.info(f"Linked {provider} account to user ID: {user_id}")
+            
+        except sqlite3.IntegrityError:
+            logger.warning(f"OAuth account already linked: {provider} for user {user_id}")
+        except Exception as e:
+            logger.error(f"Failed to link OAuth account: {e}")
+            raise
+    
+    def update_oauth_user(self, user_id: int, avatar_url: str = None):
+        """OAuthユーザー情報を更新"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            updates = []
+            params = []
+            
+            if avatar_url:
+                updates.append("avatar_url = ?")
+                params.append(avatar_url)
+            
+            if updates:
+                params.append(user_id)
+                cursor.execute(f'''
+                    UPDATE users
+                    SET {", ".join(updates)}
+                    WHERE id = ?
+                ''', params)
+                
+                conn.commit()
+            
+            conn.close()
+            
+        except Exception as e:
+            logger.error(f"Failed to update OAuth user: {e}")

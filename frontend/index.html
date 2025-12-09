@@ -9,14 +9,13 @@
     
     <!-- 認証チェック: ページ読み込み前にチェック -->
     <script>
-        // アクセストークンの存在確認（ゲストモードも許可）
-        // ログインページでない場合のみチェック
+        // アクセストークンの存在確認（必須）
         (function() {
-            // 認証は任意なので、このチェックを削除またはコメントアウト
-            // const accessToken = localStorage.getItem('access_token');
-            // if (!accessToken) {
-            //     window.location.href = '/auth/login.html';
-            // }
+            const accessToken = localStorage.getItem('access_token');
+            if (!accessToken) {
+                // トークンがない場合はログインページにリダイレクト
+                window.location.href = '/auth/login.html';
+            }
         })();
     </script>
 </head>
