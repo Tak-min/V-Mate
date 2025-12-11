@@ -328,16 +328,6 @@
     color: white;
 }
 
-.btn-github {
-    color: #333;
-    border-color: #333;
-}
-
-.btn-github:hover {
-    background: #333;
-    color: white;
-}
-
 .btn-oauth i {
     font-size: 1.2rem;
 }

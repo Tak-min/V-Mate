@@ -59,41 +59,6 @@ GOOGLE_CLIENT_SECRET=your-google-client-secret
 
 ---
 
-## 🔑 2. GitHub OAuth の設定
-
-### ステップ 1: GitHub OAuth App を作成
-
-1. [GitHub Settings](https://github.com/settings/developers) にアクセス
-2. 「OAuth Apps」→「New OAuth App」をクリック
-3. 必須項目を入力:
-   - **Application name**: AIWife
-   - **Homepage URL**: `http://localhost:5000` (開発環境)
-   - **Application description**: AI Wife - Your AI Companion
-   - **Authorization callback URL**:
-     ```
-     http://localhost:5000/api/auth/github/callback
-     ```
-     （本番環境の場合）
-     ```
-     https://yourdomain.com/api/auth/github/callback
-     ```
-4. 「Register application」をクリック
-
-### ステップ 2: Client Secret を生成
-
-1. 作成したアプリの詳細ページで「Generate a new client secret」をクリック
-2. **Client ID** と **Client Secret** をコピー
-
-### ステップ 3: 環境変数を設定
-
-`.env` ファイルに以下を追加:
-
-```env
-GITHUB_CLIENT_ID=your-github-client-id
-GITHUB_CLIENT_SECRET=your-github-client-secret
-```
-
----
 
 ## 🚀 3. アプリケーションの起動
 
@@ -115,10 +80,6 @@ DATABASE_PATH=./config/memory.db
 # Google OAuth
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
-
-# GitHub OAuth
-GITHUB_CLIENT_ID=...
-GITHUB_CLIENT_SECRET=...
 
 # その他のAPI設定
 GEMINI_API_KEY=...

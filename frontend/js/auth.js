@@ -327,9 +327,7 @@ if (window.location.pathname.includes('/auth/login.html')) {
         
         // OAuth ボタン
         const googleLoginBtn = document.getElementById('googleLoginBtn');
-        const githubLoginBtn = document.getElementById('githubLoginBtn');
         const googleRegisterBtn = document.getElementById('googleRegisterBtn');
-        const githubRegisterBtn = document.getElementById('githubRegisterBtn');
         
         if (googleLoginBtn) {
             googleLoginBtn.addEventListener('click', () => {
@@ -337,21 +335,9 @@ if (window.location.pathname.includes('/auth/login.html')) {
             });
         }
         
-        if (githubLoginBtn) {
-            githubLoginBtn.addEventListener('click', () => {
-                window.location.href = '/api/auth/github';
-            });
-        }
-        
         if (googleRegisterBtn) {
             googleRegisterBtn.addEventListener('click', () => {
                 window.location.href = '/api/auth/google';
-            });
-        }
-        
-        if (githubRegisterBtn) {
-            githubRegisterBtn.addEventListener('click', () => {
-                window.location.href = '/api/auth/github';
             });
         }
     });

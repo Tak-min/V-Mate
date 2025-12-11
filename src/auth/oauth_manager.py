@@ -28,9 +28,6 @@ class OAuthManager:
         
         # Google OAuth設定
         self._setup_google_oauth()
-        
-        # GitHub OAuth設定
-        self._setup_github_oauth()
     
     def _setup_google_oauth(self):
         """Google OAuth 2.0の設定"""
@@ -55,30 +52,6 @@ class OAuthManager:
         
         logger.info("Google OAuth configured successfully")
     
-    def _setup_github_oauth(self):
-        """GitHub OAuth 2.0の設定"""
-        github_client_id = os.getenv('GITHUB_CLIENT_ID')
-        github_client_secret = os.getenv('GITHUB_CLIENT_SECRET')
-        
-        if not github_client_id or not github_client_secret:
-            logger.warning("GitHub OAuth credentials not configured")
-            self.github = None
-            return
-        
-        self.github = self.oauth.register(
-            name='github',
-            client_id=github_client_id,
-            client_secret=github_client_secret,
-            access_token_url='https://github.com/login/oauth/access_token',
-            access_token_params=None,
-            authorize_url='https://github.com/login/oauth/authorize',
-            authorize_params=None,
-            api_base_url='https://api.github.com/',
-            client_kwargs={'scope': 'user:email'},
-        )
-        
-        logger.info("GitHub OAuth configured successfully")
-    
     def get_google_authorize_redirect(self):
         """Google OAuth認証リダイレクトURLを取得"""
         if not self.google:
@@ -86,14 +59,6 @@ class OAuthManager:
         
         redirect_uri = url_for('google_callback', _external=True)
         return self.google.authorize_redirect(redirect_uri)
-    
-    def get_github_authorize_redirect(self):
-        """GitHub OAuth認証リダイレクトURLを取得"""
-        if not self.github:
-            raise Exception("GitHub OAuth is not configured")
-        
-        redirect_uri = url_for('github_callback', _external=True)
-        return self.github.authorize_redirect(redirect_uri)
     
     def handle_google_callback(self):
         """
@@ -122,54 +87,6 @@ class OAuthManager:
             'username': user_info.get('name', user_info['email'].split('@')[0]),
             'avatar_url': user_info.get('picture'),
             'email_verified': user_info.get('email_verified', False)
-        }
-        
-        return self._process_oauth_user(oauth_user)
-    
-    def handle_github_callback(self):
-        """
-        GitHub OAuthコールバック処理
-        
-        Returns:
-            dict: ユーザー情報とトークン
-        """
-        if not self.github:
-            raise Exception("GitHub OAuth is not configured")
-        
-        # トークン取得
-        token = self.github.authorize_access_token()
-        
-        # ユーザー情報取得
-        resp = self.github.get('user', token=token)
-        user_info = resp.json()
-        
-        # メールアドレス取得（プライベート設定の場合は別途取得が必要）
-        email = user_info.get('email')
-        if not email:
-            # プライベートメールを取得
-            emails_resp = self.github.get('user/emails', token=token)
-            emails = emails_resp.json()
-            # プライマリメールを探す
-            for email_obj in emails:
-                if email_obj.get('primary'):
-                    email = email_obj['email']
-                    break
-            
-            # プライマリがない場合は最初のメールを使用
-            if not email and emails:
-                email = emails[0]['email']
-        
-        if not email:
-            raise Exception("Could not retrieve email from GitHub account")
-        
-        # ユーザー情報を整形
-        oauth_user = {
-            'provider': 'github',
-            'provider_user_id': str(user_info['id']),
-            'email': email,
-            'username': user_info.get('login', email.split('@')[0]),
-            'avatar_url': user_info.get('avatar_url'),
-            'email_verified': True  # GitHubは検証済みメールのみ
         }
         
         return self._process_oauth_user(oauth_user)
