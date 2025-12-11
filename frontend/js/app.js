@@ -105,7 +105,7 @@ class AIWifeApp {
         
         // 設定
         this.settings = {
-            character: 'yui.vrm', // デフォルトをユイのモデルに変更
+            character: 'haruka.vrm', // デフォルトをharukaのモデルに変更
             voiceId: null, // ★ voiceActorIdからvoiceIdに変更
             volume: 0.7,
             voiceSpeed: 1.0,
@@ -216,7 +216,9 @@ class AIWifeApp {
             // キャラクターファイル名から性格を決定
             const characterToPersonality = {
                 'avatar.vrm': 'rei_engineer',
-                'yui.vrm': 'yui_natural'
+                'rei.vrm': 'rei_engineer',
+                'yui.vrm': 'yui_natural',
+                'haruka.vrm': 'yui_natural'
             };
             
             const selectedCharacter = e.target.value;
@@ -915,6 +917,14 @@ class AIWifeApp {
             lookAtQuatProxy.name = 'lookAtQuaternionProxy';
             this.vrm.scene.add(lookAtQuatProxy);
             
+            // haruka.vrmの場合は180度回転させる
+            if (this.settings.character === 'haruka.vrm') {
+                this.vrm.scene.rotation.y = Math.PI; // 180度回転
+                console.log('Haruka model rotated 180 degrees');
+            } else {
+                this.vrm.scene.rotation.y = 0; // 他のモデルは回転なし
+            }
+            
             // シーンに追加（初期は非表示）
             this.scene.add(this.vrm.scene);
             this.vrm.scene.visible = false;
@@ -1010,6 +1020,14 @@ class AIWifeApp {
             const lookAtQuatProxy = new VRMLookAtQuaternionProxy(this.vrm.lookAt);
             lookAtQuatProxy.name = 'lookAtQuaternionProxy';
             this.vrm.scene.add(lookAtQuatProxy);
+            
+            // haruka.vrmの場合は180度回転させる
+            if (this.settings.character === 'haruka.vrm') {
+                this.vrm.scene.rotation.y = Math.PI; // 180度回転
+                console.log('Haruka model rotated 180 degrees');
+            } else {
+                this.vrm.scene.rotation.y = 0; // 他のモデルは回転なし
+            }
             
             // シーンに追加（初期は非表示）
             this.scene.add(this.vrm.scene);
@@ -3244,15 +3262,30 @@ class AIWifeApp {
         try {
             this.showLoading();
             
+            // アニメーション関連のフラグをリセット
+            this.hasPlayedAppearing = false;
+            this.isCharacterInitialized = false;
+            this.isCharacterVisible = false;
+            
             // 既存のキャラクターを削除
             if (this.vrm) {
                 this.scene.remove(this.vrm.scene);
                 this.vrm = null;
             }
             
+            // ミキサーをクリア
+            if (this.mixer) {
+                this.mixer.stopAllAction();
+                this.mixer = null;
+            }
+            
             // GLTFローダーの設定
             const loader = new GLTFLoader();
+            loader.crossOrigin = 'anonymous';
+            
+            // VRMLoaderPlugin と VRMAnimationLoaderPlugin を登録
             loader.register((parser) => new VRMLoaderPlugin(parser));
+            loader.register((parser) => new VRMAnimationLoaderPlugin(parser));
             
             // VRMファイルの読み込み
             const gltfVrm = await loader.loadAsync(fileUrl);
@@ -3264,9 +3297,9 @@ class AIWifeApp {
             
             // フラスタムカリングを無効化
             this.vrm.scene.traverse((obj) => {
-                if (obj.isMesh) {
-                    obj.frustumCulled = false;
-                }
+                obj.frustumCulled = false;
+                obj.castShadow = true;
+                obj.receiveShadow = true;
             });
             
             // LookAtクォータニオンプロキシを追加
@@ -3274,17 +3307,25 @@ class AIWifeApp {
             lookAtQuatProxy.name = 'lookAtQuaternionProxy';
             this.vrm.scene.add(lookAtQuatProxy);
             
-            // シーンに追加
+            // シーンに追加（初期は非表示）
             this.scene.add(this.vrm.scene);
+            this.vrm.scene.visible = false;
+            this.isCharacterVisible = false;
             
             // アニメーションミキサーを再作成
-            if (this.mixer) {
-                this.mixer.stopAllAction();
-            }
             this.mixer = new THREE.AnimationMixer(this.vrm.scene);
             
+            // T-poseを回避するため、デフォルトポーズを設定
+            if (this.vrm.humanoid) {
+                this.vrm.humanoid.resetNormalizedPose();
+                console.log('VRM normalized pose reset completed');
+            }
+            
+            // 登場アニメーションを再生
+            this.playAppearingAnimation();
+            
             this.hideLoading();
-            console.log('Custom character loaded successfully');
+            console.log('Custom character loaded successfully with animations');
             
         } catch (error) {
             console.error('Failed to load custom character:', error);
