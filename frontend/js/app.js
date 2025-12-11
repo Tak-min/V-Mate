@@ -1513,25 +1513,24 @@ class AIWifeApp {
         
         const expression = expressionMap[emotion] || 'relaxed';
         
-        // キャラクター別の表情強度調整
-        let intensity = 1.0;
+        // 表情強度調整
         if (expression === 'happy') {
-            if (personality === 'rei_engineer' && isTechExcited) {
-                // レイの技術興奮時は強めの表情
-                intensity = 0.9;
-            } else if (personality === 'yui_natural') {
-                // ユイは優しい表情
-                intensity = 0.7;
-            } else {
-                // 一般的には控えめ
-                intensity = 0.6;
-            }
+            // 喜び表情は「楽しい」30% + 「標準(relaxed)」100% の組み合わせ
+            expressionManager.setValue('happy', 0.3);
+            expressionManager.setValue('relaxed', 1.0);
+        } else if (expression === 'sad') {
+            // 悲しい表情は60%
+            expressionManager.setValue('sad', 0.6);
+        } else if (expression === 'angry') {
+            // 怒り表情は65%
+            expressionManager.setValue('angry', 0.65);
+        } else {
+            // その他の表情は100%
+            expressionManager.setValue(expression, 1.0);
         }
         
-        expressionManager.setValue(expression, intensity);
-        
         this.currentExpression = emotion;
-        console.log(`[Debug] Expression set: ${expression} with intensity ${intensity} for ${personality}${isTechExcited ? ' (tech excited)' : ''}`);
+        console.log(`[Debug] Expression set: ${expression} for ${personality}${isTechExcited ? ' (tech excited)' : ''}`);
         
         // 表情変更後、新しいブリンクをスケジュール
         this.scheduleNextBlink();
