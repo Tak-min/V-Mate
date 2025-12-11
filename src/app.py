@@ -23,9 +23,9 @@ import base64
 import re
 
 # 認証関連のインポート（相対インポートに修正）
-from src.models.user import User
-from src.auth.auth_manager import AuthManager, token_required, optional_token
-from src.auth.oauth_manager import OAuthManager
+from models.user import User
+from auth.auth_manager import AuthManager, token_required, optional_token
+from auth.oauth_manager import OAuthManager
 
 # Suppress only the single InsecureRequestWarning from urllib3 needed.
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -682,8 +682,8 @@ class TTSManager:
         voices = TTSManager.get_available_voices()
         
         if not voices:
-            # フォールバック: ユイの音声ID
-            return "vGQNBgLaiM3EdZtxIiuY"
+            # フォールバック: デフォルトの音声ID
+            return "8kgj5469z1URcH4MB2G4"
         
         # 最初の利用可能な音声を返す
         return voices[0]['id']
