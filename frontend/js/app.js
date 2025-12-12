@@ -548,6 +548,9 @@ class AIWifeApp {
         // ガラスパネルの作成
         this.createGlassPanel();
         
+        // メッセージ入力パネルの作成
+        this.createMessageInputPanel();
+        
         // AR吹き出しの作成
         this.createARSpeechBubble();
         
@@ -594,6 +597,66 @@ class AIWifeApp {
     }
     
     /**
+     * メッセージ入力パネルの作成
+     */
+    createMessageInputPanel() {
+        const panelElement = document.createElement('div');
+        panelElement.className = 'message-input-panel';
+        panelElement.innerHTML = `
+            <div class="message-input-panel-header">
+                <div class="message-input-panel-title">
+                    <i class="fas fa-comment-dots"></i> メッセージを入力
+                </div>
+                <button class="message-input-panel-close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <textarea class="message-input-textarea" placeholder="ここにメッセージを入力してください..."></textarea>
+            <div class="message-input-actions">
+                <button class="message-input-btn">キャンセル</button>
+                <button class="message-input-btn primary">送信</button>
+            </div>
+        `;
+        
+        // CSS3Dオブジェクトとして3D空間に配置（ガラスパネルの下）
+        this.messageInputPanel3D = new CSS3DObject(panelElement);
+        this.messageInputPanel3D.position.set(0.5, 0.5, -0.2); // ガラスパネルの下
+        this.messageInputPanel3D.rotation.y = Math.PI + Math.PI * 0.08;
+        this.messageInputPanel3D.scale.set(0.0015, 0.0015, 0.0015);
+        this.css3dScene.add(this.messageInputPanel3D);
+        
+        // イベントリスナーの設定
+        panelElement.style.pointerEvents = 'auto';
+        
+        // 閉じるボタン
+        const closeBtn = panelElement.querySelector('.message-input-panel-close');
+        closeBtn.addEventListener('click', () => {
+            this.hideMessageInputPanel();
+        });
+        
+        // キャンセルボタン
+        const cancelBtn = panelElement.querySelector('.message-input-btn:not(.primary)');
+        cancelBtn.addEventListener('click', () => {
+            this.hideMessageInputPanel();
+        });
+        
+        // 送信ボタン
+        const sendBtn = panelElement.querySelector('.message-input-btn.primary');
+        sendBtn.addEventListener('click', () => {
+            this.sendMessageFromPanel();
+        });
+        
+        // Enterキーで送信（Shift+Enterで改行）
+        const textarea = panelElement.querySelector('.message-input-textarea');
+        textarea.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                this.sendMessageFromPanel();
+            }
+        });
+    }
+    
+    /**
      * AR吹き出しの作成
      */
     createARSpeechBubble() {
@@ -632,10 +695,53 @@ class AIWifeApp {
             event.target.style.transform = '';
         }, 150);
         
-        // テキスト入力ダイアログを表示
-        const message = prompt('メッセージを入力してください:');
-        if (message && message.trim()) {
-            this.send3DMessage(message.trim());
+        // メッセージ入力パネルを表示
+        this.showMessageInputPanel();
+    }
+    
+    /**
+     * メッセージ入力パネルを表示
+     */
+    showMessageInputPanel() {
+        const panel = this.messageInputPanel3D;
+        if (panel) {
+            const panelElement = panel.element;
+            panelElement.classList.add('show');
+            
+            // テキストエリアにフォーカス
+            const textarea = panelElement.querySelector('.message-input-textarea');
+            setTimeout(() => textarea.focus(), 100);
+        }
+    }
+    
+    /**
+     * メッセージ入力パネルを非表示
+     */
+    hideMessageInputPanel() {
+        const panel = this.messageInputPanel3D;
+        if (panel) {
+            const panelElement = panel.element;
+            panelElement.classList.remove('show');
+            
+            // テキストエリアをクリア
+            const textarea = panelElement.querySelector('.message-input-textarea');
+            textarea.value = '';
+        }
+    }
+    
+    /**
+     * メッセージ入力パネルから送信
+     */
+    sendMessageFromPanel() {
+        const panel = this.messageInputPanel3D;
+        if (panel) {
+            const textarea = panel.element.querySelector('.message-input-textarea');
+            const message = textarea.value.trim();
+            
+            if (message) {
+                this.send3DMessage(message);
+                this.hideMessageInputPanel();
+            }
         }
     }
     
