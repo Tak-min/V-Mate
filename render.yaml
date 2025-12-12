@@ -3,7 +3,9 @@ services:
     name: aiwife
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: cd src && gunicorn --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 --bind 0.0.0.0:$PORT app:app
+    startCommand: gunicorn --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 --bind 0.0.0.0:$PORT --chdir src app:app
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
+      - key: PYTHONPATH
+        value: "/opt/render/project/src:$PYTHONPATH"

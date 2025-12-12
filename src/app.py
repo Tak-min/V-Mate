@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import sqlite3
 import asyncio
@@ -22,7 +23,10 @@ import tempfile
 import base64
 import re
 
-# 認証関連のインポート（相対インポートに修正）
+# srcディレクトリをPythonパスに追加
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# 認証関連のインポート
 from models.user import User
 from auth.auth_manager import AuthManager, token_required, optional_token
 from auth.oauth_manager import OAuthManager
