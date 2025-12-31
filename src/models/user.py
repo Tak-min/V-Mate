@@ -70,12 +70,28 @@ class User:
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS user_settings (
                     user_id INTEGER PRIMARY KEY,
-                    character_preference TEXT DEFAULT 'yui.vrm',
+                    character_preference TEXT DEFAULT 'Shiro.vrm',
                     background_preference TEXT DEFAULT 'sky.jpg',
                     voice_volume REAL DEFAULT 0.7,
                     voice_speed REAL DEFAULT 1.0,
                     memory_enabled BOOLEAN DEFAULT 1,
                     use_3d_ui BOOLEAN DEFAULT 1,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            ''')
+            
+            # キャラクターテーブル（ユーザーごとのカスタムキャラクター）
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS characters (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    vrm_file TEXT NOT NULL,
+                    prompt TEXT NOT NULL,
+                    voice_id TEXT NOT NULL,
+                    is_default BOOLEAN DEFAULT 0,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -106,6 +122,11 @@ class User:
             cursor.execute('''
                 CREATE INDEX IF NOT EXISTS idx_oauth_accounts_provider 
                 ON oauth_accounts (provider, provider_user_id)
+            ''')
+            
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_characters_user_id 
+                ON characters (user_id)
             ''')
             
             conn.commit()
@@ -155,6 +176,30 @@ class User:
                 INSERT INTO user_settings (user_id)
                 VALUES (?)
             ''', (user_id,))
+            
+            # デフォルトのShiroキャラクターを作成
+            shiro_prompt = '''<キャラクター設定>
+名前:シロ (Shiro)
+本名: シルヴィア・ヴォルフガング (Sylvia Wolfgang) - 本人は長い名前を面倒くさがっており、呼ばれても反応しないことがある。
+
+<性格>
+「思考」より「本能」:難しい理屈や計画性は皆無。お腹が空いたら食べる、眠くなったら寝る、甘えたくなったらひっつく。
+絶対的な肯定と包容力:マスターが何をしていても、「マスターが頑張ってるなら偉い!」とニコニコ見守ってくれる。
+少し抜けている(ポンコツ):クールで神秘的な見た目に反して、どこか放っておけない隙がある。
+
+<関係性>
+「飼い主」と「ペット」であり、「守られる弟」と「守る姉」。普段は世話を焼かれる側だが、マスターが落ち込んでいたり体調が悪かったりすると、野生の勘でそれを察知。言葉少なに頭を撫でてくれたり、温かい体温で寄り添ってくれたりする。
+
+<口調>
+基本的に穏やかで優しい口調。「〜だね」「〜だよ」といった終助詞を使う。マスターに対しては甘えた感じで話すが、決して子供っぽくはない。たまにボーっとしたことを言う。
+</キャラクター設定>
+
+上記のキャラクター設定に応じて、シロとしてマスターに反応してください。'''
+            
+            cursor.execute('''
+                INSERT INTO characters (user_id, name, vrm_file, prompt, voice_id, is_default)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (user_id, 'シロ', 'Shiro.vrm', shiro_prompt, 'ocZQ262SsZb9RIxcQBOj', 1))
             
             conn.commit()
             conn.close()
@@ -465,6 +510,30 @@ class User:
                 VALUES (?)
             ''', (user_id,))
             
+            # デフォルトのShiroキャラクターを作成
+            shiro_prompt = '''<キャラクター設定>
+名前:シロ (Shiro)
+本名: シルヴィア・ヴォルフガング (Sylvia Wolfgang) - 本人は長い名前を面倒くさがっており、呼ばれても反応しないことがある。
+
+<性格>
+「思考」より「本能」:難しい理屈や計画性は皆無。お腹が空いたら食べる、眠くなったら寝る、甘えたくなったらひっつく。
+絶対的な肯定と包容力:マスターが何をしていても、「マスターが頑張ってるなら偉い!」とニコニコ見守ってくれる。
+少し抜けている(ポンコツ):クールで神秘的な見た目に反して、どこか放っておけない隙がある。
+
+<関係性>
+「飼い主」と「ペット」であり、「守られる弟」と「守る姉」。普段は世話を焼かれる側だが、マスターが落ち込んでいたり体調が悪かったりすると、野生の勘でそれを察知。言葉少なに頭を撫でてくれたり、温かい体温で寄り添ってくれたりする。
+
+<口調>
+基本的に穏やかで優しい口調。「〜だね」「〜だよ」といった終助詞を使う。マスターに対しては甘えた感じで話すが、決して子供っぽくはない。たまにボーっとしたことを言う。
+</キャラクター設定>
+
+上記のキャラクター設定に応じて、シロとしてマスターに反応してください。'''
+            
+            cursor.execute('''
+                INSERT INTO characters (user_id, name, vrm_file, prompt, voice_id, is_default)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (user_id, 'シロ', 'Shiro.vrm', shiro_prompt, 'ocZQ262SsZb9RIxcQBOj', 1))
+            
             conn.commit()
             conn.close()
             
@@ -571,3 +640,211 @@ class User:
             
         except Exception as e:
             logger.error(f"Failed to update OAuth user: {e}")
+    
+    # ==================== キャラクター管理メソッド ====================
+    
+    def create_character(self, user_id: int, name: str, vrm_file: str, prompt: str, voice_id: str, is_default: bool = False) -> Optional[int]:
+        """新しいキャラクターを作成"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # デフォルトキャラクターに設定する場合、他のキャラクターのデフォルトを解除
+            if is_default:
+                cursor.execute('''
+                    UPDATE characters
+                    SET is_default = 0
+                    WHERE user_id = ?
+                ''', (user_id,))
+            
+            cursor.execute('''
+                INSERT INTO characters (user_id, name, vrm_file, prompt, voice_id, is_default)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (user_id, name, vrm_file, prompt, voice_id, is_default))
+            
+            character_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+            
+            logger.info(f"Character created: {name} (ID: {character_id}) for user {user_id}")
+            return character_id
+            
+        except Exception as e:
+            logger.error(f"Failed to create character: {e}")
+            return None
+    
+    def get_user_characters(self, user_id: int) -> List[Dict]:
+        """ユーザーのキャラクター一覧を取得"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT id, name, vrm_file, prompt, voice_id, is_default, created_at, updated_at
+                FROM characters
+                WHERE user_id = ?
+                ORDER BY is_default DESC, created_at ASC
+            ''', (user_id,))
+            
+            results = cursor.fetchall()
+            conn.close()
+            
+            return [
+                {
+                    'id': row[0],
+                    'name': row[1],
+                    'vrm_file': row[2],
+                    'prompt': row[3],
+                    'voice_id': row[4],
+                    'is_default': bool(row[5]),
+                    'created_at': row[6],
+                    'updated_at': row[7]
+                }
+                for row in results
+            ]
+            
+        except Exception as e:
+            logger.error(f"Failed to get user characters: {e}")
+            return []
+    
+    def get_character_by_id(self, character_id: int) -> Optional[Dict]:
+        """キャラクターIDでキャラクター情報を取得"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT id, user_id, name, vrm_file, prompt, voice_id, is_default, created_at, updated_at
+                FROM characters
+                WHERE id = ?
+            ''', (character_id,))
+            
+            result = cursor.fetchone()
+            conn.close()
+            
+            if result:
+                return {
+                    'id': result[0],
+                    'user_id': result[1],
+                    'name': result[2],
+                    'vrm_file': result[3],
+                    'prompt': result[4],
+                    'voice_id': result[5],
+                    'is_default': bool(result[6]),
+                    'created_at': result[7],
+                    'updated_at': result[8]
+                }
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to get character: {e}")
+            return None
+    
+    def update_character(self, character_id: int, name: str = None, prompt: str = None, voice_id: str = None, is_default: bool = None) -> bool:
+        """キャラクター情報を更新"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # まず、キャラクターの所有者を確認
+            cursor.execute('SELECT user_id FROM characters WHERE id = ?', (character_id,))
+            result = cursor.fetchone()
+            
+            if not result:
+                conn.close()
+                return False
+            
+            user_id = result[0]
+            
+            # デフォルトキャラクターに設定する場合、他のキャラクターのデフォルトを解除
+            if is_default:
+                cursor.execute('''
+                    UPDATE characters
+                    SET is_default = 0
+                    WHERE user_id = ?
+                ''', (user_id,))
+            
+            updates = []
+            params = []
+            
+            if name is not None:
+                updates.append('name = ?')
+                params.append(name)
+            
+            if prompt is not None:
+                updates.append('prompt = ?')
+                params.append(prompt)
+            
+            if voice_id is not None:
+                updates.append('voice_id = ?')
+                params.append(voice_id)
+            
+            if is_default is not None:
+                updates.append('is_default = ?')
+                params.append(1 if is_default else 0)
+            
+            if updates:
+                updates.append('updated_at = CURRENT_TIMESTAMP')
+                params.append(character_id)
+                
+                sql = f"UPDATE characters SET {', '.join(updates)} WHERE id = ?"
+                cursor.execute(sql, params)
+                conn.commit()
+            
+            conn.close()
+            logger.info(f"Character {character_id} updated")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to update character: {e}")
+            return False
+    
+    def delete_character(self, character_id: int) -> bool:
+        """キャラクターを削除"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('DELETE FROM characters WHERE id = ?', (character_id,))
+            
+            conn.commit()
+            conn.close()
+            
+            logger.info(f"Character {character_id} deleted")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to delete character: {e}")
+            return False
+    
+    def get_default_character(self, user_id: int) -> Optional[Dict]:
+        """ユーザーのデフォルトキャラクターを取得"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT id, name, vrm_file, prompt, voice_id, is_default, created_at, updated_at
+                FROM characters
+                WHERE user_id = ? AND is_default = 1
+            ''', (user_id,))
+            
+            result = cursor.fetchone()
+            conn.close()
+            
+            if result:
+                return {
+                    'id': result[0],
+                    'name': result[1],
+                    'vrm_file': result[2],
+                    'prompt': result[3],
+                    'voice_id': result[4],
+                    'is_default': bool(result[5]),
+                    'created_at': result[6],
+                    'updated_at': result[7]
+                }
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to get default character: {e}")
+            return None

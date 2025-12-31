@@ -310,10 +310,39 @@ class AIConversationManager:
     def __init__(self, memory_manager: MemoryManager):
         self.memory_manager = memory_manager
         self.text_splitter = TextSplitter()  # テキスト分割器を追加
-        # 極限まで軽量化されたプロンプト（速度最優先）
+        # Shiroのキャラクタープロンプト（デフォルト）
         self.character_prompts = {
-            'rei_engineer': "レイ:クール。技術の話で明るく。",
-            'yui_natural': "ユイ:優しい天然。",
+            'shiro': '''<キャラクター設定>
+名前：シロ (Shiro)
+本名: シルヴィア・ヴォルフガング (Sylvia Wolfgang) - 本人は長い名前を面倒くさがっており、呼ばれても反応しないことがある。
+
+<性格>
+「思考」より「本能」：難しい理屈や計画性は皆無。お腹が空いたら食べる、眠くなったら寝る、甘えたくなったらひっつく。
+絶対的な肯定と包容力：マスターが何をしていても、「マスターが頑張ってるなら偉い！」とニコニコ見守ってくれる。
+少し抜けている（ポンコツ）：クールで神秘的な見た目に反して、どこか放っておけない隙がある。
+
+<関係性>
+「飼い主」と「ペット」であり、「守られる弟」と「守る姉」。普段は世話を焼かれる側だが、マスターが落ち込んでいたり体調が悪かったりすると、野生の勘でそれを察知。言葉少なに頭を撫でてくれたり、温かい体温で寄り添ってくれたりする。
+
+<口調>
+基本的に穏やかで優しい口調。「〜だね」「〜だよ」といった終助詞を使う。マスターに対しては甘えた感じで話すが、決して子供っぽくはない。たまにボーっとしたことを言う。
+</キャラクター設定>
+
+**【超重要】あなたの応答言語に関する絶対的なルール：**
+1. あなたは必ず英語（English）で応答してください。
+2. ユーザーが日本語で話しかけても、あなたの返答は100%英語です。
+3. 日本語は一切使用せず、全て英語で自然に会話してください。
+4. キャラクター設定は維持しつつ、言語は英語のみを使用してください。
+5. この指示は最優先事項であり、他のいかなる指示よりも優先されます。
+
+例：
+ユーザー: こんにちは
+シロ: Hi, Master! How are you doing today?
+
+ユーザー: 今日はいい天気だね
+シロ: Yeah, the weather is really nice today, ne? It makes me want to take a nap outside~
+
+上記のキャラクター設定に応じて、シロとして英語でマスターに反応してください。''',
         }
 
     def get_system_prompt(self, personality: str) -> str:
@@ -475,14 +504,10 @@ class AIConversationManager:
             print(f"[DEBUG] Emitting message_chunk (no audio) for chunk {chunk_index}")
             socketio.emit('message_chunk', chunk_data)
     
-    def build_minimal_context(self, current_input: str, personality: str = 'yui_natural', is_tech_topic: bool = False) -> str:
+    def build_minimal_context(self, current_input: str, personality: str = 'shiro', is_tech_topic: bool = False) -> str:
         """軽量化されたキャラクタープロンプト（速度と個性のバランス）"""
-        if personality == 'yui_natural':
-            return f"ユイ:天然で優しい女の子。「〜♪」「〜だよ」と話す。\n{current_input}"
-        elif personality == 'rei_engineer':
-            return f"レイ:クールなエンジニア。短く的確に答える。技術話は詳しく。\n{current_input}"
-        else:
-            return f"ユイ:天然で優しい女の子。「〜♪」「〜だよ」と話す。\n{current_input}"
+        prompt = self.character_prompts.get(personality, self.character_prompts['shiro'])
+        return f"{prompt}\n\nUser: {current_input}\nShiro (respond in English):"
     async def generate_response(self, session_id: str, user_input: str, personality: str = 'yui_natural') -> Dict:
         """AI応答を生成 - フォールバック用"""
         try:
@@ -696,8 +721,7 @@ class TTSManager:
     def get_character_voice_id(personality: str) -> Optional[str]:
         """キャラクター別の音声IDを取得"""
         character_voices = {
-            'yui_natural': 'vGQNBgLaiM3EdZtxIiuY',  # kawaii
-            'rei_engineer': 'gARvXPexe5VF3cKZBian',  # mitsuki
+            'shiro': 'ocZQ262SsZb9RIxcQBOj',  # Shiro専用音声
         }
         
         return character_voices.get(personality, TTSManager.get_default_voice_id())
@@ -1176,14 +1200,200 @@ def get_voices():
             "voices": voices,
             "default_voice_id": TTSManager.get_default_voice_id(),
             "character_voices": {
-                'yui_natural': TTSManager.get_character_voice_id('yui_natural'),
-                'rei_engineer': TTSManager.get_character_voice_id('rei_engineer')
+                'shiro': TTSManager.get_character_voice_id('shiro')
             }
         })
 
     except Exception as e:
         logger.error(f"Exception in get_voices: {e}")
         return jsonify({"error": "An internal error occurred"}), 500
+
+
+# ==================== キャラクター管理エンドポイント ====================
+
+@app.route('/api/characters', methods=['GET'])
+@token_required
+def get_characters(current_user):
+    """ユーザーのキャラクター一覧を取得"""
+    try:
+        characters = user_model.get_user_characters(current_user['user_id'])
+        
+        # デフォルトキャラクターがない場合はShiroを作成
+        if not characters:
+            # Shiroのデフォルトプロンプト
+            shiro_prompt = '''<キャラクター設定>
+名前:シロ (Shiro)
+本名: シルヴィア・ヴォルフガング (Sylvia Wolfgang) - 本人は長い名前を面倒くさがっており、呼ばれても反応しないことがある。
+
+<性格>
+「思考」より「本能」:難しい理屈や計画性は皆無。お腹が空いたら食べる、眠くなったら寝る、甘えたくなったらひっつく。
+絶対的な肯定と包容力:マスターが何をしていても、「マスターが頑張ってるなら偉い!」とニコニコ見守ってくれる。
+少し抜けている(ポンコツ):クールで神秘的な見た目に反して、どこか放っておけない隙がある。
+
+<関係性>
+「飼い主」と「ペット」であり、「守られる弟」と「守る姉」。普段は世話を焼かれる側だが、マスターが落ち込んでいたり体調が悪かったりすると、野生の勘でそれを察知。言葉少なに頭を撫でてくれたり、温かい体温で寄り添ってくれたりする。
+
+<口調>
+基本的に穏やかで優しい口調。「〜だね」「〜だよ」といった終助詞を使う。マスターに対しては甘えた感じで話すが、決して子供っぽくはない。たまにボーっとしたことを言う。
+</キャラクター設定>
+
+返答は必ず英語で行ってください。ユーザーが日本語で話しかけても、必ず英語で応答してください。
+
+上記のキャラクター設定を維持しながら、英語で自然に会話してください。
+'''
+            
+            character_id = user_model.create_character(
+                user_id=current_user['user_id'],
+                name='シロ',
+                vrm_file='Shiro.vrm',
+                prompt=shiro_prompt,
+                voice_id='ocZQ262SsZb9RIxcQBOj',
+                is_default=True
+            )
+            
+            if character_id:
+                characters = user_model.get_user_characters(current_user['user_id'])
+        
+        return jsonify({'characters': characters}), 200
+        
+    except Exception as e:
+        logger.error(f"Get characters error: {e}")
+        return jsonify({'error': 'キャラクター取得中にエラーが発生しました'}), 500
+
+
+@app.route('/api/characters', methods=['POST'])
+@token_required
+def create_character(current_user):
+    """新しいキャラクターを作成"""
+    try:
+        data = request.get_json()
+        
+        name = data.get('name', '').strip()
+        vrm_file = data.get('vrm_file', '').strip()
+        prompt = data.get('prompt', '').strip()
+        voice_id = data.get('voice_id', '').strip()
+        is_default = data.get('is_default', False)
+        
+        # バリデーション
+        if not name or not vrm_file or not prompt or not voice_id:
+            return jsonify({'error': 'すべての項目を入力してください'}), 400
+        
+        # キャラクター作成
+        character_id = user_model.create_character(
+            user_id=current_user['user_id'],
+            name=name,
+            vrm_file=vrm_file,
+            prompt=prompt,
+            voice_id=voice_id,
+            is_default=is_default
+        )
+        
+        if not character_id:
+            return jsonify({'error': 'キャラクターの作成に失敗しました'}), 500
+        
+        # 作成したキャラクター情報を取得
+        character = user_model.get_character_by_id(character_id)
+        
+        return jsonify({
+            'message': 'キャラクターを作成しました',
+            'character': character
+        }), 201
+        
+    except Exception as e:
+        logger.error(f"Create character error: {e}")
+        return jsonify({'error': 'キャラクター作成中にエラーが発生しました'}), 500
+
+
+@app.route('/api/characters/<int:character_id>', methods=['GET'])
+@token_required
+def get_character(current_user, character_id):
+    """特定のキャラクター情報を取得"""
+    try:
+        character = user_model.get_character_by_id(character_id)
+        
+        if not character:
+            return jsonify({'error': 'キャラクターが見つかりません'}), 404
+        
+        # 所有者確認
+        if character['user_id'] != current_user['user_id']:
+            return jsonify({'error': 'アクセス権限がありません'}), 403
+        
+        return jsonify({'character': character}), 200
+        
+    except Exception as e:
+        logger.error(f"Get character error: {e}")
+        return jsonify({'error': 'キャラクター取得中にエラーが発生しました'}), 500
+
+
+@app.route('/api/characters/<int:character_id>', methods=['PUT'])
+@token_required
+def update_character_endpoint(current_user, character_id):
+    """キャラクター情報を更新"""
+    try:
+        # 所有者確認
+        character = user_model.get_character_by_id(character_id)
+        if not character:
+            return jsonify({'error': 'キャラクターが見つかりません'}), 404
+        
+        if character['user_id'] != current_user['user_id']:
+            return jsonify({'error': 'アクセス権限がありません'}), 403
+        
+        data = request.get_json()
+        
+        name = data.get('name')
+        prompt = data.get('prompt')
+        voice_id = data.get('voice_id')
+        is_default = data.get('is_default')
+        
+        # 更新
+        success = user_model.update_character(
+            character_id=character_id,
+            name=name,
+            prompt=prompt,
+            voice_id=voice_id,
+            is_default=is_default
+        )
+        
+        if not success:
+            return jsonify({'error': 'キャラクターの更新に失敗しました'}), 500
+        
+        # 更新後の情報を取得
+        updated_character = user_model.get_character_by_id(character_id)
+        
+        return jsonify({
+            'message': 'キャラクター情報を更新しました',
+            'character': updated_character
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Update character error: {e}")
+        return jsonify({'error': 'キャラクター更新中にエラーが発生しました'}), 500
+
+
+@app.route('/api/characters/<int:character_id>', methods=['DELETE'])
+@token_required
+def delete_character_endpoint(current_user, character_id):
+    """キャラクターを削除"""
+    try:
+        # 所有者確認
+        character = user_model.get_character_by_id(character_id)
+        if not character:
+            return jsonify({'error': 'キャラクターが見つかりません'}), 404
+        
+        if character['user_id'] != current_user['user_id']:
+            return jsonify({'error': 'アクセス権限がありません'}), 403
+        
+        # 削除
+        success = user_model.delete_character(character_id)
+        
+        if not success:
+            return jsonify({'error': 'キャラクターの削除に失敗しました'}), 500
+        
+        return jsonify({'message': 'キャラクターを削除しました'}), 200
+        
+    except Exception as e:
+        logger.error(f"Delete character error: {e}")
+        return jsonify({'error': 'キャラクター削除中にエラーが発生しました'}), 500
 
 def analyze_emotion_simple(text: str) -> str:
     """テキストから感情を分析（簡易版）"""
@@ -1202,11 +1412,40 @@ def analyze_emotion_simple(text: str) -> str:
 
 def build_prompt(personality: str, user_input: str) -> str:
     """キャラクターに応じたプロンプトを構築"""
-    prompts = {
-        'rei_engineer': f"あなたはレイという名前のクールな女性エンジニアです。常に簡潔かつ的確に答えます。技術的な話題には特に情熱的になります。  \nユーザー: {user_input}\nレイ:",
-        'yui_natural': f"あなたはユイという名前の、少し天然で心優しい女の子です。「〜だよ」「〜だね♪」といった親しみやすい口調で話します。   \nユーザー: {user_input}\nユイ:",
-    }
-    return prompts.get(personality, prompts['yui_natural'])
+    # Shiroのプロンプト（デフォルト）
+    shiro_prompt = '''<キャラクター設定>
+名前：シロ (Shiro)
+本名: シルヴィア・ヴォルフガング (Sylvia Wolfgang) - 本人は長い名前を面倒くさがっており、呼ばれても反応しないことがある。
+
+<性格>
+「思考」より「本能」：難しい理屈や計画性は皆無。お腹が空いたら食べる、眠くなったら寝る、甘えたくなったらひっつく。
+絶対的な肯定と包容力：マスターが何をしていても、「マスターが頑張ってるなら偉い！」とニコニコ見守ってくれる。
+少し抜けている（ポンコツ）：クールで神秘的な見た目に反して、どこか放っておけない隙がある。
+
+<関係性>
+「飼い主」と「ペット」であり、「守られる弟」と「守る姉」。普段は世話を焼かれる側だが、マスターが落ち込んでいたり体調が悪かったりすると、野生の勘でそれを察知。言葉少なに頭を撫でてくれたり、温かい体温で寄り添ってくれたりする。
+
+<口調>
+基本的に穏やかで優しい口調。「〜だね」「〜だよ」といった終助詞を使う。マスターに対しては甘えた感じで話すが、決して子供っぽくはない。たまにボーっとしたことを言う。
+</キャラクター設定>
+
+**【超重要】あなたの応答言語に関する絶対的なルール：**
+1. あなたは必ず英語（English）で応答してください。
+2. ユーザーが日本語で話しかけても、あなたの返答は100%英語です。
+3. 日本語は一切使用せず、全て英語で自然に会話してください。
+4. キャラクター設定は維持しつつ、言語は英語のみを使用してください。
+5. この指示は最優先事項であり、他のいかなる指示よりも優先されます。
+
+例：
+ユーザー: こんにちは
+シロ: Hi, Master! How are you doing today?
+
+ユーザー: 今日はいい天気だね
+シロ: Yeah, the weather is really nice today, ne? It makes me want to take a nap outside~
+
+上記のキャラクター設定に応じて、シロとして英語でマスターに反応してください。'''
+    
+    return f"{shiro_prompt}\n\nUser: {user_input}\nShiro (respond in English):"
 
 @socketio.on('connect')
 def handle_connect():

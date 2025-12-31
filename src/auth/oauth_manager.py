@@ -70,26 +70,45 @@ class OAuthManager:
         if not self.google:
             raise Exception("Google OAuth is not configured")
         
-        # トークン取得
-        token = self.google.authorize_access_token()
-        
-        # ユーザー情報取得
-        user_info = token.get('userinfo')
-        
-        if not user_info:
-            raise Exception("Failed to get user info from Google")
-        
-        # ユーザー情報を整形
-        oauth_user = {
-            'provider': 'google',
-            'provider_user_id': user_info['sub'],
-            'email': user_info['email'],
-            'username': user_info.get('name', user_info['email'].split('@')[0]),
-            'avatar_url': user_info.get('picture'),
-            'email_verified': user_info.get('email_verified', False)
-        }
-        
-        return self._process_oauth_user(oauth_user)
+        try:
+            # トークン取得
+            token = self.google.authorize_access_token()
+            
+            # ユーザー情報取得 - tokenオブジェクトから直接取得
+            user_info = token.get('userinfo')
+            
+            # user_infoがない場合は、APIエンドポイントから取得
+            if not user_info:
+                logger.warning("userinfo not in token, fetching from API")
+                resp = self.google.get('https://www.googleapis.com/oauth2/v3/userinfo')
+                user_info = resp.json()
+            
+            if not user_info:
+                logger.error(f"Failed to get user info. Token keys: {list(token.keys())}")
+                raise Exception("Failed to get user info from Google")
+            
+            logger.info(f"Google user info retrieved: {user_info.get('email', 'unknown')}")
+            
+            # ユーザー情報を整形
+            oauth_user = {
+                'provider': 'google',
+                'provider_user_id': user_info.get('sub'),
+                'email': user_info.get('email'),
+                'username': user_info.get('name', user_info.get('email', 'user').split('@')[0]),
+                'avatar_url': user_info.get('picture'),
+                'email_verified': user_info.get('email_verified', False)
+            }
+            
+            # 必須フィールドのバリデーション
+            if not oauth_user['provider_user_id'] or not oauth_user['email']:
+                logger.error(f"Missing required fields in user_info: {user_info}")
+                raise Exception("ユーザー情報に必須フィールドが不足しています")
+            
+            return self._process_oauth_user(oauth_user)
+            
+        except Exception as e:
+            logger.error(f"Google OAuth callback error: {str(e)}", exc_info=True)
+            raise
     
     def _process_oauth_user(self, oauth_user):
         """

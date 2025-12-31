@@ -45,13 +45,38 @@
                 <div class="setting-item">
                     <label for="characterSelect">キャラクター:</label>
                     <select id="characterSelect">
-                        <option value="avatar.vrm">レイ (AIエンジニア)</option>
-                        <option value="yui.vrm" selected>ユイ (天然な癒し系)</option>
+                        <!-- JavaScriptで動的に追加 -->
                     </select>
                 </div>
                 
                 <div class="setting-item">
-                    <label for="characterUpload">モデルアップロード (.vrm):</label>
+                    <label for="characterName">キャラクター名:</label>
+                    <input type="text" id="characterName">
+                    <button class="save-button" id="saveCharacterName">
+                        <i class="fas fa-save"></i> 保存
+                    </button>
+                </div>
+                
+                <div class="setting-item">
+                    <label for="characterPrompt">キャラクタープロンプト:</label>
+                    <textarea id="characterPrompt" rows="30" cols="50"></textarea>
+                    <button class="save-button" id="saveCharacterPrompt">
+                        <i class="fas fa-save"></i> 保存
+                    </button>
+                </div>
+                
+                <div class="setting-item">
+                    <label for="voiceSelect">音声:</label>
+                    <select id="voiceSelect">
+                        <!-- JavaScriptで動的に追加 -->
+                    </select>
+                    <button class="save-button" id="saveVoiceId">
+                        <i class="fas fa-save"></i> 保存
+                    </button>
+                </div>
+                
+                <div class="setting-item">
+                    <label for="characterUpload">新規キャラクター (.vrm):</label>
                     <input type="file" id="characterUpload" accept=".vrm" style="display: none;">
                     <button class="upload-button" onclick="document.getElementById('characterUpload').click()">
                         <i class="fas fa-upload"></i> VRMファイルを選択
@@ -76,16 +101,6 @@
                         <i class="fas fa-upload"></i> JPGファイルを選択
                     </button>
                     <span id="backgroundUploadStatus" class="upload-status"></span>
-                </div>
-                
-                <div class="setting-item">
-                    <label for="memoryToggle">記憶機能:</label>
-                    <input type="checkbox" id="memoryToggle" checked>
-                </div>
-                
-                <div class="setting-item">
-                    <label for="use3DUIToggle">3D UIモード:</label>
-                    <input type="checkbox" id="use3DUIToggle" checked>
                 </div>
             </div>
             

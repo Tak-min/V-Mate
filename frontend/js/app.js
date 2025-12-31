@@ -105,14 +105,48 @@ class AIWifeApp {
         
         // 設定
         this.settings = {
-            character: 'haruka.vrm', // デフォルトをharukaのモデルに変更
-            voiceId: null, // ★ voiceActorIdからvoiceIdに変更
+            character: 'Shiro.vrm', // デフォルトをShiroに変更
+            voiceId: 'ocZQ262SsZb9RIxcQBOj', // Shiroの音声ID
             volume: 0.7,
             voiceSpeed: 1.0,
-            personality: 'yui_natural', // デフォルトをユイに変更
+            personality: 'shiro', // デフォルトをshiroに変更
             memoryEnabled: true,
             background: 'sky.jpg', // デフォルト背景を空間に設定
             use3DUI: true // 3D UIモードを有効化
+        };
+        
+        // キャラクター管理
+        this.characters = [];
+        this.currentCharacter = null;
+        this.availableVoices = [];
+        
+        // デフォルトのShiroキャラクター（ハードコード）
+        this.defaultShiroCharacter = {
+            id: 'default-shiro',
+            name: 'シロ',
+            vrm_file: 'Shiro.vrm',
+            voice_id: 'ocZQ262SsZb9RIxcQBOj',
+            is_default: true,
+            prompt: `<キャラクター設定>
+名前:シロ (Shiro)
+本名: シルヴィア・ヴォルフガング (Sylvia Wolfgang) - 本人は長い名前を面倒くさがっており、呼ばれても反応しないことがある。
+
+<性格>
+「思考」より「本能」:難しい理屈や計画性は皆無。お腹が空いたら食べる、眠くなったら寝る、甘えたくなったらひっつく。
+絶対的な肯定と包容力:マスターが何をしていても、「マスターが頑張ってるなら偉い!」とニコニコ見守ってくれる。
+少し抜けている(ポンコツ):クールで神秘的な見た目に反して、どこか放っておけない隙がある。
+
+<関係性>
+「飼い主」と「ペット」であり、「守られる弟」と「守る姉」。普段は世話を焼かれる側だが、マスターが落ち込んでいたり体調が悪かったりすると、野生の勘でそれを察知。言葉少なに頭を撫でてくれたり、温かい体温で寄り添ってくれたりする。
+
+<口調>
+基本的に穏やかで優しい口調。「〜だね」「〜だよ」といった終助詞を使う。マスターに対しては甘えた感じで話すが、決して子供っぽくはない。たまにボーっとしたことを言う。
+</キャラクター設定>
+
+返答は必ず英語で行ってください。ユーザーが日本語で話しかけても、必ず英語で応答してください。
+
+上記のキャラクター設定を維持しながら、英語で自然に会話してください。
+`
         };
         
         this.init();
@@ -131,32 +165,32 @@ class AIWifeApp {
             console.log('[Debug] Step 2: Setting up auth UI...');
             this.setupAuthUI();  // 認証UIの設定
             
-            console.log('[Debug] Step 3: Initializing WebSocket...');
+            console.log('[Debug] Step 3: Loading characters and voices...');
+            await this.loadCharactersAndVoices(); // キャラクター一覧と音声一覧を取得
+            
+            console.log('[Debug] Step 4: Initializing WebSocket...');
             this.initWebSocket();
             
-            console.log('[Debug] Step 4: Initializing 3D scene...');
+            console.log('[Debug] Step 5: Initializing 3D scene...');
             await this.init3DScene();
             
-            console.log('[Debug] Step 5: Loading background...');
+            console.log('[Debug] Step 6: Loading background...');
             await this.loadBackground();
             
-            console.log('[Debug] Step 6: Loading character...');
+            console.log('[Debug] Step 7: Loading character...');
             await this.loadCharacter();
             
-            console.log('[Debug] Step 7: Loading settings...');
+            console.log('[Debug] Step 8: Loading settings...');
             this.loadSettings();
             
-            // キャラクター別のデフォルト音声を設定
-            this.setCharacterDefaultVoice(this.settings.personality);
-            
-            console.log('[Debug] Step 8: Initializing blink timer...');
+            console.log('[Debug] Step 9: Initializing blink timer...');
             this.initBlinkTimer(); // ブリンクタイマー初期化
             
-            console.log('[Debug] Step 9: Starting render loop...');
+            console.log('[Debug] Step 10: Starting render loop...');
             this.startRenderLoop();
             
             // 新しい会話セッションを開始
-            console.log('[Debug] Step 10: Starting new conversation...');
+            console.log('[Debug] Step 11: Starting new conversation...');
             this.startNewConversation();
             
             console.log('[Success] AI Wife App initialized successfully');
@@ -213,31 +247,42 @@ class AIWifeApp {
         
         // 設定変更
         document.getElementById('characterSelect').addEventListener('change', (e) => {
-            // キャラクターファイル名から性格を決定
-            const characterToPersonality = {
-                'avatar.vrm': 'rei_engineer',
-                'rei.vrm': 'rei_engineer',
-                'yui.vrm': 'yui_natural',
-                'haruka.vrm': 'yui_natural'
-            };
+            // キャラクターIDを取得
+            const characterId = parseInt(e.target.value);
+            const character = this.characters.find(c => c.id === characterId);
             
-            const selectedCharacter = e.target.value;
-            const newPersonality = characterToPersonality[selectedCharacter];
-            
-            if (newPersonality) {
+            if (character) {
+                this.currentCharacter = character;
+                
                 // 設定を更新
-                this.settings.character = selectedCharacter;
-                this.settings.personality = newPersonality;
+                this.settings.character = character.vrm_file;
+                this.settings.personality = 'shiro'; // 全てshiro
+                this.settings.voiceId = character.voice_id;
                 
-                // キャラクター別の音声設定を適用
-                this.setCharacterDefaultVoice(newPersonality);
+                // UIを更新
+                this.updateCharacterUI(character);
                 
-                // キャラクターをロードし、appearing.vrmaアニメーションを再生
+                // キャラクターをロード
                 this.loadCharacterWithAppearing();
                 
                 // 新しい会話セッションを開始
                 this.startNewConversation();
             }
+        });
+        
+        // キャラクター名保存
+        document.getElementById('saveCharacterName').addEventListener('click', () => {
+            this.saveCharacterName();
+        });
+        
+        // プロンプト保存
+        document.getElementById('saveCharacterPrompt').addEventListener('click', () => {
+            this.saveCharacterPrompt();
+        });
+        
+        // 音声ID保存
+        document.getElementById('saveVoiceId').addEventListener('click', () => {
+            this.saveVoiceId();
         });
 
         document.getElementById('backgroundSelect').addEventListener('change', (e) => {
@@ -262,15 +307,6 @@ class AIWifeApp {
         document.getElementById('voiceSpeed').addEventListener('input', (e) => {
             this.settings.voiceSpeed = parseFloat(e.target.value);
             document.getElementById('voiceSpeedValue').textContent = e.target.value + 'x';
-        });
-        
-        document.getElementById('memoryToggle').addEventListener('change', (e) => {
-            this.settings.memoryEnabled = e.target.checked;
-        });
-        
-        document.getElementById('use3DUIToggle').addEventListener('change', (e) => {
-            this.settings.use3DUI = e.target.checked;
-            this.toggle3DUIMode(e.target.checked);
         });
         
         document.getElementById('resetMemory').addEventListener('click', () => {
@@ -343,6 +379,278 @@ class AIWifeApp {
                 window.location.href = '/auth/login.html';
             });
         }
+    }
+    
+    /**
+     * キャラクター一覧と音声一覧を取得
+     */
+    async loadCharactersAndVoices() {
+        try {
+            // 音声一覧を取得
+            const voicesResponse = await fetch('/api/voices');
+            if (voicesResponse.ok) {
+                const voicesData = await voicesResponse.json();
+                this.availableVoices = voicesData.voices || [];
+                console.log('[Debug] Loaded voices:', this.availableVoices.length);
+            }
+            
+            // デフォルトのShiroキャラクターを最初に追加（必ず表示）
+            this.characters = [this.defaultShiroCharacter];
+            this.currentCharacter = this.defaultShiroCharacter;
+            console.log('[Debug] Default Shiro character loaded');
+            
+            // 認証済みの場合、データベースから追加キャラクターを取得
+            if (this.isAuthenticated) {
+                try {
+                    const token = this.authService.getAccessToken();
+                    const charactersResponse = await fetch('/api/characters', {
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+                    
+                    if (charactersResponse.ok) {
+                        const charactersData = await charactersResponse.json();
+                        const dbCharacters = charactersData.characters || [];
+                        console.log('[Debug] Loaded DB characters:', dbCharacters.length);
+                        
+                        // データベースからのキャラクターを追加（Shiro以外）
+                        // データベースにShiroがあれば、そのデータで上書き
+                        const dbShiro = dbCharacters.find(c => c.vrm_file === 'Shiro.vrm');
+                        if (dbShiro) {
+                            this.characters[0] = dbShiro;
+                            this.currentCharacter = dbShiro;
+                            console.log('[Debug] Using Shiro from database');
+                        }
+                        
+                        // その他のキャラクターを追加
+                        const otherCharacters = dbCharacters.filter(c => c.vrm_file !== 'Shiro.vrm');
+                        this.characters.push(...otherCharacters);
+                        
+                    } else if (charactersResponse.status === 401) {
+                        console.warn('Token expired, using default Shiro only');
+                    }
+                } catch (dbError) {
+                    console.warn('[Warning] Failed to load DB characters, using default Shiro:', dbError);
+                }
+            }
+            
+            // 設定を更新
+            this.settings.character = this.currentCharacter.vrm_file;
+            this.settings.voiceId = this.currentCharacter.voice_id;
+            
+            // UIを更新
+            this.updateCharacterSelectUI();
+            this.updateVoiceSelectUI();
+            this.updateCharacterUI(this.currentCharacter);
+            
+            console.log('[Debug] Total characters loaded:', this.characters.length);
+            
+        } catch (error) {
+            console.error('[Error] Failed to load characters and voices:', error);
+            // エラーが発生してもデフォルトShiroは使える
+            this.characters = [this.defaultShiroCharacter];
+            this.currentCharacter = this.defaultShiroCharacter;
+            this.updateCharacterSelectUI();
+            this.updateCharacterUI(this.currentCharacter);
+        }
+    }
+    
+    /**
+     * キャラクター選択UIを更新
+     */
+    updateCharacterSelectUI() {
+        const characterSelect = document.getElementById('characterSelect');
+        characterSelect.innerHTML = '';
+        
+        this.characters.forEach(character => {
+            const option = document.createElement('option');
+            option.value = character.id;
+            option.textContent = character.name;
+            if (this.currentCharacter && character.id === this.currentCharacter.id) {
+                option.selected = true;
+            }
+            characterSelect.appendChild(option);
+        });
+    }
+    
+    /**
+     * 音声選択UIを更新
+     */
+    updateVoiceSelectUI() {
+        const voiceSelect = document.getElementById('voiceSelect');
+        voiceSelect.innerHTML = '';
+        
+        this.availableVoices.forEach(voice => {
+            const option = document.createElement('option');
+            option.value = voice.id;
+            option.textContent = `${voice.name} (${voice.category})`;
+            if (this.currentCharacter && voice.id === this.currentCharacter.voice_id) {
+                option.selected = true;
+            }
+            voiceSelect.appendChild(option);
+        });
+    }
+    
+    /**
+     * キャラクター情報UIを更新
+     */
+    updateCharacterUI(character) {
+        console.log('[Debug] Updating character UI with:', character);
+        
+        const characterNameInput = document.getElementById('characterName');
+        const characterPromptTextarea = document.getElementById('characterPrompt');
+        const voiceSelect = document.getElementById('voiceSelect');
+        
+        if (characterNameInput) {
+            characterNameInput.value = character.name || '';
+        }
+        
+        if (characterPromptTextarea) {
+            characterPromptTextarea.value = character.prompt || '';
+        }
+        
+        if (voiceSelect && character.voice_id) {
+            voiceSelect.value = character.voice_id;
+        }
+        
+        console.log('[Debug] UI updated - Name:', character.name, 'Prompt length:', (character.prompt || '').length, 'Voice:', character.voice_id);
+    }
+    
+    /**
+     * キャラクター名を保存
+     */
+    async saveCharacterName() {
+        if (!this.currentCharacter) return;
+        
+        const newName = document.getElementById('characterName').value.trim();
+        if (!newName) {
+            this.showError('キャラクター名を入力してください');
+            return;
+        }
+        
+        try {
+            const token = this.authService.getAccessToken();
+            const response = await fetch(`/api/characters/${this.currentCharacter.id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ name: newName })
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                this.currentCharacter = data.character;
+                this.updateCharacterSelectUI();
+                this.showSuccess('キャラクター名を保存しました');
+            } else {
+                this.showError('保存に失敗しました');
+            }
+        } catch (error) {
+            console.error('[Error] Failed to save character name:', error);
+            this.showError('保存中にエラーが発生しました');
+        }
+    }
+    
+    /**
+     * キャラクタープロンプトを保存
+     */
+    async saveCharacterPrompt() {
+        if (!this.currentCharacter) return;
+        
+        const newPrompt = document.getElementById('characterPrompt').value.trim();
+        if (!newPrompt) {
+            this.showError('プロンプトを入力してください');
+            return;
+        }
+        
+        try {
+            const token = this.authService.getAccessToken();
+            const response = await fetch(`/api/characters/${this.currentCharacter.id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ prompt: newPrompt })
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                this.currentCharacter = data.character;
+                this.showSuccess('プロンプトを保存しました');
+            } else {
+                this.showError('保存に失敗しました');
+            }
+        } catch (error) {
+            console.error('[Error] Failed to save character prompt:', error);
+            this.showError('保存中にエラーが発生しました');
+        }
+    }
+    
+    /**
+     * 音声IDを保存
+     */
+    async saveVoiceId() {
+        if (!this.currentCharacter) return;
+        
+        const newVoiceId = document.getElementById('voiceSelect').value;
+        if (!newVoiceId) {
+            this.showError('音声を選択してください');
+            return;
+        }
+        
+        try {
+            const token = this.authService.getAccessToken();
+            const response = await fetch(`/api/characters/${this.currentCharacter.id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ voice_id: newVoiceId })
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                this.currentCharacter = data.character;
+                this.settings.voiceId = newVoiceId;
+                this.showSuccess('音声を保存しました');
+            } else {
+                this.showError('保存に失敗しました');
+            }
+        } catch (error) {
+            console.error('[Error] Failed to save voice ID:', error);
+            this.showError('保存中にエラーが発生しました');
+        }
+    }
+    
+    /**
+     * 成功メッセージを表示
+     */
+    showSuccess(message) {
+        // 簡易的なトースト表示（既存のshowErrorと同様の実装）
+        const toast = document.createElement('div');
+        toast.className = 'success-toast';
+        toast.textContent = message;
+        toast.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #4CAF50;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 5px;
+            z-index: 10000;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        `;
+        document.body.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.remove();
+        }, 3000);
     }
     
     /**
@@ -1001,7 +1309,7 @@ class AIWifeApp {
                 modelUrl = selectedOption.dataset.localUrl;
             } else {
                 // デフォルトファイルの場合
-                modelUrl = `./models/${this.settings.character}`;
+                modelUrl = `./models/models/${this.settings.character}`;
             }
             
             const gltfVrm = await loader.loadAsync(modelUrl);
@@ -1105,7 +1413,7 @@ class AIWifeApp {
                 modelUrl = selectedOption.dataset.localUrl;
             } else {
                 // デフォルトファイルの場合
-                modelUrl = `./models/${this.settings.character}`;
+                modelUrl = `./models/models/${this.settings.character}`;
             }
             
             const gltfVrm = await loader.loadAsync(modelUrl);
@@ -1256,9 +1564,9 @@ class AIWifeApp {
             
             // lying-sequenceが失敗した場合は通常のアイドルアニメーションのみを試行
             const basicIdleAnimations = [
-                './models/appearing.vrma',
-                './models/liked.vrma',
-                './models/waiting.vrma'
+                './models/animation/appearing.vrma',
+                './models/animation/liked.vrma',
+                './models/animation/waiting.vrma'
             ];
             
             const fallbackAnimation = basicIdleAnimations[Math.floor(Math.random() * basicIdleAnimations.length)];
@@ -1350,19 +1658,19 @@ class AIWifeApp {
         // 全てのアニメーションファイルを含むアイドルローテーション
         const idleAnimations = [
             // トップレベルのVRMAファイル
-            './models/liked.vrma',
-            './models/waiting.vrma',
+            './models/animation/liked.vrma',
+            './models/animation/waiting.vrma',
             
             // idleフォルダ内のVRMAファイル
-            './models/idle/idle2_out/idle2.vrma',
-            './models/idle/idle3_out/idle3.vrma', 
-            './models/idle/idle4_out/idle4.vrma',
+            './models/animation/idle2.vrma',
+            './models/animation/idle3.vrma', 
+            './models/animation/idle4.vrma',
             
             // より多様性を持たせるため、一部を複数回含める
-            './models/liked.vrma',
-            './models/waiting.vrma',
-            './models/idle/idle2_out/idle2.vrma',
-            './models/idle/idle3_out/idle3.vrma'
+            './models/animation/liked.vrma',
+            './models/animation/waiting.vrma',
+            './models/animation/idle2.vrma',
+            './models/animation/idle3.vrma'
         ];
         
         // 前回と同じアニメーションを避ける
@@ -1421,7 +1729,7 @@ class AIWifeApp {
         console.log('Playing appearing animation...');
         
         // appearing アニメーションを読み込み
-        const animationData = await this.loadGLTFAnimation('./models/appearing.vrma', { loop: false });
+        const animationData = await this.loadGLTFAnimation('./models/animation/appearing.vrma', { loop: false });
         if (!animationData) {
             console.error('Failed to load appearing animation');
             // フォールバック: キャラクターを表示してアイドルアニメーションを開始
@@ -1479,7 +1787,7 @@ class AIWifeApp {
         
         console.log('Playing waiting animation...');
         
-        const animationData = await this.loadGLTFAnimation('./models/waiting.vrma', { loop: false });
+        const animationData = await this.loadGLTFAnimation('./models/animation/waiting.vrma', { loop: false });
         if (!animationData) {
             console.warn('Failed to load waiting animation, falling back to idle');
             this.scheduleNextIdleAnimation();
@@ -1505,7 +1813,7 @@ class AIWifeApp {
         
         console.log('Playing liked animation...');
         
-        const animationData = await this.loadGLTFAnimation('./models/liked.vrma', { loop: false });
+        const animationData = await this.loadGLTFAnimation('./models/animation/liked.vrma', { loop: false });
         if (!animationData) {
             console.warn('Failed to load liked animation, falling back to idle');
             this.scheduleNextIdleAnimation();
@@ -3253,9 +3561,6 @@ class AIWifeApp {
             document.getElementById('volumeValue').textContent = Math.round(this.settings.volume * 100) + '%';
             document.getElementById('voiceSpeed').value = this.settings.voiceSpeed;
             document.getElementById('voiceSpeedValue').textContent = this.settings.voiceSpeed + 'x';
-            document.getElementById('personalitySelect').value = this.settings.personality;
-            document.getElementById('memoryToggle').checked = this.settings.memoryEnabled;
-            document.getElementById('use3DUIToggle').checked = this.settings.use3DUI;
         }
     }
     
