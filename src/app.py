@@ -953,6 +953,10 @@ def login():
         if not user:
             return jsonify({'error': 'メールアドレスまたはパスワードが正しくありません'}), 401
         
+        # 🔒 セキュリティ強化: 古いトークンを全て無効化してから新しいトークンを発行
+        auth_manager.revoke_all_user_tokens(user['id'])
+        logger.info(f"Revoked all existing tokens for user: {user['username']}")
+        
         # トークン生成
         access_token = auth_manager.generate_access_token(user['id'], user['email'])
         refresh_token = auth_manager.generate_refresh_token(user['id'])
