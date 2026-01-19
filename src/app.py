@@ -1035,10 +1035,11 @@ def logout(current_user):
 def google_login():
     """Google OAuth認証開始"""
     try:
+        logger.info("Starting Google OAuth authentication flow")
         return oauth_manager.get_google_authorize_redirect()
     except Exception as e:
-        logger.error(f"Google OAuth start error: {e}")
-        return jsonify({'error': 'Google認証の開始に失敗しました'}), 500
+        logger.error(f"Google OAuth start error: {e}", exc_info=True)
+        return jsonify({'error': 'Google認証の開始に失敗しました', 'details': str(e)}), 500
 
 
 @app.route('/api/auth/google/callback', methods=['GET'])

@@ -330,14 +330,28 @@ if (window.location.pathname.includes('/auth/login.html')) {
         const googleRegisterBtn = document.getElementById('googleRegisterBtn');
         
         if (googleLoginBtn) {
-            googleLoginBtn.addEventListener('click', () => {
-                window.location.href = '/api/auth/google';
+            googleLoginBtn.addEventListener('click', async () => {
+                try {
+                    console.log('Google OAuth login initiated');
+                    // Google OAuth のエンドポイントにリダイレクト
+                    window.location.href = '/api/auth/google';
+                } catch (error) {
+                    console.error('Google login error:', error);
+                    showMessage('Google認証の開始に失敗しました', 'error');
+                }
             });
         }
         
         if (googleRegisterBtn) {
-            googleRegisterBtn.addEventListener('click', () => {
-                window.location.href = '/api/auth/google';
+            googleRegisterBtn.addEventListener('click', async () => {
+                try {
+                    console.log('Google OAuth registration initiated');
+                    // Google OAuth のエンドポイントにリダイレクト
+                    window.location.href = '/api/auth/google';
+                } catch (error) {
+                    console.error('Google registration error:', error);
+                    showMessage('Google認証の開始に失敗しました', 'error');
+                }
             });
         }
     });

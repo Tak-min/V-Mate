@@ -36,29 +36,40 @@ class OAuthManager:
         
         if not google_client_id or not google_client_secret:
             logger.warning("Google OAuth credentials not configured")
-            self.google = None
+            self.google_client = None
             return
         
-        self.google = self.oauth.register(
-            name='google',
-            client_id=google_client_id,
-            client_secret=google_client_secret,
-            server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
-            client_kwargs={
-                'scope': 'openid email profile',
-                'prompt': 'select_account',  # 常にアカウント選択画面を表示
-            }
-        )
-        
-        logger.info("Google OAuth configured successfully")
+        try:
+            # OAuth クライアントを登録（名前衝突を避けるため google_client という属性名を使用）
+            self.google_client = self.oauth.register(
+                name='google',
+                client_id=google_client_id,
+                client_secret=google_client_secret,
+                server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+                client_kwargs={
+                    'scope': 'openid email profile',
+                    'prompt': 'select_account',  # 常にアカウント選択画面を表示
+                }
+            )
+            
+            logger.info("Google OAuth configured successfully")
+        except Exception as e:
+            logger.error(f"Failed to setup Google OAuth: {e}", exc_info=True)
+            self.google_client = None
     
     def get_google_authorize_redirect(self):
         """Google OAuth認証リダイレクトURLを取得"""
-        if not self.google:
+        if not self.google_client:
             raise Exception("Google OAuth is not configured")
         
-        redirect_uri = url_for('google_callback', _external=True)
-        return self.google.authorize_redirect(redirect_uri)
+        try:
+            # コールバックURLを明示的に生成（再帰を避けるため）
+            redirect_uri = url_for('google_callback', _external=True)
+            logger.info(f"Google OAuth redirect URI: {redirect_uri}")
+            return self.google_client.authorize_redirect(redirect_uri)
+        except Exception as e:
+            logger.error(f"Failed to create Google authorize redirect: {e}", exc_info=True)
+            raise
     
     def handle_google_callback(self):
         """
@@ -67,12 +78,12 @@ class OAuthManager:
         Returns:
             dict: ユーザー情報とトークン
         """
-        if not self.google:
+        if not self.google_client:
             raise Exception("Google OAuth is not configured")
         
         try:
             # トークン取得
-            token = self.google.authorize_access_token()
+            token = self.google_client.authorize_access_token()
             
             # ユーザー情報取得 - tokenオブジェクトから直接取得
             user_info = token.get('userinfo')
@@ -80,7 +91,7 @@ class OAuthManager:
             # user_infoがない場合は、APIエンドポイントから取得
             if not user_info:
                 logger.warning("userinfo not in token, fetching from API")
-                resp = self.google.get('https://www.googleapis.com/oauth2/v3/userinfo')
+                resp = self.google_client.get('https://www.googleapis.com/oauth2/v3/userinfo')
                 user_info = resp.json()
             
             if not user_info:
