@@ -1,3 +1,8 @@
+# geventのモンキーパッチを最初に適用（RecursionError対策）
+# 重要：すべてのインポートより前に実行する必要があります
+from gevent import monkey
+monkey.patch_all()
+
 import os
 import sys
 import json
