@@ -213,10 +213,6 @@ GEMINI_API_KEY=your_gemini_api_key_here
 
 `your_gemini_api_key_here` の部分を、先ほどコピーしたAPIキーに書き換えます：
 
-```env
-GEMINI_API_KEY=AIzaSyDbhA2GuAFoYUzREJDy6gq6bwuSnwC8T7Y
-```
-
 > 💡 **ヒント**: 既に設定されている場合は、そのままで大丈夫です！
 
 ### 3-3. ファイルを保存
