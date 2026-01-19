@@ -35,6 +35,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from models.user import User
 from auth.auth_manager import AuthManager, token_required, optional_token
 from auth.oauth_manager import OAuthManager
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 # Suppress only the single InsecureRequestWarning from urllib3 needed.
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -44,6 +45,8 @@ load_dotenv()
 
 
 app = Flask(__name__, static_folder='../frontend', template_folder='../frontend', static_url_path='')
+# ProxyFix適用 - Renderなどのプロキシ環境でHTTPSスキームを正しく認識
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'default_secret_key')
 socketio = SocketIO(app, cors_allowed_origins="*")
 CORS(app)
@@ -1545,7 +1548,7 @@ def handle_message(data):
                 response_text = response.text
             except Exception as fallback_e:
                 logger.error(f"Fallback model also failed: {fallback_e}")
-                response_text = "ごめんなさい、今ちょっと考えがまとまらないみたい…。"
+                response_text = "Sorry! My throat's acting up a bit, and I can't get my voice out properly! Do you mind trying again?"
 
         # 3. 感情分析
         user_emotion = analyze_emotion_simple(message)
