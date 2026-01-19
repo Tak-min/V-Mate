@@ -1,15 +1,47 @@
 version: '3.8'
 
 services:
-  aiwife-app:
-    build: .
+  # バックエンドサーバー (Flask + Python)
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: aiwife-backend
     ports:
       - "5000:5000"
     environment:
       - FLASK_ENV=development
       - FLASK_DEBUG=1
     volumes:
-      - .:/app
-      - /app/node_modules
+      - ./src:/app/src
+      - ./config:/app/config
+      - ./models:/app/models
     env_file:
       - .env
+    networks:
+      - aiwife-network
+    restart: unless-stopped
+
+  # フロントエンドサーバー (Vite + Node.js)
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: aiwife-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:5000
+    volumes:
+      - ./frontend:/app/frontend
+      - ./models:/app/models
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - aiwife-network
+    restart: unless-stopped
+
+networks:
+  aiwife-network:
+    driver: bridge

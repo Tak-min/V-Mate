@@ -1,0 +1,55 @@
+# Git関連
+.git
+.gitignore
+
+# Python関連
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist
+build
+.pytest_cache
+.coverage
+
+# Node.js関連
+node_modules
+npm-debug.log
+yarn-error.log
+.npm
+
+# 環境変数（重要：これは含める）
+# .env
+
+# IDE設定
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS関連
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ログファイル
+*.log
+
+# 一時ファイル
+tmp
+temp
+*.tmp
+
+# ドキュメント（オプション）
+*.md
+LICENSE
+
+# その他
+.dockerignore
+Dockerfile*
+docker-compose*.yml

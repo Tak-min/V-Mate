@@ -1,0 +1,21 @@
+# フロントエンド用Dockerfile
+FROM node:18-alpine
+
+WORKDIR /app
+
+# package.jsonとpackage-lock.jsonをコピー
+COPY package*.json ./
+
+# 依存関係をインストール
+RUN npm install
+
+# アプリケーションコードをコピー
+COPY frontend/ ./frontend/
+COPY models/ ./models/
+COPY vite.config.js ./
+
+# ポートを公開
+EXPOSE 3000
+
+# Viteサーバーを起動（ホストを0.0.0.0に設定してDockerコンテナ外からアクセス可能に）
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
