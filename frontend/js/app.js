@@ -143,9 +143,7 @@ class AIWifeApp {
 基本的に穏やかで優しい口調。「〜だね」「〜だよ」といった終助詞を使う。マスターに対しては甘えた感じで話すが、決して子供っぽくはない。たまにボーっとしたことを言う。
 </キャラクター設定>
 
-返答は必ず英語で行ってください。ユーザーが日本語で話しかけても、必ず英語で応答してください。
-
-上記のキャラクター設定を維持しながら、英語で自然に会話してください。
+上記のキャラクター設定を維持しながら、自然に会話してください。
 `
         };
         
@@ -921,6 +919,12 @@ class AIWifeApp {
             </div>
             <textarea class="message-input-textarea" placeholder="ここにメッセージを入力してください..."></textarea>
             <div class="message-input-actions">
+                <button class="message-input-btn voice-button" id="voiceButton" title="音声入力">
+                    <i class="fas fa-microphone"></i>
+                </button>
+                <span class="voice-recording-indicator" id="voiceRecording" style="display: none;">
+                    <i class="fas fa-circle"></i> 録音中...
+                </span>
                 <button class="message-input-btn">キャンセル</button>
                 <button class="message-input-btn primary">送信</button>
             </div>
@@ -953,6 +957,36 @@ class AIWifeApp {
         sendBtn.addEventListener('click', () => {
             this.sendMessageFromPanel();
         });
+        
+        // 音声入力ボタン
+        const voiceBtn = panelElement.querySelector('#voiceButton');
+        const voiceRecordingIndicator = panelElement.querySelector('#voiceRecording');
+        
+        if (voiceBtn) {
+            voiceBtn.addEventListener('click', () => {
+                if (this.isRecording) {
+                    // 録音停止
+                    this.stopVoiceRecording();
+                    voiceBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+                    voiceBtn.classList.remove('recording');
+                    if (voiceRecordingIndicator) {
+                        voiceRecordingIndicator.style.display = 'none';
+                    }
+                } else {
+                    // 録音開始
+                    this.startVoiceRecording();
+                    voiceBtn.innerHTML = '<i class="fas fa-stop"></i>';
+                    voiceBtn.classList.add('recording');
+                    if (voiceRecordingIndicator) {
+                        voiceRecordingIndicator.style.display = 'inline-flex';
+                    }
+                }
+            });
+            
+            // elements オブジェクトに保存（他のメソッドから参照できるように）
+            this.elements.voiceButton = voiceBtn;
+            this.elements.voiceRecording = voiceRecordingIndicator;
+        }
         
         // Enterキーで送信（Shift+Enterで改行）
         const textarea = panelElement.querySelector('.message-input-textarea');
@@ -996,12 +1030,6 @@ class AIWifeApp {
      */
     async handleGlassPanelClick(event) {
         if (this.isTyping) return;
-        
-        // タッチフィードバック
-        event.target.style.transform = 'scale(0.95)';
-        setTimeout(() => {
-            event.target.style.transform = '';
-        }, 150);
         
         // メッセージ入力パネルを表示
         this.showMessageInputPanel();
@@ -1185,10 +1213,10 @@ class AIWifeApp {
         
         this.isTyping = false;
         
-        // 自動非表示時間を短縮（5秒 → 3秒）
+        // 自動非表示時間（8秒）
         setTimeout(() => {
             this.hideARSpeechBubble();
-        }, 3000);
+        }, 8000);
     }
     
     /**

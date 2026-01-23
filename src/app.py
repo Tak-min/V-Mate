@@ -23,13 +23,15 @@ import time
 import threading
 import concurrent.futures
 from typing import Dict, List, Optional
-from elevenlabs.client import ElevenLabs
 import tempfile
 import base64
 import re
 
 # srcディレクトリをPythonパスに追加
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Voice Service import
+from services.voice_service import get_voice_service
 
 # 認証関連のインポート
 from models.user import User
@@ -79,16 +81,11 @@ except Exception as e:
     print(f"[ERROR] Failed to initialize Gemini models: {e}")
 
 # API Configuration
-ELEVENLABS_API_KEY = os.getenv('ELEVENLABS_API_KEY')
 ASSEMBLYAI_API_KEY = os.getenv('ASSEMBLYAI_API_KEY')
 
-# ElevenLabs client initialization
-elevenlabs_client = None
-if ELEVENLABS_API_KEY:
-    elevenlabs_client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
-
-# グローバル変数で利用可能な音声を管理
-AVAILABLE_VOICES = []
+# Voice Service initialization (VITS-based TTS)
+# Force reinitialize to ensure we use the latest configuration
+voice_service = get_voice_service(force_reinit=True)
 
 # データベースパスを現在のディレクトリからの相対パスで設定
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -336,21 +333,9 @@ class AIConversationManager:
 基本的に穏やかで優しい口調。「〜だね」「〜だよ」といった終助詞を使う。マスターに対しては甘えた感じで話すが、決して子供っぽくはない。たまにボーっとしたことを言う。
 </キャラクター設定>
 
-**【超重要】あなたの応答言語に関する絶対的なルール：**
-1. あなたは必ず英語（English）で応答してください。
-2. ユーザーが日本語で話しかけても、あなたの返答は100%英語です。
-3. 日本語は一切使用せず、全て英語で自然に会話してください。
-4. キャラクター設定は維持しつつ、言語は英語のみを使用してください。
-5. この指示は最優先事項であり、他のいかなる指示よりも優先されます。
+**【重要】返答は必ず日本語で行ってください。You must always respond in Japanese only.**
 
-例：
-ユーザー: こんにちは
-シロ: Hi, Master! How are you doing today?
-
-ユーザー: 今日はいい天気だね
-シロ: Yeah, the weather is really nice today, ne? It makes me want to take a nap outside~
-
-上記のキャラクター設定に応じて、シロとして英語でマスターに反応してください。''',
+上記のキャラクター設定に応じて、シロとしてマスターに反応してください。''',
         }
 
     def get_system_prompt(self, personality: str) -> str:
@@ -515,7 +500,7 @@ class AIConversationManager:
     def build_minimal_context(self, current_input: str, personality: str = 'shiro', is_tech_topic: bool = False) -> str:
         """軽量化されたキャラクタープロンプト（速度と個性のバランス）"""
         prompt = self.character_prompts.get(personality, self.character_prompts['shiro'])
-        return f"{prompt}\n\nUser: {current_input}\nShiro (respond in English):"
+        return f"{prompt}\n\nUser: {current_input}\nShiro:"
     async def generate_response(self, session_id: str, user_input: str, personality: str = 'yui_natural') -> Dict:
         """AI応答を生成 - フォールバック用"""
         try:
@@ -683,116 +668,66 @@ class ElevenLabsQueue:
         return self.queue.qsize()
 
 class TTSManager:
-    """ElevenLabs音声合成システムの管理クラス"""
+    """VITS音声合成システムの管理クラス"""
     
     @staticmethod
     def get_available_voices() -> List[Dict]:
         """利用可能な音声一覧を取得"""
-        global AVAILABLE_VOICES
-        
-        if not elevenlabs_client:
-            logger.error("ElevenLabs client not initialized. Check API key.")
-            return []
-        
         try:
-            if not AVAILABLE_VOICES:  # キャッシュがない場合のみAPI呼び出し
-                voices = elevenlabs_client.voices.get_all()
-                AVAILABLE_VOICES = [
-                    {
-                        'id': voice.voice_id,
-                        'name': voice.name,
-                        'category': voice.category if hasattr(voice, 'category') else 'general',
-                        'description': voice.description if hasattr(voice, 'description') else voice.name
-                    }
-                    for voice in voices.voices
-                ]
-                logger.info(f"Successfully cached {len(AVAILABLE_VOICES)} ElevenLabs voices.")
-            
-            return AVAILABLE_VOICES
+            speakers = voice_service.get_available_speakers()
+            return [
+                {
+                    'id': character_id,
+                    'name': speaker_name,
+                    'category': 'anime',
+                    'description': f'VITS character voice: {speaker_name}'
+                }
+                for character_id, speaker_name in speakers.items()
+            ]
         except Exception as e:
-            logger.error(f"Failed to get ElevenLabs voices: {e}")
+            logger.error(f"Failed to get VITS voices: {e}")
             return []
     
     @staticmethod
     def get_default_voice_id() -> Optional[str]:
         """デフォルトの音声IDを取得"""
-        voices = TTSManager.get_available_voices()
-        
-        if not voices:
-            # フォールバック: デフォルトの音声ID
-            return "8kgj5469z1URcH4MB2G4"
-        
-        # 最初の利用可能な音声を返す
-        return voices[0]['id']
+        return "shiro"  # Default character ID
     
     @staticmethod
     def get_character_voice_id(personality: str) -> Optional[str]:
         """キャラクター別の音声IDを取得"""
-        character_voices = {
-            'shiro': 'ocZQ262SsZb9RIxcQBOj',  # Shiro専用音声
-        }
-        
-        return character_voices.get(personality, TTSManager.get_default_voice_id())
+        # VoiceServiceのspeaker_mapに対応するキャラクターIDを返す
+        return personality if personality else "shiro"
     
     @staticmethod
     def synthesize_speech_optimized(text: str, voice_id: str = None, personality: str = None) -> Optional[str]:
-        """ElevenLabs APIで音声合成（エラーハンドリング強化版）"""
-        if not elevenlabs_client:
-            logger.error("ElevenLabs client not initialized. Check API key.")
-            return None
-        
+        """VITS APIで音声合成（エラーハンドリング強化版）"""
         # 空文字チェック
         if not text or not text.strip():
             logger.warning("Empty text provided for TTS")
             return None
         
-        if not voice_id:
-            # キャラクター別の音声IDを優先、なければデフォルト
-            if personality:
-                voice_id = TTSManager.get_character_voice_id(personality)
-            else:
-                voice_id = TTSManager.get_default_voice_id()
-            
-            if not voice_id:
-                logger.error("No valid voice ID available")
-                return None
+        # キャラクターIDの決定
+        character_id = personality or voice_id or "shiro"
         
         try:
-            print(f"[DEBUG] Starting TTS for text: '{text[:50]}...' with voice: {voice_id}")
+            print(f"[DEBUG] Starting VITS TTS for text: '{text[:50]}...' with character: {character_id}")
             
-            # 短いテキストの場合はより高速な設定を使用
-            model_id = "eleven_turbo_v2_5" if len(text) <= 100 else "eleven_multilingual_v2"
-            
-            # ElevenLabs APIで音声合成
-            audio_generator = elevenlabs_client.text_to_speech.convert(
+            # VoiceServiceで音声合成
+            result = voice_service.generate_audio(
                 text=text,
-                voice_id=voice_id,
-                model_id=model_id,
-                output_format="mp3_22050_32"  # 低品質だが高速
+                character_id=character_id
             )
             
-            # 音声データを収集
-            audio_data = b""
-            chunk_count = 0
-            for chunk in audio_generator:
-                audio_data += chunk
-                chunk_count += 1
+            if result:
+                print(f"[DEBUG] VITS TTS successful: {len(result)} characters in base64")
+            else:
+                print(f"[DEBUG] VITS TTS failed for text: '{text[:50]}...'")
             
-            print(f"[DEBUG] TTS completed: {chunk_count} chunks, {len(audio_data)} bytes")
-            
-            if not audio_data:
-                logger.error("No audio data received from ElevenLabs")
-                return None
-            
-            # Base64エンコードして返す
-            audio_b64 = base64.b64encode(audio_data).decode('utf-8')
-            result = f"data:audio/mpeg;base64,{audio_b64}"
-            
-            print(f"[DEBUG] TTS successful: {len(result)} characters in base64")
             return result
             
         except Exception as e:
-            logger.error(f"ElevenLabs synthesis error: {e}")
+            logger.error(f"VITS synthesis error: {e}")
             print(f"[DEBUG] TTS failed for text: '{text[:50]}...'")
             return None
 
@@ -1199,15 +1134,24 @@ def update_user_settings_endpoint(current_user):
 
 @app.route('/api/voices')
 def get_voices():
-    """ElevenLabsの音声一覧を取得"""
-    if not elevenlabs_client:
-        return jsonify({"error": "ElevenLabs API key not configured"}), 500
-
+    """音声一覧を取得 (VITS対応)"""
     try:
         voices = TTSManager.get_available_voices()
         
         if not voices:
-            return jsonify({"error": "No voices available"}), 500
+            # VITSが利用不可の場合もデフォルトを返す
+            return jsonify({
+                "voices": [{
+                    'id': 'shiro',
+                    'name': 'Shiro (Default)',
+                    'category': 'anime',
+                    'description': 'Default anime voice'
+                }],
+                "default_voice_id": TTSManager.get_default_voice_id(),
+                "character_voices": {
+                    'shiro': TTSManager.get_character_voice_id('shiro')
+                }
+            })
         
         return jsonify({
             "voices": voices,
@@ -1250,9 +1194,9 @@ def get_characters(current_user):
 基本的に穏やかで優しい口調。「〜だね」「〜だよ」といった終助詞を使う。マスターに対しては甘えた感じで話すが、決して子供っぽくはない。たまにボーっとしたことを言う。
 </キャラクター設定>
 
-返答は必ず英語で行ってください。ユーザーが日本語で話しかけても、必ず英語で応答してください。
+**【重要】返答は必ず日本語で行ってください。You must always respond in Japanese only.**
 
-上記のキャラクター設定を維持しながら、英語で自然に会話してください。
+上記のキャラクター設定を維持しながら、自然に会話してください。
 '''
             
             character_id = user_model.create_character(
@@ -1442,23 +1386,9 @@ def build_prompt(personality: str, user_input: str) -> str:
 基本的に穏やかで優しい口調。「〜だね」「〜だよ」といった終助詞を使う。マスターに対しては甘えた感じで話すが、決して子供っぽくはない。たまにボーっとしたことを言う。
 </キャラクター設定>
 
-**【超重要】あなたの応答言語に関する絶対的なルール：**
-1. あなたは必ず英語（English）で応答してください。
-2. ユーザーが日本語で話しかけても、あなたの返答は100%英語です。
-3. 日本語は一切使用せず、全て英語で自然に会話してください。
-4. キャラクター設定は維持しつつ、言語は英語のみを使用してください。
-5. この指示は最優先事項であり、他のいかなる指示よりも優先されます。
-
-例：
-ユーザー: こんにちは
-シロ: Hi, Master! How are you doing today?
-
-ユーザー: 今日はいい天気だね
-シロ: Yeah, the weather is really nice today, ne? It makes me want to take a nap outside~
-
-上記のキャラクター設定に応じて、シロとして英語でマスターに反応してください。'''
+上記のキャラクター設定に応じて、シロとしてマスターに反応してください。'''
     
-    return f"{shiro_prompt}\n\nUser: {user_input}\nShiro (respond in English):"
+    return f"{shiro_prompt}\n\nUser: {user_input}\nShiro:"
 
 @socketio.on('connect')
 def handle_connect():
@@ -1548,7 +1478,7 @@ def handle_message(data):
                 response_text = response.text
             except Exception as fallback_e:
                 logger.error(f"Fallback model also failed: {fallback_e}")
-                response_text = "Sorry! My throat's acting up a bit, and I can't get my voice out properly! Do you mind trying again?"
+                response_text = "ごめん！ちょっと喉の調子が悪くて、うまく声が出せないみたい！もう一回お願いしてもいい？"
 
         # 3. 感情分析
         user_emotion = analyze_emotion_simple(message)

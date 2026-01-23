@@ -65,6 +65,13 @@ class AuthService {
     }
     
     /**
+     * アクセストークンを取得
+     */
+    getAccessToken() {
+        return this.tokens.accessToken;
+    }
+    
+    /**
      * 新規登録
      */
     async register(username, email, password) {

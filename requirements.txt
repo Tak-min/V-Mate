@@ -6,7 +6,7 @@ python-engineio
 google-generativeai
 requests
 python-dotenv
-elevenlabs
+# gradio_client>=0.6.0  # Removed: Using direct HTTP API for VITS
 websockets
 aiohttp
 json5
