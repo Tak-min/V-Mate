@@ -6,11 +6,9 @@ python-engineio
 google-generativeai
 requests
 python-dotenv
-# gradio_client>=0.6.0  # Removed: Using direct HTTP API for VITS
 websockets
 aiohttp
 json5
-pydub
 PyYAML
 pytest
 pytest-asyncio
@@ -21,6 +19,8 @@ bcrypt
 email-validator
 # OAuth 2.0
 authlib
+# 音声合成
+elevenlabs
 # Render/本番環境用
 gunicorn
 gevent

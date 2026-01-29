@@ -825,6 +825,11 @@ def serve_js(filename):
     """JavaScriptファイルを提供"""
     return send_from_directory('../frontend/js', filename)
 
+@app.route('/audio/<path:filename>')
+def serve_audio(filename):
+    """生成された音声ファイルを提供"""
+    return send_from_directory('../frontend/audio', filename)
+
 # ==================== 認証エンドポイント ====================
 
 @app.route('/api/auth/register', methods=['POST'])

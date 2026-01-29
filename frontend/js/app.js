@@ -10,6 +10,12 @@ import { authService } from './auth.js';
  * AI Wife - 3D Character Interaction App
  * メインアプリケーションクラス
  */
+
+// ========== BACKEND CONFIGURATION ==========
+// TODO: Cloudflare TunnelのURLを設定してください
+// 例: const BACKEND_URL = 'https://your-tunnel-name.trycloudflare.com';
+const BACKEND_URL = window.location.origin; // 開発時はこのまま、本番時は上記のようにCloudflare TunnelのURLに変更
+
 class AIWifeApp {
     constructor() {
         this.socket = null;
@@ -685,8 +691,9 @@ class AIWifeApp {
             };
         }
         
-        console.log('[Debug] Initializing Socket.IO connection...', connectionOptions);
-        this.socket = io(connectionOptions);
+        console.log('[Debug] Initializing Socket.IO connection to:', BACKEND_URL);
+        console.log('[Debug] Connection options:', connectionOptions);
+        this.socket = io(BACKEND_URL, connectionOptions);
         
         this.socket.on('connect', () => {
             console.log('[Debug] Socket.IO connected successfully');
@@ -2295,7 +2302,16 @@ class AIWifeApp {
         
         return new Promise((resolve, reject) => {
             try {
-                const audio = new Audio(chunk.audio);
+                // 音声URLの構築（ElevenLabs対応）
+                let audioUrl = chunk.audio;
+                
+                // 相対パスの場合、BACKEND_URLを付与
+                if (chunk.audio.startsWith('/audio/')) {
+                    audioUrl = `${BACKEND_URL}${chunk.audio}`;
+                    console.log(`[Debug] Chunk ${chunk.index} URL constructed:`, audioUrl);
+                }
+                
+                const audio = new Audio(audioUrl);
                 audio.volume = this.settings.volume;
                 audio.playbackRate = this.settings.voiceSpeed;
                 
@@ -2644,9 +2660,23 @@ class AIWifeApp {
                 return;
             }
 
-            // Base64データから音声オブジェクトを作成
-            const audio = new Audio(audioData);
-            console.log('[Debug] Created Audio object from base64 data');
+            // ElevenLabsからのレスポンスはファイルパス（例: /audio/abc123.mp3）
+            // フロントエンドがRender上にある場合、バックエンドURLを付与する必要がある
+            let audioUrl = audioData;
+            
+            // 相対パスの場合、BACKEND_URLを付与
+            if (audioData.startsWith('/audio/')) {
+                audioUrl = `${BACKEND_URL}${audioData}`;
+                console.log('[Debug] Audio URL constructed:', audioUrl);
+            } else if (audioData.startsWith('data:')) {
+                // Base64データの場合はそのまま使用（後方互換性）
+                audioUrl = audioData;
+                console.log('[Debug] Using base64 audio data');
+            }
+
+            // 音声オブジェクトを作成
+            const audio = new Audio(audioUrl);
+            console.log('[Debug] Created Audio object with URL:', audioUrl);
             console.log('[Debug] Audio object created successfully:', !!audio);
 
             audio.volume = this.settings.volume;
