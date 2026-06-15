@@ -17,13 +17,13 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-from fastapi import BackgroundTasks, FastAPI, Request, Response  # noqa: E402
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Response  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import StreamingResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
-from . import llm, memory, persona, tts  # noqa: E402
+from . import auth, llm, memory, persona, tts  # noqa: E402
 
 app = FastAPI(title="Aikata")
 app.add_middleware(
@@ -77,6 +77,21 @@ class NudgeRequest(BaseModel):
     reason: str = Field(default="idle", pattern="^(idle|greeting)$")
 
 
+class AuthRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+    password: str = Field(min_length=6, max_length=200)
+
+
+def _resolve_uid(request: Request) -> str:
+    """有効な JWT があればそのアカウントID、無ければ匿名Cookie ID を返す。"""
+    header = request.headers.get("Authorization", "")
+    if header.startswith("Bearer "):
+        sub = auth.decode_token(header[len("Bearer "):])
+        if sub:
+            return sub
+    return request.state.uid
+
+
 def _strip_emotion(text: str) -> tuple[str, str]:
     """先頭の感情タグを抽出し、本文からすべてのタグを除去する。"""
     match = EMOTION_TAG_RE.search(text)
@@ -112,14 +127,39 @@ def _state_payload(user_id: str) -> dict:
     }
 
 
+@app.post("/api/auth/signup")
+async def auth_signup(req: AuthRequest, request: Request) -> dict:
+    try:
+        token = auth.signup(req.email, req.password, anon_uid=request.state.uid)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"token": token}
+
+
+@app.post("/api/auth/login")
+async def auth_login(req: AuthRequest) -> dict:
+    try:
+        token = auth.login(req.email, req.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail=str(exc))
+    return {"token": token}
+
+
+@app.get("/api/auth/me")
+async def auth_me(request: Request) -> dict:
+    uid = _resolve_uid(request)
+    user = memory.get_user_by_id(uid)
+    return {"authenticated": user is not None, "email": user["email"] if user else None}
+
+
 @app.get("/api/state")
 async def get_state(request: Request) -> dict:
-    return _state_payload(request.state.uid)
+    return _state_payload(_resolve_uid(request))
 
 
 @app.post("/api/profile")
 async def set_profile(req: ProfileRequest, request: Request) -> dict:
-    uid = request.state.uid
+    uid = _resolve_uid(request)
     name = req.user_name.strip()
     memory.set_kv(uid, "user_name", name)
     memory.add_fact(uid, f"名前(呼び方)は「{name}」")
@@ -128,7 +168,7 @@ async def set_profile(req: ProfileRequest, request: Request) -> dict:
 
 @app.get("/api/history")
 async def get_history(request: Request, limit: int = 30) -> list[dict]:
-    return memory.recent_messages(request.state.uid, min(limit, 100))
+    return memory.recent_messages(_resolve_uid(request), min(limit, 100))
 
 
 async def _extract_facts(user_id: str) -> None:
@@ -178,7 +218,7 @@ async def _summarize_old_history(user_id: str) -> None:
 async def chat(
     req: ChatRequest, request: Request, background: BackgroundTasks
 ) -> StreamingResponse:
-    uid = request.state.uid
+    uid = _resolve_uid(request)
     # 親密度: 1発言 +1、その日最初の会話はボーナス
     today_first = not any(
         m["role"] == "user" for m in memory.messages_on(uid, date.today())
@@ -256,7 +296,7 @@ async def chat(
 
 @app.post("/api/nudge")
 async def nudge(req: NudgeRequest, request: Request) -> dict:
-    uid = request.state.uid
+    uid = _resolve_uid(request)
     last_seen = memory.get_kv(uid, "last_seen")
     user_name = memory.get_kv(uid, "user_name")
     name_note = (
@@ -292,7 +332,7 @@ async def nudge(req: NudgeRequest, request: Request) -> dict:
 
 @app.get("/api/diary")
 async def get_diary(request: Request) -> dict:
-    uid = request.state.uid
+    uid = _resolve_uid(request)
     today = date.today()
     can_generate = (
         not memory.has_diary(uid, today) and len(memory.messages_on(uid, today)) >= 4
@@ -302,7 +342,7 @@ async def get_diary(request: Request) -> dict:
 
 @app.post("/api/diary/generate")
 async def generate_diary(request: Request) -> dict:
-    uid = request.state.uid
+    uid = _resolve_uid(request)
     today = date.today()
     msgs = memory.messages_on(uid, today)
     if len(msgs) < 4:
