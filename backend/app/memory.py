@@ -117,6 +117,35 @@ def user_message_count() -> int:
     return int(row["n"])
 
 
+def messages_to_summarize(after_id: int, keep_recent: int) -> list[dict]:
+    """要約対象メッセージ = 直近 keep_recent 件(逐語でLLMに渡す窓)より古く、
+    かつ未要約(id > after_id)のもの。古い順(id 昇順)で返す。"""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, role, content FROM messages "
+            "WHERE id > ? AND id < ("
+            "  SELECT MIN(id) FROM (SELECT id FROM messages ORDER BY id DESC LIMIT ?)"
+            ") ORDER BY id ASC",
+            (after_id, keep_recent),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+# --- 会話要約(逐語の窓から溢れた古い会話の圧縮ストア) ---
+
+def get_summary() -> str:
+    return get_kv("conversation_summary", "") or ""
+
+
+def get_summary_through_id() -> int:
+    return int(get_kv("summary_through_id", "0") or 0)
+
+
+def set_summary(summary: str, through_id: int) -> None:
+    set_kv("conversation_summary", summary)
+    set_kv("summary_through_id", str(through_id))
+
+
 # --- facts ---
 
 def add_fact(content: str) -> None:

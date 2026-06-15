@@ -31,6 +31,9 @@ memory.init_db()
 EMOTION_TAG_RE = re.compile(r"\[(neutral|happy|sad|angry|relaxed|shy)\]")
 FACT_EXTRACTION_INTERVAL = 6  # ユーザー発言N回ごとに事実抽出
 DAILY_FIRST_CHAT_BONUS = 5
+HISTORY_WINDOW = 24  # 逐語でLLMに渡す直近メッセージ数
+SUMMARY_CHUNK = 16  # 窓から溢れた未要約メッセージがN件たまったら要約に畳み込む
+SUMMARY_MAX_CHARS = 1200  # 要約が無限に伸びないための安全上限
 
 
 class ChatRequest(BaseModel):
@@ -114,6 +117,32 @@ async def _extract_facts() -> None:
             memory.add_fact(line)
 
 
+async def _summarize_old_history() -> None:
+    """逐語の窓(HISTORY_WINDOW)から溢れた古い会話を、たまったら要約へ畳み込む。
+    閾値未満なら軽量クエリだけで即return し、LLM は呼ばない。"""
+    through = memory.get_summary_through_id()
+    pending = memory.messages_to_summarize(through, HISTORY_WINDOW)
+    if len(pending) < SUMMARY_CHUNK:
+        return
+    conversation = "\n".join(
+        f"{'ユーザー' if m['role'] == 'user' else 'シロ'}: {m['content']}"
+        for m in pending
+    )
+    try:
+        raw = await llm.complete(
+            persona.SUMMARY_PROMPT.format(
+                summary=memory.get_summary() or "(まだ要約はない)",
+                conversation=conversation,
+            )
+        )
+    except Exception:
+        return  # 失敗時は through_id を進めないので次回再試行される
+    _, new_summary = _strip_emotion(raw)
+    new_summary = new_summary.strip()
+    if new_summary:
+        memory.set_summary(new_summary[:SUMMARY_MAX_CHARS], pending[-1]["id"])
+
+
 @app.post("/api/chat")
 async def chat(req: ChatRequest, background: BackgroundTasks) -> StreamingResponse:
     # 親密度: 1発言 +1、その日最初の会話はボーナス
@@ -131,14 +160,16 @@ async def chat(req: ChatRequest, background: BackgroundTasks) -> StreamingRespon
         affinity=affinity,
         facts=memory.list_facts(),
         time_context=_time_context(),
+        summary=memory.get_summary(),
     )
     history = [
         {"role": m["role"], "content": m["content"]}
-        for m in memory.recent_messages(24)
+        for m in memory.recent_messages(HISTORY_WINDOW)
     ]
 
     if memory.user_message_count() % FACT_EXTRACTION_INTERVAL == 0:
         background.add_task(_extract_facts)
+    background.add_task(_summarize_old_history)
 
     async def event_stream():
         def sse(payload: dict) -> str:
@@ -173,11 +204,11 @@ async def chat(req: ChatRequest, background: BackgroundTasks) -> StreamingRespon
                 if rest:
                     full_text += rest
                     yield sse({"type": "token", "text": rest})
-        except Exception as exc:  # LLM接続失敗など
+        except Exception as exc:  # クラウドLLM接続失敗・APIキー未設定など
             yield sse({
                 "type": "error",
                 "message": f"応答の生成に失敗しました ({type(exc).__name__})。"
-                "OllamaまたはAPIキーの設定を確認してください。",
+                "LLM_API_KEY の設定とネットワーク接続を確認してください。",
             })
             return
         full_text = full_text.strip()
@@ -259,7 +290,7 @@ async def get_tts(text: str) -> Response:
     audio = await tts.synthesize(text[:300])
     if audio is None:
         return Response(status_code=204)
-    return Response(content=audio, media_type="audio/wav")
+    return Response(content=audio, media_type="audio/mpeg")
 
 
 # 本番ビルド時はフロントエンドの成果物を同居配信する

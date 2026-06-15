@@ -1,7 +1,9 @@
 /**
- * 音声合成キュー。
- * 1. バックエンド /api/tts (AivisSpeech) が使えれば WAV 再生 + 実音量リップシンク
- * 2. ダメなら Web Speech API (speechSynthesis) + 擬似リップシンク
+ * 音声合成キュー(純クラウド)。
+ * バックエンド /api/tts (ElevenLabs) が返す MP3 を Web Audio で再生し、
+ * 実際の音量を解析してリップシンクする。
+ * クラウド合成が使えない場合(キー未設定=204 や失敗)は無音で続行する
+ * — ローカル/ブラウザ読み上げへのフォールバックは持たない。
  */
 
 export class SpeechQueue {
@@ -11,15 +13,10 @@ export class SpeechQueue {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private analyserData: Uint8Array | null = null;
-  private fakeTalking = false;
+  private currentSource: AudioBufferSourceNode | null = null;
 
   /** 現在の口の開き具合 (0..1) — Viewer が毎フレーム参照する */
   mouthLevel = (): number => {
-    if (this.fakeTalking) {
-      // 擬似リップシンク: なめらかなノイズ
-      const t = performance.now() / 1000;
-      return 0.25 + 0.35 * Math.abs(Math.sin(t * 9) * Math.sin(t * 2.3));
-    }
     if (this.analyser && this.analyserData) {
       this.analyser.getByteFrequencyData(this.analyserData);
       let sum = 0;
@@ -50,8 +47,16 @@ export class SpeechQueue {
 
   stop(): void {
     this.queue = [];
-    speechSynthesis.cancel();
-    this.fakeTalking = false;
+    if (this.currentSource) {
+      try {
+        this.currentSource.stop();
+      } catch {
+        /* 既に停止済みなら無視 */
+      }
+      this.currentSource = null;
+    }
+    this.analyser = null;
+    this.analyserData = null;
   }
 
   private async processQueue(): Promise<void> {
@@ -59,18 +64,18 @@ export class SpeechQueue {
     while (this.queue.length > 0 && this.enabled) {
       const text = this.queue.shift()!;
       try {
-        const played = await this.playFromBackend(text);
-        if (!played) await this.playFromBrowser(text);
+        await this.playFromBackend(text);
       } catch {
-        // 1文の失敗は無視して次へ
+        // 1文の失敗(合成不可・再生不可)は無視して次へ。フォールバックはしない。
       }
     }
     this.playing = false;
   }
 
-  private async playFromBackend(text: string): Promise<boolean> {
+  private async playFromBackend(text: string): Promise<void> {
     const response = await fetch(`/api/tts?text=${encodeURIComponent(text)}`);
-    if (response.status !== 200) return false;
+    // 204 = クラウド合成が使えない(キー未設定など)→ 無音で続行
+    if (response.status !== 200) return;
     const buffer = await response.arrayBuffer();
 
     this.audioContext ??= new AudioContext();
@@ -87,34 +92,14 @@ export class SpeechQueue {
     source.connect(this.analyser);
     this.analyser.connect(this.audioContext.destination);
 
+    this.currentSource = source;
     await new Promise<void>((resolve) => {
       source.onended = () => resolve();
       source.start();
     });
+    this.currentSource = null;
     this.analyser = null;
     this.analyserData = null;
-    return true;
-  }
-
-  private playFromBrowser(text: string): Promise<void> {
-    return new Promise((resolve) => {
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'ja-JP';
-      utterance.rate = 1.05;
-      utterance.pitch = 1.15;
-      const voice = speechSynthesis
-        .getVoices()
-        .find((v) => v.lang.startsWith('ja'));
-      if (voice) utterance.voice = voice;
-      utterance.onstart = () => (this.fakeTalking = true);
-      const finish = () => {
-        this.fakeTalking = false;
-        resolve();
-      };
-      utterance.onend = finish;
-      utterance.onerror = finish;
-      speechSynthesis.speak(utterance);
-    });
   }
 }
 

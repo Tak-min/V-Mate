@@ -1,0 +1,19 @@
+{
+  "project": "aikata-public-deploy",
+  "iteration": 1,
+  "current_phase": "A",
+  "phases": {
+    "0_anchors": "done",
+    "A_user_scoped_data": "in_progress",
+    "B_postgres": "todo",
+    "C_accounts_auth": "todo",
+    "D_ratelimit_tts_cors": "todo",
+    "E_frontend_auth_ui": "todo",
+    "F_deploy": "todo"
+  },
+  "last_action": "Phase 0 anchors created; Part1 (Groq OpenAI-compat LLM) already done & verified",
+  "last_verify": "import OK, pytest 11 passed (pre Phase A)",
+  "no_progress_count": 0,
+  "max_iterations": 20,
+  "notes": "Cost-conscious: keep each phase shippable. Auth/DB phases need opus reviewers."
+}

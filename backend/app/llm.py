@@ -1,7 +1,8 @@
-"""LLM クライアント。Gemini(クラウド)と Ollama(ローカル)を切り替える。
+"""LLM クライアント — OpenAI 互換 Chat Completions エンドポイントを使用する。
 
-優先順位: AIKATA_PROVIDER 環境変数 > GEMINI_API_KEY があれば gemini > ollama
-ローカル(Ollama + qwen3)だけで完結できるため、APIキー無しでも動く。
+既定は Groq(無料枠・高速・OpenAI互換)。`LLM_BASE_URL` を差し替えるだけで
+Cerebras / OpenRouter / ローカル互換サーバ等へ移行できる(ベンダーロックイン回避)。
+返答生成はすべてクラウドのストリーミングに委ねる。`LLM_API_KEY` は必須。
 """
 
 from __future__ import annotations
@@ -12,146 +13,71 @@ from collections.abc import AsyncIterator
 
 import httpx
 
-OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3:8b")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+# 既定 = Groq(https://console.groq.com で無料キー取得)。
+LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.groq.com/openai/v1").rstrip("/")
+# 日本語雑談向けは Qwen 系が強い。安定して存在する Llama 3.3 70B を既定に。
+# 日本語重視なら .env で LLM_MODEL=qwen/qwen3-32b 等に変更可。
+LLM_MODEL = os.environ.get("LLM_MODEL", "llama-3.3-70b-versatile")
+# 後方互換: LLM_API_KEY が無ければ GROQ_API_KEY を見る。
+LLM_API_KEY = os.environ.get("LLM_API_KEY") or os.environ.get("GROQ_API_KEY", "")
 TEMPERATURE = 0.85
+REQUEST_TIMEOUT = 120
 
 
 def provider() -> str:
-    forced = os.environ.get("AIKATA_PROVIDER", "auto").lower()
-    if forced in ("ollama", "gemini"):
-        return forced
-    return "gemini" if GEMINI_API_KEY else "ollama"
+    """状態表示用。使用中のモデル名を返す。"""
+    return LLM_MODEL
 
 
-class ThinkFilter:
-    """qwen3 等が出力する <think>...</think> ブロックをストリームから除去する。"""
-
-    def __init__(self) -> None:
-        self._buffer = ""
-        self._in_think = False
-
-    def feed(self, chunk: str) -> str:
-        self._buffer += chunk
-        out: list[str] = []
-        while self._buffer:
-            if self._in_think:
-                end = self._buffer.find("</think>")
-                if end == -1:
-                    self._buffer = self._buffer[-8:]  # タグ跨ぎ分だけ保持
-                    break
-                self._buffer = self._buffer[end + len("</think>"):]
-                self._in_think = False
-            else:
-                start = self._buffer.find("<think>")
-                if start == -1:
-                    # タグの先頭部分かもしれない末尾は持ち越す
-                    safe = len(self._buffer) - 7
-                    if safe > 0:
-                        out.append(self._buffer[:safe])
-                        self._buffer = self._buffer[safe:]
-                    break
-                out.append(self._buffer[:start])
-                self._buffer = self._buffer[start + len("<think>"):]
-                self._in_think = True
-        return "".join(out)
-
-    def flush(self) -> str:
-        rest = "" if self._in_think else self._buffer
-        self._buffer = ""
-        return rest
+def _require_api_key() -> str:
+    if not LLM_API_KEY:
+        raise RuntimeError(
+            "LLM_API_KEY が未設定です。backend/.env に LLM のAPIキー(既定はGroq)を設定してください。"
+        )
+    return LLM_API_KEY
 
 
 async def stream_chat(
     system: str, messages: list[dict]
 ) -> AsyncIterator[str]:
-    """messages: [{"role": "user"|"assistant", "content": str}, ...]"""
-    if provider() == "gemini":
-        async for chunk in _stream_gemini(system, messages):
-            yield chunk
-    else:
-        async for chunk in _stream_ollama(system, messages):
-            yield chunk
-
-
-async def complete(prompt: str) -> str:
-    """非ストリーミングの単発補完(事実抽出・日記・声かけ用)。"""
-    parts: list[str] = []
-    async for chunk in stream_chat("", [{"role": "user", "content": prompt}]):
-        parts.append(chunk)
-    return "".join(parts).strip()
-
-
-async def _stream_ollama(
-    system: str, messages: list[dict]
-) -> AsyncIterator[str]:
-    # qwen3 は think:false だけでは推論文が本文に混ざることがあるため、
-    # ソフトスイッチ /no_think も併用する(他モデルには無害)
-    system_with_switch = f"{system}\n/no_think" if "qwen3" in OLLAMA_MODEL else system
+    """messages: [{"role": "user"|"assistant", "content": str}, ...] をクラウドへ流す。"""
+    api_key = _require_api_key()
+    payload_messages = (
+        [{"role": "system", "content": system}] if system else []
+    ) + messages
     payload = {
-        "model": OLLAMA_MODEL,
+        "model": LLM_MODEL,
+        "messages": payload_messages,
+        "temperature": TEMPERATURE,
         "stream": True,
-        "think": False,
-        "options": {"temperature": TEMPERATURE},
-        "messages": (
-            [{"role": "system", "content": system_with_switch}]
-            if system_with_switch
-            else []
-        )
-        + messages,
     }
-    think_filter = ThinkFilter()
-    async with httpx.AsyncClient(timeout=120) as client:
-        async with client.stream(
-            "POST", f"{OLLAMA_URL}/api/chat", json=payload
-        ) as response:
-            response.raise_for_status()
-            async for line in response.aiter_lines():
-                if not line.strip():
-                    continue
-                data = json.loads(line)
-                text = think_filter.feed(data.get("message", {}).get("content", ""))
-                if text:
-                    yield text
-                if data.get("done"):
-                    break
-    tail = think_filter.flush()
-    if tail:
-        yield tail
-
-
-async def _stream_gemini(
-    system: str, messages: list[dict]
-) -> AsyncIterator[str]:
-    contents = [
-        {
-            "role": "model" if m["role"] == "assistant" else "user",
-            "parts": [{"text": m["content"]}],
-        }
-        for m in messages
-    ]
-    payload: dict = {
-        "contents": contents,
-        "generationConfig": {"temperature": TEMPERATURE},
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
     }
-    if system:
-        payload["systemInstruction"] = {"parts": [{"text": system}]}
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{GEMINI_MODEL}:streamGenerateContent?alt=sse"
-    )
-    async with httpx.AsyncClient(timeout=120) as client:
-        async with client.stream(
-            "POST", url, json=payload, headers={"x-goog-api-key": GEMINI_API_KEY}
-        ) as response:
+    url = f"{LLM_BASE_URL}/chat/completions"
+    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+        async with client.stream("POST", url, json=payload, headers=headers) as response:
             response.raise_for_status()
             async for line in response.aiter_lines():
                 if not line.startswith("data: "):
                     continue
-                data = json.loads(line[len("data: "):])
-                for candidate in data.get("candidates", []):
-                    for part in candidate.get("content", {}).get("parts", []):
-                        if part.get("text"):
-                            yield part["text"]
+                data = line[len("data: "):].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data)
+                except json.JSONDecodeError:
+                    continue
+                for choice in chunk.get("choices", []):
+                    text = choice.get("delta", {}).get("content")
+                    if text:
+                        yield text
+
+
+async def complete(prompt: str) -> str:
+    """非ストリーミングの単発補完(事実抽出・日記・要約・声かけ用)。"""
+    parts: list[str] = []
+    async for chunk in stream_chat("", [{"role": "user", "content": prompt}]):
+        parts.append(chunk)
+    return "".join(parts).strip()

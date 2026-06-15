@@ -56,6 +56,7 @@ def build_system_prompt(
     affinity: int,
     facts: list[str],
     time_context: str,
+    summary: str = "",
 ) -> str:
     stage_name, tone = stage_for(affinity)
     name_part = f"ユーザーの名前は「{user_name}」。" if user_name else (
@@ -65,6 +66,11 @@ def build_system_prompt(
         "\n".join(f"- {f}" for f in facts)
         if facts
         else "- (まだ何も知らない。会話の中で少しずつ知っていく)"
+    )
+    summary_part = (
+        f"\n## これまでの会話の流れ(要約)\n{summary.strip()}\n"
+        if summary.strip()
+        else ""
     )
     emotions = "|".join(EMOTIONS)
     return f"""あなたは「シロ」。ユーザーのパソコンの中に住んでいる相棒キャラクター。
@@ -83,7 +89,7 @@ def build_system_prompt(
 {name_part}
 覚えていること:
 {facts_part}
-
+{summary_part}
 ## いまの状況
 {time_context}
 
@@ -130,4 +136,22 @@ DIARY_PROMPT = """あなたは「シロ」。今日ユーザー({user_name})と�
 
 今日の会話:
 {conversation}
+"""
+
+SUMMARY_PROMPT = """ユーザーとAIコンパニオン「シロ」の会話の長期記憶として、要約を更新する。
+古い要約に新しい会話断片を統合し、後の会話で文脈として使える簡潔な要約を作る。
+
+重視すること: 話の流れ・関係性の変化・継続中の話題・約束やこれからの予定・感情の機微。
+含めないこと: 名前や好み等の確定した事実(別途 facts で管理しているため不要)、一過性の挨拶。
+
+これまでの要約:
+{summary}
+
+追加する会話:
+{conversation}
+
+出力ルール:
+- 箇条書きにせず、自然な日本語の文章で書く
+- 200〜400字程度。冗長にしない
+- 要約本文だけを出力する(前置き・見出し・感情タグは付けない)
 """

@@ -14,7 +14,7 @@ ChatVRM・Replika・推し恋系アプリの調査をもとに、「親近感」
 | シロの日記 | Replika Diary | その日の会話を振り返ってシロが日記を書く |
 | 自発的な声かけ | Replika | 起動時の挨拶+放置2分で時間帯・記憶を踏まえた一言 |
 | 感情表現 | ChatVRM | `[happy]`等のタグ→VRM表情+モーション切替+まばたき+視線追従 |
-| 音声+リップシンク | ChatVRM | AivisSpeech(あれば)/ブラウザTTS。音量解析で口が動く |
+| 音声+リップシンク | ChatVRM | ElevenLabs(クラウド)で合成。音量解析で口が動く |
 
 ## 構成
 
@@ -23,9 +23,11 @@ backend/   FastAPI — チャット(SSE)・記憶・日記・親密度・TTSプ�
 frontend/  Vite + React + three.js + @pixiv/three-vrm — VRM表示・UI
 ```
 
-- **LLM**: Gemini(APIキーがあれば)/ Ollama qwen3:8b(ローカル、キー不要)
-- **TTS**: AivisSpeech Engine(起動していれば)/ Web Speech API フォールバック
+- **LLM**: OpenAI互換API(既定 Groq・無料/高速)。`LLM_BASE_URL` 差し替えで Cerebras/OpenRouter へ移行可。返答はストリーミングで逐次表示
+- **TTS**: ElevenLabs(クラウド・APIキー必須)。文ごとに合成し逐次再生。キー未設定時は無音(テキストのみ)
 - **モデル**: `frontend/public/models/shiro.vrm` + VRoid 待機モーション5種(.vrma)
+
+> ローカルAI(Ollama)・ローカルTTS(AivisSpeech)・ブラウザ読み上げは廃止し、すべてクラウドAPIに統一済み。
 
 ## 起動
 
@@ -43,7 +45,7 @@ frontend/  Vite + React + three.js + @pixiv/three-vrm — VRM表示・UI
 cd backend
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-cp .env.example .env   # 必要ならAPIキーを記入(無くてもOllamaで動く)
+cp .env.example .env   # GEMINI_API_KEY と ELEVENLABS_API_KEY を記入(クラウド必須)
 
 # フロントエンド
 cd ../frontend
@@ -55,10 +57,12 @@ npm run build          # backend/static に出力され、:8080 で配信され�
 
 | 変数 | 説明 |
 |------|------|
-| `AIKATA_PROVIDER` | `auto`(既定)/ `ollama` / `gemini` |
-| `GEMINI_API_KEY` | あれば Gemini を使用 |
-| `OLLAMA_MODEL` | 既定 `qwen3:8b`(4bは思考漏れがあるため非推奨) |
-| `AIVIS_SPEAKER` | AivisSpeech の話者ID |
+| `LLM_API_KEY` | **必須**。LLM の APIキー(既定 Groq。`GROQ_API_KEY` でも可) |
+| `LLM_BASE_URL` | 既定 `https://api.groq.com/openai/v1`。OpenAI互換なら何でも可 |
+| `LLM_MODEL` | 既定 `llama-3.3-70b-versatile`(日本語重視は `qwen/qwen3-32b` 等) |
+| `ELEVENLABS_API_KEY` | **必須**(音声を使う場合)。未設定なら無音 |
+| `ELEVENLABS_VOICE_ID` | 声の指定。既定は多言語対応の "Sarah" |
+| `ELEVENLABS_MODEL` | 既定 `eleven_multilingual_v2` |
 
 ## データ
 
