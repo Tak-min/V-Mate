@@ -1,8 +1,9 @@
-"""会話の要約圧縮(ローリング要約バッファ)のテスト。
+"""会話の要約圧縮(ローリング要約バッファ)+ ユーザー分離のテスト。
 
 検証対象:
-- memory.messages_to_summarize の窓・after_id 境界
-- 要約ストアの往復
+- memory.messages_to_summarize の窓・after_id 境界(user_id スコープ)
+- 要約ストアの往復(user_id スコープ)
+- ユーザー間でデータが分離していること
 - persona.build_system_prompt への要約注入(有無)
 - main._summarize_old_history の閾値スキップ / 畳み込み(LLM はモック)
 """
@@ -11,18 +12,20 @@ import pytest
 
 from app import main, memory, persona
 
+U = "u1"  # テスト用 user_id
 
-def _seed(n: int) -> None:
+
+def _seed(n: int, user_id: str = U) -> None:
     for i in range(n):
         role = "user" if i % 2 == 0 else "assistant"
-        memory.add_message(role, f"msg{i}")
+        memory.add_message(user_id, role, f"msg{i}")
 
 
 # --- memory.messages_to_summarize ---
 
 def test_excludes_recent_window(db):
     _seed(30)
-    pending = memory.messages_to_summarize(0, keep_recent=24)
+    pending = memory.messages_to_summarize(U, 0, keep_recent=24)
     assert len(pending) == 6  # 30 - 24
     ids = [m["id"] for m in pending]
     assert ids == sorted(ids)  # 古い順
@@ -31,28 +34,48 @@ def test_excludes_recent_window(db):
 
 def test_empty_when_below_window(db):
     _seed(10)
-    assert memory.messages_to_summarize(0, keep_recent=24) == []
+    assert memory.messages_to_summarize(U, 0, keep_recent=24) == []
 
 
 def test_empty_when_exactly_window(db):
     _seed(24)
-    assert memory.messages_to_summarize(0, keep_recent=24) == []
+    assert memory.messages_to_summarize(U, 0, keep_recent=24) == []
 
 
 def test_respects_after_id(db):
     _seed(30)
-    pending = memory.messages_to_summarize(after_id=3, keep_recent=24)
+    pending = memory.messages_to_summarize(U, after_id=3, keep_recent=24)
     assert [m["id"] for m in pending] == [4, 5, 6]
+
+
+# --- ユーザー分離 ---
+
+def test_users_are_isolated(db):
+    _seed(4, user_id="alice")
+    _seed(2, user_id="bob")
+    assert len(memory.recent_messages("alice", 100)) == 4
+    assert len(memory.recent_messages("bob", 100)) == 2
+    memory.add_affinity("alice", 10)
+    assert memory.get_affinity("alice") == 10
+    assert memory.get_affinity("bob") == 0  # 別ユーザーは影響を受けない
+
+
+def test_same_fact_allowed_across_users(db):
+    memory.add_fact("alice", "ラーメンが好き")
+    memory.add_fact("bob", "ラーメンが好き")
+    assert memory.list_facts("alice") == ["ラーメンが好き"]
+    assert memory.list_facts("bob") == ["ラーメンが好き"]
 
 
 # --- summary store ---
 
 def test_summary_roundtrip(db):
-    assert memory.get_summary() == ""
-    assert memory.get_summary_through_id() == 0
-    memory.set_summary("二人で旅行の話をした", 12)
-    assert memory.get_summary() == "二人で旅行の話をした"
-    assert memory.get_summary_through_id() == 12
+    assert memory.get_summary(U) == ""
+    assert memory.get_summary_through_id(U) == 0
+    memory.set_summary(U, "二人で旅行の話をした", 12)
+    assert memory.get_summary(U) == "二人で旅行の話をした"
+    assert memory.get_summary_through_id(U) == 12
+    assert memory.get_summary("other") == ""  # 別ユーザーには漏れない
 
 
 # --- persona ---
@@ -83,11 +106,11 @@ async def test_skips_below_threshold(db, monkeypatch):
         return "x"
 
     monkeypatch.setattr(main.llm, "complete", fake_complete)
-    await main._summarize_old_history()
+    await main._summarize_old_history(U)
 
     assert called is False  # LLM は呼ばれない
-    assert memory.get_summary() == ""
-    assert memory.get_summary_through_id() == 0
+    assert memory.get_summary(U) == ""
+    assert memory.get_summary_through_id(U) == 0
 
 
 async def test_folds_when_threshold_met(db, monkeypatch):
@@ -100,18 +123,18 @@ async def test_folds_when_threshold_met(db, monkeypatch):
         return "[happy] 二人は少しずつ仲良くなった"  # 感情タグが混ざる想定
 
     monkeypatch.setattr(main.llm, "complete", fake_complete)
-    await main._summarize_old_history()
+    await main._summarize_old_history(U)
 
-    summary = memory.get_summary()
+    summary = memory.get_summary(U)
     assert "二人は少しずつ仲良くなった" in summary
     assert "[happy]" not in summary  # _strip_emotion で除去される
-    assert memory.get_summary_through_id() == 6  # pending 末尾の id まで前進
+    assert memory.get_summary_through_id(U) == 6  # pending 末尾の id まで前進
 
 
 async def test_existing_summary_passed_into_prompt(db, monkeypatch):
     monkeypatch.setattr(main, "HISTORY_WINDOW", 2)
     monkeypatch.setattr(main, "SUMMARY_CHUNK", 4)
-    memory.set_summary("以前: 試験勉強を頑張っていた", 0)
+    memory.set_summary(U, "以前: 試験勉強を頑張っていた", 0)
     _seed(8)
 
     seen = {}
@@ -121,10 +144,10 @@ async def test_existing_summary_passed_into_prompt(db, monkeypatch):
         return "更新後の要約"
 
     monkeypatch.setattr(main.llm, "complete", fake_complete)
-    await main._summarize_old_history()
+    await main._summarize_old_history(U)
 
     assert "試験勉強を頑張っていた" in seen["prompt"]  # 旧要約を統合に使う
-    assert memory.get_summary() == "更新後の要約"
+    assert memory.get_summary(U) == "更新後の要約"
 
 
 async def test_llm_failure_does_not_advance(db, monkeypatch):
@@ -136,7 +159,7 @@ async def test_llm_failure_does_not_advance(db, monkeypatch):
         raise RuntimeError("LLM down")
 
     monkeypatch.setattr(main.llm, "complete", boom)
-    await main._summarize_old_history()  # 例外は内部で握りつぶす
+    await main._summarize_old_history(U)  # 例外は内部で握りつぶす
 
-    assert memory.get_summary() == ""
-    assert memory.get_summary_through_id() == 0  # 次回再試行できるよう据え置き
+    assert memory.get_summary(U) == ""
+    assert memory.get_summary_through_id(U) == 0  # 次回再試行できるよう据え置き

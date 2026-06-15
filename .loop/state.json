@@ -1,19 +1,20 @@
 {
   "project": "aikata-public-deploy",
-  "iteration": 1,
-  "current_phase": "A",
+  "iteration": 2,
+  "current_phase": "B",
   "phases": {
     "0_anchors": "done",
-    "A_user_scoped_data": "in_progress",
+    "A_user_scoped_data": "done",
     "B_postgres": "todo",
     "C_accounts_auth": "todo",
     "D_ratelimit_tts_cors": "todo",
     "E_frontend_auth_ui": "todo",
     "F_deploy": "todo"
   },
-  "last_action": "Phase 0 anchors created; Part1 (Groq OpenAI-compat LLM) already done & verified",
-  "last_verify": "import OK, pytest 11 passed (pre Phase A)",
+  "last_action": "Phase A done: memory.py を user_id スコープ化 + Cookie匿名ID middleware + 旧DB移行(local) + テスト13通過",
+  "last_verify": "pytest 13 passed; 旧DB移行をコピーで検証(18msg/6facts/1diary/affinity7/たくみん 保全, 冪等)",
   "no_progress_count": 0,
   "max_iterations": 20,
-  "notes": "Cost-conscious: keep each phase shippable. Auth/DB phases need opus reviewers."
+  "deferred_reviews": "Phase A の data 分離レビューは Phase C(auth)で security-reviewer/database-reviewer(opus)にまとめて実施",
+  "notes": "コスト критиカル($90超)。各フェーズ shippable。続行はユーザー合図でフェーズ単位に。"
 }
