@@ -8,6 +8,7 @@ Phase C でアカウント(ログイン)に昇格させる予定。
 from __future__ import annotations
 
 import json
+import os
 import re
 import uuid
 from datetime import date, datetime
@@ -25,15 +26,44 @@ from pydantic import BaseModel, Field  # noqa: E402
 
 from . import auth, llm, memory, persona, tts  # noqa: E402
 
+def _cors_origins() -> list[str]:
+    base = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    extra = os.environ.get("CORS_ORIGINS", "")
+    base += [o.strip() for o in extra.split(",") if o.strip()]
+    return base
+
+
 app = FastAPI(title="Aikata")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 memory.init_db()
+
+# --- レート制限 / TTS ゲート(Phase D: 公開時のコスト・不正利用対策)---
+# 公開では既定で TTS オフ(ElevenLabs 無料枠が極小なため)。ローカルは .env で ENABLE_TTS=true。
+ENABLE_TTS = os.environ.get("ENABLE_TTS", "false").lower() in ("1", "true", "yes", "on")
+RATE_PER_USER_PER_DAY = int(os.environ.get("RATE_PER_USER_PER_DAY", "50"))
+RATE_GLOBAL_PER_DAY = int(os.environ.get("RATE_GLOBAL_PER_DAY", "800"))  # Groq無料1000/日を保護
+RATE_LOGIN_PER_IP_PER_DAY = int(os.environ.get("RATE_LOGIN_PER_IP_PER_DAY", "30"))
+
+
+def _enforce_rate_limit(uid: str) -> None:
+    """チャットの 1ユーザー/日 と 全体/日 の上限を課す。超過で 429。"""
+    day = date.today().isoformat()
+    if memory.bump_usage(f"user:{uid}", day) > RATE_PER_USER_PER_DAY:
+        raise HTTPException(
+            status_code=429,
+            detail="今日はたくさん話したね。また明日ゆっくり話そう。",
+        )
+    if memory.bump_usage("global", day) > RATE_GLOBAL_PER_DAY:
+        raise HTTPException(
+            status_code=429,
+            detail="今いろんな人がシロと話していて混み合ってるみたい。少し時間をおいてね。",
+        )
 
 COOKIE_NAME = "aikata_uid"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 365 * 2  # 2年
@@ -137,7 +167,10 @@ async def auth_signup(req: AuthRequest, request: Request) -> dict:
 
 
 @app.post("/api/auth/login")
-async def auth_login(req: AuthRequest) -> dict:
+async def auth_login(req: AuthRequest, request: Request) -> dict:
+    ip = request.client.host if request.client else "unknown"
+    if memory.bump_usage(f"login:{ip}", date.today().isoformat()) > RATE_LOGIN_PER_IP_PER_DAY:
+        raise HTTPException(status_code=429, detail="ログイン試行が多すぎます。時間をおいて再度お試しください。")
     try:
         token = auth.login(req.email, req.password)
     except ValueError as exc:
@@ -219,6 +252,7 @@ async def chat(
     req: ChatRequest, request: Request, background: BackgroundTasks
 ) -> StreamingResponse:
     uid = _resolve_uid(request)
+    _enforce_rate_limit(uid)
     # 親密度: 1発言 +1、その日最初の会話はボーナス
     today_first = not any(
         m["role"] == "user" for m in memory.messages_on(uid, date.today())
@@ -364,6 +398,8 @@ async def generate_diary(request: Request) -> dict:
 
 @app.get("/api/tts")
 async def get_tts(text: str) -> Response:
+    if not ENABLE_TTS:  # 公開では既定オフ(無料枠保護)。無音=テキストのみ
+        return Response(status_code=204)
     audio = await tts.synthesize(text[:300])
     if audio is None:
         return Response(status_code=204)

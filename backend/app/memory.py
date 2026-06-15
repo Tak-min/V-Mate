@@ -76,6 +76,14 @@ kv = Table(
     Column("value", Text, nullable=False),
 )
 
+# レート制限カウンタ(Phase D)。scope 例: "user:<id>" / "global" / "login:<ip>"
+usage = Table(
+    "usage", metadata,
+    Column("scope", String(128), primary_key=True),
+    Column("day", String(10), primary_key=True),
+    Column("count", Integer, nullable=False),
+)
+
 # 認証(Phase C)。user_id はこの users.id(文字列)を指す。
 users = Table(
     "users", metadata,
@@ -371,6 +379,31 @@ def get_user_by_id(user_id: str) -> dict | None:
     with _get_engine().connect() as c:
         row = c.execute(select(users).where(users.c.id == user_id)).mappings().first()
     return dict(row) if row else None
+
+
+def bump_usage(scope: str, day: str) -> int:
+    """(scope, day) のカウンタを +1 して新しい値を返す(レート制限用)。"""
+    with _get_engine().begin() as c:
+        res = c.execute(
+            update(usage)
+            .where(and_(usage.c.scope == scope, usage.c.day == day))
+            .values(count=usage.c.count + 1)
+        )
+        if res.rowcount == 0:
+            try:
+                c.execute(insert(usage).values(scope=scope, day=day, count=1))
+                return 1
+            except IntegrityError:  # 競合時は再加算
+                c.execute(
+                    update(usage)
+                    .where(and_(usage.c.scope == scope, usage.c.day == day))
+                    .values(count=usage.c.count + 1)
+                )
+        return c.execute(
+            select(usage.c.count).where(
+                and_(usage.c.scope == scope, usage.c.day == day)
+            )
+        ).scalar_one()
 
 
 def reassign_user_data(from_user_id: str, to_user_id: str) -> None:
