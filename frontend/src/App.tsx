@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useCompanion } from './features/chat/useCompanion';
+import { AuthBar } from './components/AuthBar';
 import { ChatPanel } from './components/ChatPanel';
 import { DiaryDrawer } from './components/DiaryDrawer';
 import { StatusBar } from './components/StatusBar';
@@ -31,6 +32,7 @@ export default function App() {
         )}
       </div>
 
+      <AuthBar />
       <StatusBar state={state} onSaveName={saveName} />
 
       <div className="toolbar">
