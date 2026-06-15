@@ -1,20 +1,20 @@
 {
   "project": "aikata-public-deploy",
-  "iteration": 2,
-  "current_phase": "B",
+  "iteration": 6,
+  "current_phase": "DONE",
   "phases": {
     "0_anchors": "done",
     "A_user_scoped_data": "done",
-    "B_postgres": "todo",
-    "C_accounts_auth": "todo",
-    "D_ratelimit_tts_cors": "todo",
-    "E_frontend_auth_ui": "todo",
-    "F_deploy": "todo"
+    "B_postgres": "done",
+    "C_accounts_auth": "done",
+    "D_ratelimit_tts_cors": "done",
+    "E_frontend_auth_ui": "done",
+    "F_deploy": "done"
   },
-  "last_action": "Phase A done: memory.py を user_id スコープ化 + Cookie匿名ID middleware + 旧DB移行(local) + テスト13通過",
-  "last_verify": "pytest 13 passed; 旧DB移行をコピーで検証(18msg/6facts/1diary/affinity7/たくみん 保全, 冪等)",
+  "last_action": "Phase F: Dockerfile/render.yaml/DEPLOY.md。受け入れテスト(実Groqチャット+認証+分離)PASS",
+  "last_verify": "pytest 24 passed; tsc 0; 実Groq end-to-end OK(匿名chat/signup/me/分離); frontend build OK",
+  "definition_of_done": "コード面は完了。残る外部作業=本人のアカウント操作(GitHub push / Neon作成 / Render Blueprint デプロイ)。手順は DEPLOY.md。",
+  "branch": "feat/public-multiuser-deploy",
   "no_progress_count": 0,
-  "max_iterations": 20,
-  "deferred_reviews": "Phase A の data 分離レビューは Phase C(auth)で security-reviewer/database-reviewer(opus)にまとめて実施",
-  "notes": "コスト критиカル($90超)。各フェーズ shippable。続行はユーザー合図でフェーズ単位に。"
+  "notes": "Docker実ビルドはRender側に委譲(未ローカル実行)。merge/pushは未実施(指示待ち)。"
 }

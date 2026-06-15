@@ -1,0 +1,27 @@
+# Render Blueprint — シロ(Aikata)公開デプロイ
+# 使い方: GitHub に push → Render → New → Blueprint → このリポジトリを選択。
+# その後 Render のダッシュボードで sync:false の値(LLM_API_KEY / DATABASE_URL)を入力する。
+services:
+  - type: web
+    name: aikata
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/state
+    autoDeploy: true
+    envVars:
+      - key: LLM_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: LLM_MODEL
+        value: llama-3.3-70b-versatile
+      - key: LLM_API_KEY        # Groq の APIキー(https://console.groq.com)
+        sync: false
+      - key: DATABASE_URL       # Neon の Postgres 接続URL(永続化に必須)
+        sync: false
+      - key: JWT_SECRET         # 自動生成(端末を越えたログイン維持に必要)
+        generateValue: true
+      - key: ENABLE_TTS         # 公開は無料枠保護のため既定オフ
+        value: "false"
+      - key: RATE_PER_USER_PER_DAY
+        value: "50"
+      - key: RATE_GLOBAL_PER_DAY
+        value: "800"

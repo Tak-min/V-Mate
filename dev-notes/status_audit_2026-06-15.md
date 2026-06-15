@@ -96,6 +96,40 @@ LangChain の ConversationSummaryBuffer に相当する**ローリング要約�
 
 ---
 
+# 追記 2026-06-16: 公開Webサービス化(Phase A〜F)+ Groq移行
+
+LLM を Groq(OpenAI互換)へ移行し、不特定多数向け公開サービスとして実装。branch `feat/public-multiuser-deploy`。
+Groqキーは別プロジェクト(~/youtube-ai-pipeline/docker/.env の GROQ_API_KEY_MOTIVATION)から流用。
+
+## 構成判断(ユーザーのプロフィール反映: 無料・学生・自律)
+- LLM=Groq(無料/高速/OpenAI互換), DB=Postgres(Neon無料)/SQLite両対応, ホスト=Render無料Docker, 認証=email+JWT, 公開TTS既定オフ。
+
+## フェーズ
+- A: memory を user_id スコープ化 + 匿名Cookie ID middleware + 旧DB→'local'移行
+- B: SQLAlchemy Core 化(DATABASE_URL=Postgres / 既定SQLite)
+- C: 認証(bcrypt直 + PyJWT)。匿名データを signup でアカウントへ昇格
+- D: レート制限(user50/全体800/login30 per day)+ TTSゲート(ENABLE_TTS)+ CORS env
+- E: フロント認証UI(api.ts集約 / AuthBar / localStorageトークン)
+- F: Dockerfile(フロント→バック多段)+ render.yaml + DEPLOY.md
+
+## ハマりどころ(Symptom → Cause → Fix)
+- **passlib が bcrypt で例外** `module 'bcrypt' has no attribute '__about__'`: passlib1.7 が bcrypt>=4.1 と非互換 → **bcrypt を直接利用**(passlib撤去、72バイト切詰)。
+- **JWT InsecureKeyLengthWarning**: HS256鍵が32バイト未満 → dev既定鍵を長く。本番は `JWT_SECRET` を必須(render.yaml は generateValue)。
+- **旧DB移行で `no such column: user_id`**: init_db が新スキーマのindex(user_id)を旧テーブルに先に作ろうとした → **移行(rename)を create より先**に。SQLAlchemy版では sqlite かつ旧スキーマ時のみ raw sqlite3 で rename→create_all→copy。
+- **テストで engine が古いDBを掴む**: SQLAlchemy engine をモジュールで保持 → `init_db()` で `_reset_engine()` して monkeypatch 後の DB_PATH を反映。
+- **vite outDir=../backend/static**: Docker は frontend ステージで `/app/backend/static` に出力 → backend ステージへ COPY。dev は vite proxy で /api 同一オリジン(Cookie が効く)。
+- **レート制限テストが実Groqを叩く**: 上限0にして最初の1回で429 → LLM未呼び出しで検証。
+
+## 検証(2026-06-16)
+- pytest 24 passed / tsc 0 / frontend build OK。
+- 実Groq end-to-end(TestClient): 匿名state→signup→me→**実チャット応答(自然な日本語)**→別匿名は履歴0(分離)。
+- Docker実ビルドは未ローカル実行(Render側に委譲)。
+
+## 残(本人のアカウント操作のみ)
+GitHub push → Neon作成(DATABASE_URL)→ Render Blueprint デプロイ。手順は `DEPLOY.md`。
+
+---
+
 # 追記 2026-06-15(その2): クラウド一本化 — ローカル実行を全廃
 
 ## 方針(ユーザー決定)
