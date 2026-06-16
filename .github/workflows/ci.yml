@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  backend:
+    name: バックエンド(pytest + import)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 依存インストール(dev=runtime+pytest)
+        run: pip install -r backend/requirements-dev.txt
+      - name: pytest
+        working-directory: backend
+        run: python -m pytest -q
+      - name: import スモーク(init_db含む)
+        working-directory: backend
+        run: python -c "import app.main; print('import OK')"
+
+  frontend:
+    name: フロント(tsc + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: npm ci
+        working-directory: frontend
+        run: npm ci
+      - name: 型チェック
+        working-directory: frontend
+        run: npx tsc --noEmit
+      - name: 本番ビルド(→ backend/static)
+        working-directory: frontend
+        run: npm run build
+
+  docker:
+    name: Dockerイメージビルド(デプロイ検証)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker build(多段=フロント→バック)
+        run: docker build -t aikata:ci .
