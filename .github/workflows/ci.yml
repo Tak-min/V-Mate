@@ -41,8 +41,23 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+  worker:
+    name: Cloudflare Worker(型チェック)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: npm install
+        working-directory: worker
+        run: npm install
+      - name: 型チェック(tsc --noEmit)
+        working-directory: worker
+        run: npm run typecheck
+
   docker:
-    name: Dockerイメージビルド(デプロイ検証)
+    name: Dockerイメージビルド(旧Python版・参考検証)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

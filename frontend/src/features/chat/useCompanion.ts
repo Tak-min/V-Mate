@@ -13,6 +13,36 @@ import type { ChatMessage, CompanionState, Emotion } from './types';
 const IDLE_NUDGE_MS = 120_000;
 const RELAX_AFTER_MS = 6_000;
 
+const DEFAULT_WAITING_CUES = [
+  'うん、聞いてる。',
+  '少し考えるね。',
+  'ちゃんと受け取ったよ。',
+  '今の言葉、ゆっくり見てる。',
+];
+
+function pick<T>(items: readonly T[]): T {
+  return items[Math.floor(Math.random() * items.length)];
+}
+
+function waitingCueFor(message: string): string {
+  if (/[疲つか]れ|しんど|眠|ねむ|つら|辛|だる|限界/.test(message)) {
+    return pick(['そっか、少し重かったんだね。', 'うん、無理しないで聞くね。']);
+  }
+  if (/[不安怖こわ]|心配|緊張|泣|かなしい|悲/.test(message)) {
+    return pick(['大丈夫、急がなくていいよ。', 'ここにいるから、ゆっくりでいいよ。']);
+  }
+  if (/[嬉うれ]|楽しか|最高|できた|成功|よかった/.test(message)) {
+    return pick(['わ、それ聞きたい。', 'いいね、ちゃんと聞かせて。']);
+  }
+  if (/[?？]$|どう|なぜ|なんで|教えて|かな/.test(message)) {
+    return pick(['うん、いっしょに考える。', '少し整理してみるね。']);
+  }
+  if (message.length > 80) {
+    return pick(['長めに話してくれてるね。ちゃんと読んでる。', 'ひとつずつ受け取るね。']);
+  }
+  return pick(DEFAULT_WAITING_CUES);
+}
+
 export function useCompanion() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const viewerRef = useRef<CompanionViewer | null>(null);
@@ -62,6 +92,11 @@ export function useCompanion() {
     }, IDLE_NUDGE_MS);
   }, [pushAssistant]);
 
+  const noticeInputActivity = useCallback(() => {
+    viewerRef.current?.notice('typing', 1.6);
+    resetIdleTimer();
+  }, [resetIdleTimer]);
+
   // 3D ビューア初期化
   useEffect(() => {
     if (!canvasRef.current || viewerRef.current) return;
@@ -82,6 +117,10 @@ export function useCompanion() {
     fetchHistory().then(setMessages).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (state) viewerRef.current?.setAffinity(state.affinity);
+  }, [state]);
+
   // モデル読み込み完了後にシロから挨拶(Replika 的プロアクティブ性)
   useEffect(() => {
     if (!ready || greeted.current) return;
@@ -99,8 +138,12 @@ export function useCompanion() {
       const message = raw.trim();
       if (!message || busy) return;
       setBusy(true);
+      viewerRef.current?.notice('thinking', 4.8);
       setMessages((prev) => [...prev, { role: 'user', content: message }]);
-      setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: '', emotion: 'relaxed', cue: waitingCueFor(message) },
+      ]);
 
       const splitter = new SentenceSplitter();
       let emotion: Emotion = 'neutral';
@@ -124,6 +167,7 @@ export function useCompanion() {
             showEmotion(e);
           },
           onToken: (text) => {
+            viewerRef.current?.notice('speaking', 2.2);
             appendToLast(text);
             for (const sentence of splitter.feed(text)) {
               speech.enqueue(sentence);
@@ -178,6 +222,7 @@ export function useCompanion() {
     ready,
     loadProgress,
     voiceEnabled,
+    noticeInputActivity,
     send,
     saveName,
     toggleVoice,

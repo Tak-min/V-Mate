@@ -1,0 +1,41 @@
+{
+  // シロ(Aikata)— 全Cloudflare 構成(Worker + D1 + 静的アセット同居)。
+  // デプロイ: cd worker && npm i && npm run db:init:remote && npm run deploy
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "aikata",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-06-01",
+
+  // 静的フロント(Vite ビルド成果物)を同一オリジンで配信する。
+  // /api/* だけは必ず Worker を先に実行し、それ以外は静的アセット→SPAフォールバック。
+  "assets": {
+    "directory": "../backend/static",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+
+  // D1(SQLite・無料・永続)。database_id は `wrangler d1 create aikata` で発行された値に置き換える。
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "aikata",
+      "database_id": "235e7390-c238-4f6d-8568-d30899db71f0"
+    }
+  ],
+
+  // 機密でない設定。秘密(LLM_API_KEY / JWT_SECRET / ELEVENLABS_API_KEY)は
+  // `wrangler secret put <NAME>` で登録する(ここには書かない)。
+  "vars": {
+    "LLM_BASE_URL": "https://api.groq.com/openai/v1",
+    "LLM_MODEL": "llama-3.3-70b-versatile",
+    "ENABLE_TTS": "true",
+    "RATE_PER_USER_PER_DAY": "50",
+    "RATE_GLOBAL_PER_DAY": "800",
+    "RATE_LOGIN_PER_IP_PER_DAY": "30"
+  },
+
+  "observability": {
+    "enabled": true
+  }
+}

@@ -113,7 +113,11 @@ export const fetchState = (): Promise<CompanionState> =>
   apiFetch('/api/state').then((r) => r.json());
 
 export const fetchHistory = (): Promise<ChatMessage[]> =>
-  apiFetch('/api/history').then((r) => r.json());
+  apiFetch('/api/history').then(async (r) => {
+    if (!r.ok) return [];
+    const data = await r.json().catch(() => []);
+    return Array.isArray(data) ? data : [];
+  });
 
 export const setProfile = (userName: string): Promise<CompanionState> =>
   apiFetch('/api/profile', {
@@ -124,12 +128,18 @@ export const setProfile = (userName: string): Promise<CompanionState> =>
 
 export const requestNudge = (
   reason: 'idle' | 'greeting',
-): Promise<{ text: string; emotion: Emotion }> =>
-  apiFetch('/api/nudge', {
+): Promise<{ text: string; emotion: Emotion }> => {
+  const fallback = { text: '', emotion: 'neutral' as Emotion };
+  return apiFetch('/api/nudge', {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({ reason }),
-  }).then((r) => r.json());
+  }).then(async (r) => {
+    if (!r.ok) return fallback;
+    const data = await r.json().catch(() => fallback);
+    return typeof data.text === 'string' ? data : fallback;
+  });
+};
 
 export const fetchDiary = (): Promise<{
   entries: DiaryEntry[];

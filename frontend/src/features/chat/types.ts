@@ -4,6 +4,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   emotion?: Emotion;
+  cue?: string;
 }
 
 export interface CompanionState {

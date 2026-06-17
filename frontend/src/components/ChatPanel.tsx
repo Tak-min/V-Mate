@@ -13,10 +13,11 @@ const EMOTION_EMOJI: Record<Emotion, string> = {
 interface Props {
   messages: ChatMessage[];
   busy: boolean;
+  onInputActivity: () => void;
   onSend: (text: string) => void;
 }
 
-export function ChatPanel({ messages, busy, onSend }: Props) {
+export function ChatPanel({ messages, busy, onInputActivity, onSend }: Props) {
   const [draft, setDraft] = useState('');
   const logRef = useRef<HTMLDivElement | null>(null);
 
@@ -50,8 +51,11 @@ export function ChatPanel({ messages, busy, onSend }: Props) {
             }`}
           >
             {message.role === 'assistant' && !message.content ? (
-              <span className="typing-dots" aria-label="入力中">
-                <i /><i /><i />
+              <span className="typing-state" aria-live="polite">
+                {message.cue && <span className="typing-cue">{message.cue}</span>}
+                <span className="typing-dots" aria-label="入力中">
+                  <i /><i /><i />
+                </span>
               </span>
             ) : (
               <>
@@ -72,7 +76,11 @@ export function ChatPanel({ messages, busy, onSend }: Props) {
           value={draft}
           placeholder="メッセージを書く…"
           maxLength={2000}
-          onChange={(event) => setDraft(event.target.value)}
+          onFocus={onInputActivity}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            onInputActivity();
+          }}
           aria-label="メッセージ入力"
         />
         <button type="submit" disabled={busy || !draft.trim()} aria-label="送信">

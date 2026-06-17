@@ -14,6 +14,7 @@ export default function App() {
     ready,
     loadProgress,
     voiceEnabled,
+    noticeInputActivity,
     send,
     saveName,
     toggleVoice,
@@ -55,7 +56,12 @@ export default function App() {
         </button>
       </div>
 
-      <ChatPanel messages={messages} busy={busy} onSend={send} />
+      <ChatPanel
+        messages={messages}
+        busy={busy}
+        onInputActivity={noticeInputActivity}
+        onSend={send}
+      />
       <DiaryDrawer open={diaryOpen} onClose={() => setDiaryOpen(false)} />
     </div>
   );
