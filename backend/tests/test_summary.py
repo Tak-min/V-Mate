@@ -104,6 +104,25 @@ def test_prompt_omits_empty_diary(db):
     assert "前回感じたこと" not in p
 
 
+def test_prompt_includes_mood_trail(db):
+    p = persona.build_system_prompt(None, 0, [], "now", recent_emotions=["happy", "happy", "sad"])
+    assert "直近の自分の感情の流れ" in p
+    assert "happy → happy → sad" in p
+
+
+def test_prompt_omits_empty_mood_trail(db):
+    p = persona.build_system_prompt(None, 0, [], "now", recent_emotions=[])
+    assert "直近の自分の感情の流れ" not in p
+    p2 = persona.build_system_prompt(None, 0, [], "now", recent_emotions=None)
+    assert "直近の自分の感情の流れ" not in p2
+
+
+def test_prompt_mood_trail_skips_blank_entries(db):
+    p = persona.build_system_prompt(None, 0, [], "now", recent_emotions=["happy", "", None])
+    assert "happy" in p
+    assert "happy → " not in p  # 空/Noneは混ざらない
+
+
 def test_chat_injects_latest_diary_into_system_prompt(db, monkeypatch):
     from datetime import date
 
@@ -134,6 +153,36 @@ def test_chat_injects_latest_diary_into_system_prompt(db, monkeypatch):
     r2 = c.post("/api/chat", json={"message": "ねえねえ"})
     list(r2.iter_lines())
     assert diary_text in captured.get("recent_diary", "")
+
+
+def test_chat_injects_recent_emotion_trail_into_system_prompt(db, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    captured: dict = {}
+    real_build_system_prompt = persona.build_system_prompt
+
+    def spy_build_system_prompt(*args, **kwargs):
+        captured.update(kwargs)
+        return real_build_system_prompt(*args, **kwargs)
+
+    monkeypatch.setattr(persona, "build_system_prompt", spy_build_system_prompt)
+
+    # 各リクエストの system prompt は「それ以前」の応答履歴から組まれるため、
+    # 4通目を送った時点で 1〜3通目の感情(happy, happy, sad)が trail に乗っているはず。
+    emotions_to_emit = ["[happy] わーい", "[happy] うんうん", "[sad] そっか…", "[sad] うーん"]
+
+    def make_stream(text):
+        async def fake_stream(*args, **kwargs):
+            yield text
+        return fake_stream
+
+    c = TestClient(main.app)
+    for text in emotions_to_emit:
+        monkeypatch.setattr(main.llm, "stream_chat", make_stream(text))
+        r = c.post("/api/chat", json={"message": "やほー"})
+        list(r.iter_lines())
+
+    assert captured.get("recent_emotions") == ["happy", "happy", "sad"]
 
 
 # --- main._summarize_old_history (LLM をモック) ---

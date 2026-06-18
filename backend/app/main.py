@@ -382,6 +382,10 @@ async def chat(
     memory.touch_last_seen(uid)
 
     recent_diary = memory.list_diary(uid, 1)
+    raw_history = memory.recent_messages(uid, HISTORY_WINDOW)
+    recent_emotions = [
+        m["emotion"] for m in raw_history if m["role"] == "assistant" and m.get("emotion")
+    ][-3:]
     system = persona.build_system_prompt(
         user_name=memory.get_kv(uid, "user_name"),
         affinity=affinity,
@@ -389,11 +393,9 @@ async def chat(
         time_context=_time_context(),
         summary=memory.get_summary(uid),
         recent_diary=recent_diary[0]["content"] if recent_diary else "",
+        recent_emotions=recent_emotions,
     )
-    history = [
-        {"role": m["role"], "content": m["content"]}
-        for m in memory.recent_messages(uid, HISTORY_WINDOW)
-    ]
+    history = [{"role": m["role"], "content": m["content"]} for m in raw_history]
 
     if memory.user_message_count(uid) % FACT_EXTRACTION_INTERVAL == 0:
         background.add_task(_extract_facts, uid)

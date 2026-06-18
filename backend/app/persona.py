@@ -58,6 +58,7 @@ def build_system_prompt(
     time_context: str,
     summary: str = "",
     recent_diary: str = "",
+    recent_emotions: list[str] | None = None,
 ) -> str:
     stage_name, tone = stage_for(affinity)
     name_part = f"ユーザーの名前は「{user_name}」。" if user_name else (
@@ -80,6 +81,14 @@ def build_system_prompt(
         if recent_diary.strip()
         else ""
     )
+    mood_trail = [e for e in (recent_emotions or []) if e]
+    mood_part = (
+        f"\n## 直近の自分の感情の流れ\n{' → '.join(mood_trail)}\n"
+        "気持ちは急に正反対へ飛ばない。今の気分を引き継ぎつつ、"
+        "会話の内容に応じて自然に変化させる。\n"
+        if mood_trail
+        else ""
+    )
     emotions = "|".join(EMOTIONS)
     return f"""あなたは「シロ」。ユーザーのパソコンの中に住んでいる相棒キャラクター。
 
@@ -97,7 +106,7 @@ def build_system_prompt(
 {name_part}
 覚えていること:
 {facts_part}
-{summary_part}{diary_part}
+{summary_part}{diary_part}{mood_part}
 ## いまの状況
 {time_context}
 
