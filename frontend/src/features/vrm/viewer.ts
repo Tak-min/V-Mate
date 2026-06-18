@@ -233,12 +233,25 @@ export class CompanionViewer {
 
     this.updateBlink(delta, manager);
 
-    // リップシンク
-    const level = this.getMouthLevel?.() ?? 0;
+    // リップシンク。TTS音声があれば実音量、無ければ(無音/TTSオフ)
+    // 「speaking」中だけテキストの代わりに口パクの代替動作で喋っているように見せる。
+    const audioLevel = this.getMouthLevel?.() ?? 0;
+    const proceduralLevel =
+      this.attentionMode === 'speaking' && audioLevel <= 0.02 ? this.proceduralMouthLevel() : 0;
+    const level = Math.max(audioLevel, proceduralLevel);
     const targetMouth = level > 0.02 ? Math.min(0.16 + level * 0.92, 1) : 0;
     const mouthLambda = targetMouth > this.mouthOpen ? 18 : 10;
     this.mouthOpen = damp(this.mouthOpen, targetMouth, mouthLambda, delta);
     manager.setValue('aa', Math.min(this.mouthOpen, 1));
+  }
+
+  /** 実音声(TTS)が無いときの口パク代替。複数周波数の合成で人の発話に近い不規則さを出す。 */
+  private proceduralMouthLevel(): number {
+    const t = this.elapsed;
+    const chatter =
+      Math.sin(t * 16.5) * 0.4 + Math.sin(t * 23.7 + 1.1) * 0.3 + Math.sin(t * 9.3 + 2.4) * 0.3;
+    const pause = Math.sin(t * 2.6 + 0.6) * 0.5 + 0.5; // 文の合間に時々口を閉じる緩い波
+    return Math.max(0, chatter) * (0.35 + pause * 0.4);
   }
 
   private updateBlink(delta: number, manager: NonNullable<VRM['expressionManager']>): void {
