@@ -10,6 +10,13 @@ const EMOTION_EMOJI: Record<Emotion, string> = {
   shy: '😳',
 };
 
+const STARTER_PROMPTS = [
+  '今日あったことを話したいな',
+  '好きな食べ物は?',
+  'いま何してるの?',
+  '少し元気がないの聞いてほしいな',
+];
+
 interface Props {
   messages: ChatMessage[];
   busy: boolean;
@@ -39,9 +46,24 @@ export function ChatPanel({ messages, busy, onInputActivity, onSend }: Props) {
     <section className="chat-panel" aria-label="シロとのチャット">
       <div className="chat-log" ref={logRef}>
         {messages.length === 0 && (
-          <p className="chat-empty">
-            シロに話しかけてみよう。今日あったこと、好きなもの、なんでも。
-          </p>
+          <div className="chat-empty">
+            <p>シロに話しかけてみよう。今日あったこと、好きなもの、なんでも。</p>
+            <div className="chat-suggestions">
+              {STARTER_PROMPTS.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  className="chat-suggestion-chip"
+                  onClick={() => {
+                    onInputActivity();
+                    onSend(prompt);
+                  }}
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
         {messages.map((message, index) => (
           <div
