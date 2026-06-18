@@ -57,6 +57,7 @@ def build_system_prompt(
     facts: list[str],
     time_context: str,
     summary: str = "",
+    recent_diary: str = "",
 ) -> str:
     stage_name, tone = stage_for(affinity)
     name_part = f"ユーザーの名前は「{user_name}」。" if user_name else (
@@ -70,6 +71,13 @@ def build_system_prompt(
     summary_part = (
         f"\n## これまでの会話の流れ(要約)\n{summary.strip()}\n"
         if summary.strip()
+        else ""
+    )
+    diary_part = (
+        f"\n## 自分(シロ)が前回感じたこと(日記より)\n{recent_diary.strip()}\n"
+        "これは自分自身の気持ちの続き。話題が合えば自然に触れてよいが、"
+        "毎回無理に持ち出す必要はない。\n"
+        if recent_diary.strip()
         else ""
     )
     emotions = "|".join(EMOTIONS)
@@ -89,7 +97,7 @@ def build_system_prompt(
 {name_part}
 覚えていること:
 {facts_part}
-{summary_part}
+{summary_part}{diary_part}
 ## いまの状況
 {time_context}
 

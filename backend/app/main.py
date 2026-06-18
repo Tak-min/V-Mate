@@ -7,6 +7,7 @@ Phase C でアカウント(ログイン)に昇格させる予定。
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -49,6 +50,10 @@ ENABLE_TTS = os.environ.get("ENABLE_TTS", "false").lower() in ("1", "true", "yes
 RATE_PER_USER_PER_DAY = int(os.environ.get("RATE_PER_USER_PER_DAY", "50"))
 RATE_GLOBAL_PER_DAY = int(os.environ.get("RATE_GLOBAL_PER_DAY", "800"))  # Groq無料1000/日を保護
 RATE_LOGIN_PER_IP_PER_DAY = int(os.environ.get("RATE_LOGIN_PER_IP_PER_DAY", "30"))
+RESEARCH_ALLOW_CONDITION_OVERRIDE = os.environ.get(
+    "RESEARCH_ALLOW_CONDITION_OVERRIDE", "true"
+).lower() in ("1", "true", "yes", "on")
+RESEARCH_EXPORT_TOKEN = os.environ.get("RESEARCH_EXPORT_TOKEN", "").strip()
 
 
 def _enforce_rate_limit(uid: str) -> None:
@@ -68,6 +73,14 @@ def _enforce_rate_limit(uid: str) -> None:
 COOKIE_NAME = "aikata_uid"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 365 * 2  # 2年
 EMOTION_TAG_RE = re.compile(r"\[(neutral|happy|sad|angry|relaxed|shy)\]")
+RESEARCH_CONDITIONS = ("text", "stylized", "realistic")
+RESEARCH_METRICS_VERSION = "2026-06-18-v1"
+SENSITIVE_SELF_DISCLOSURE_RE = re.compile(
+    r"悩|不安|怖|こわ|つら|辛|疲|しんど|泣|孤独|寂|さび|死|消えたい|"
+    r"自傷|自殺|病|家族|友達|恋|好き|嫌い|秘密|恥|失敗|将来|進路|受験|"
+    r"anxious|lonely|depress|suicide|self-harm|secret|family|friend|love",
+    re.IGNORECASE,
+)
 FACT_EXTRACTION_INTERVAL = 6  # ユーザー発言N回ごとに事実抽出
 DAILY_FIRST_CHAT_BONUS = 5
 HISTORY_WINDOW = 24  # 逐語でLLMに渡す直近メッセージ数
@@ -97,6 +110,7 @@ async def ensure_user_cookie(request: Request, call_next):
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
+    condition: str | None = Field(default=None, max_length=24)
 
 
 class ProfileRequest(BaseModel):
@@ -110,6 +124,17 @@ class NudgeRequest(BaseModel):
 class AuthRequest(BaseModel):
     email: str = Field(min_length=3, max_length=255)
     password: str = Field(min_length=6, max_length=200)
+
+
+class ResearchSessionRequest(BaseModel):
+    condition: str | None = Field(default=None, max_length=24)
+    source: str = Field(default="app", max_length=64)
+
+
+class ResearchEventRequest(BaseModel):
+    condition: str = Field(max_length=24)
+    event_type: str = Field(min_length=1, max_length=64)
+    payload: dict = Field(default_factory=dict)
 
 
 def _resolve_uid(request: Request) -> str:
@@ -157,6 +182,51 @@ def _state_payload(user_id: str) -> dict:
     }
 
 
+def _default_research_condition(user_id: str) -> str:
+    digest = hashlib.sha256(user_id.encode("utf-8")).digest()
+    return RESEARCH_CONDITIONS[digest[0] % len(RESEARCH_CONDITIONS)]
+
+
+def _research_condition(user_id: str, requested: str | None = None) -> str:
+    if requested in RESEARCH_CONDITIONS and RESEARCH_ALLOW_CONDITION_OVERRIDE:
+        memory.set_kv(user_id, "research_condition", requested)
+        return requested
+    stored = memory.get_kv(user_id, "research_condition")
+    if stored in RESEARCH_CONDITIONS:
+        return stored
+    condition = _default_research_condition(user_id)
+    memory.set_kv(user_id, "research_condition", condition)
+    return condition
+
+
+def _log_research_event(
+    user_id: str,
+    condition: str,
+    event_type: str,
+    payload: dict | None = None,
+) -> None:
+    if condition not in RESEARCH_CONDITIONS:
+        condition = _research_condition(user_id)
+    body = payload or {}
+    body.setdefault("metrics_version", RESEARCH_METRICS_VERSION)
+    memory.add_research_event(
+        user_id,
+        condition,
+        event_type,
+        json.dumps(body, ensure_ascii=False, separators=(",", ":")),
+    )
+
+
+def _message_metrics(text: str) -> dict:
+    stripped = text.strip()
+    return {
+        "char_count": len(stripped),
+        "line_count": stripped.count("\n") + (1 if stripped else 0),
+        "question_count": stripped.count("?") + stripped.count("？"),
+        "contains_sensitive_self_disclosure": bool(SENSITIVE_SELF_DISCLOSURE_RE.search(stripped)),
+    }
+
+
 @app.post("/api/auth/signup")
 async def auth_signup(req: AuthRequest, request: Request) -> dict:
     try:
@@ -188,6 +258,44 @@ async def auth_me(request: Request) -> dict:
 @app.get("/api/state")
 async def get_state(request: Request) -> dict:
     return _state_payload(_resolve_uid(request))
+
+
+@app.post("/api/research/session")
+async def research_session(req: ResearchSessionRequest, request: Request) -> dict:
+    uid = _resolve_uid(request)
+    condition = _research_condition(uid, req.condition)
+    _log_research_event(
+        uid,
+        condition,
+        "session_start",
+        {
+            "source": req.source,
+            "override_requested": req.condition if req.condition in RESEARCH_CONDITIONS else None,
+            "override_allowed": RESEARCH_ALLOW_CONDITION_OVERRIDE,
+        },
+    )
+    return {
+        "condition": condition,
+        "conditions": list(RESEARCH_CONDITIONS),
+        "metrics_version": RESEARCH_METRICS_VERSION,
+    }
+
+
+@app.post("/api/research/event")
+async def research_event(req: ResearchEventRequest, request: Request) -> dict:
+    uid = _resolve_uid(request)
+    condition = _research_condition(uid, req.condition)
+    _log_research_event(uid, condition, req.event_type, req.payload)
+    return {"ok": True}
+
+
+@app.get("/api/research/export")
+async def research_export(request: Request, limit: int = 500) -> list[dict]:
+    token = request.headers.get("X-Research-Export-Token", "")
+    if not RESEARCH_EXPORT_TOKEN or token != RESEARCH_EXPORT_TOKEN:
+        raise HTTPException(status_code=403, detail="research export disabled")
+    uid = _resolve_uid(request)
+    return memory.list_research_events(uid, min(max(limit, 1), 5000))
 
 
 @app.post("/api/profile")
@@ -252,23 +360,35 @@ async def chat(
     req: ChatRequest, request: Request, background: BackgroundTasks
 ) -> StreamingResponse:
     uid = _resolve_uid(request)
+    condition = _research_condition(uid, req.condition)
     _enforce_rate_limit(uid)
     # 親密度: 1発言 +1、その日最初の会話はボーナス
     today_first = not any(
         m["role"] == "user" for m in memory.messages_on(uid, date.today())
     )
     memory.add_message(uid, "user", req.message)
+    _log_research_event(
+        uid,
+        condition,
+        "chat_sent",
+        {
+            "message": _message_metrics(req.message),
+            "today_first": today_first,
+        },
+    )
     affinity = memory.add_affinity(
         uid, 1 + (DAILY_FIRST_CHAT_BONUS if today_first else 0)
     )
     memory.touch_last_seen(uid)
 
+    recent_diary = memory.list_diary(uid, 1)
     system = persona.build_system_prompt(
         user_name=memory.get_kv(uid, "user_name"),
         affinity=affinity,
         facts=memory.list_facts(uid),
         time_context=_time_context(),
         summary=memory.get_summary(uid),
+        recent_diary=recent_diary[0]["content"] if recent_diary else "",
     )
     history = [
         {"role": m["role"], "content": m["content"]}
@@ -322,6 +442,15 @@ async def chat(
         full_text = full_text.strip()
         if full_text:
             memory.add_message(uid, "assistant", full_text, emotion)
+            _log_research_event(
+                uid,
+                condition,
+                "assistant_done",
+                {
+                    "emotion": emotion or "neutral",
+                    "response": _message_metrics(full_text),
+                },
+            )
         state = _state_payload(uid)
         yield sse({"type": "done", **state})
 
@@ -350,6 +479,10 @@ async def nudge(req: NudgeRequest, request: Request) -> dict:
     facts = memory.list_facts(uid, 8)
     if facts:
         context += "覚えていること: " + " / ".join(facts)
+    if req.reason == "greeting":
+        recent_diary = memory.list_diary(uid, 1)
+        if recent_diary:
+            context += f" 前回の自分の日記: {recent_diary[0]['content']}"
     prompt = persona.NUDGE_PROMPT.format(
         context=context, emotions="|".join(persona.EMOTIONS)
     )

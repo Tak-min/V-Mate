@@ -91,6 +91,51 @@ def test_prompt_omits_empty_summary(db):
     assert "これまでの会話の流れ" not in p
 
 
+def test_prompt_includes_recent_diary(db):
+    p = persona.build_system_prompt(
+        None, 0, [], "now", recent_diary="今日は少し寂しかった。明日また話せるといいな。"
+    )
+    assert "前回感じたこと" in p
+    assert "今日は少し寂しかった" in p
+
+
+def test_prompt_omits_empty_diary(db):
+    p = persona.build_system_prompt(None, 0, [], "now", recent_diary="   ")
+    assert "前回感じたこと" not in p
+
+
+def test_chat_injects_latest_diary_into_system_prompt(db, monkeypatch):
+    from datetime import date
+
+    from fastapi.testclient import TestClient
+
+    captured: dict = {}
+    real_build_system_prompt = persona.build_system_prompt
+
+    def spy_build_system_prompt(*args, **kwargs):
+        captured.update(kwargs)
+        return real_build_system_prompt(*args, **kwargs)
+
+    monkeypatch.setattr(persona, "build_system_prompt", spy_build_system_prompt)
+
+    async def fake_stream(*args, **kwargs):
+        yield "[happy] やほー"
+
+    monkeypatch.setattr(main.llm, "stream_chat", fake_stream)
+
+    c = TestClient(main.app)
+    diary_text = "今日は少し寂しかった。明日また話せるといいな。"
+    # 1通目でCookieを発行させ、そのユーザーIDに日記を紐付ける。
+    r1 = c.post("/api/chat", json={"message": "やほー"})
+    list(r1.iter_lines())
+    uid = c.cookies.get(main.COOKIE_NAME)
+    memory.add_diary(uid, date.today(), diary_text)
+
+    r2 = c.post("/api/chat", json={"message": "ねえねえ"})
+    list(r2.iter_lines())
+    assert diary_text in captured.get("recent_diary", "")
+
+
 # --- main._summarize_old_history (LLM をモック) ---
 
 async def test_skips_below_threshold(db, monkeypatch):
