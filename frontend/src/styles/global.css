@@ -404,6 +404,12 @@ body {
   outline-offset: 2px;
 }
 
+.icon-button.active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-soft), inset 0 0 0 1px oklch(99% 0.01 80 / 0.4);
+}
+
 /* --- チャットパネル --- */
 .chat-panel {
   position: absolute;
@@ -605,6 +611,27 @@ body {
 }
 
 /* --- 日記ドロワー --- */
+.diary-backdrop {
+  position: absolute;
+  inset: 0;
+  border: none;
+  padding: 0;
+  background: oklch(20% 0.02 50 / 0);
+  cursor: default;
+  /* ツールバー/ステータスバー/認証バー/チャットパネルより手前には出さない
+     (z-index 5/5/6/4) — ドロワー表示中もそれらを操作可能なままにする。 */
+  z-index: 3;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 380ms var(--ease-out);
+}
+
+.diary-backdrop.open {
+  background: oklch(20% 0.02 50 / 0.18);
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .diary-drawer {
   position: absolute;
   top: 0;

@@ -24,6 +24,15 @@ export function DiaryDrawer({ open, onClose }: Props) {
       .catch(() => setNotice('日記を読み込めませんでした'));
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open, onClose]);
+
   const handleGenerate = async () => {
     setGenerating(true);
     try {
@@ -45,38 +54,47 @@ export function DiaryDrawer({ open, onClose }: Props) {
   };
 
   return (
-    <aside className={`diary-drawer${open ? ' open' : ''}`} aria-hidden={!open}>
-      <header className="diary-header">
-        <h2>シロの日記</h2>
-        <button type="button" className="icon-button" onClick={onClose} aria-label="閉じる">
-          ✕
-        </button>
-      </header>
-      <p className="diary-caption">
-        シロがあなたと過ごした日のことを書き留めています。
-      </p>
-      {canGenerate && (
-        <button
-          type="button"
-          className="diary-generate"
-          onClick={handleGenerate}
-          disabled={generating}
-        >
-          {generating ? '書いてる…' : '今日の日記を書いてもらう'}
-        </button>
-      )}
-      {notice && <p className="diary-notice">{notice}</p>}
-      <div className="diary-entries">
-        {entries.length === 0 && !notice && (
-          <p className="diary-notice">まだ日記はありません。たくさん話すと書いてくれます。</p>
+    <>
+      <button
+        type="button"
+        className={`diary-backdrop${open ? ' open' : ''}`}
+        onClick={onClose}
+        aria-hidden={!open}
+        tabIndex={-1}
+      />
+      <aside className={`diary-drawer${open ? ' open' : ''}`} aria-hidden={!open}>
+        <header className="diary-header">
+          <h2>シロの日記</h2>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="閉じる">
+            ✕
+          </button>
+        </header>
+        <p className="diary-caption">
+          シロがあなたと過ごした日のことを書き留めています。
+        </p>
+        {canGenerate && (
+          <button
+            type="button"
+            className="diary-generate"
+            onClick={handleGenerate}
+            disabled={generating}
+          >
+            {generating ? '書いてる…' : '今日の日記を書いてもらう'}
+          </button>
         )}
-        {entries.map((entry) => (
-          <article key={entry.entry_date} className="diary-entry">
-            <time>{entry.entry_date}</time>
-            <p>{entry.content}</p>
-          </article>
-        ))}
-      </div>
-    </aside>
+        {notice && <p className="diary-notice">{notice}</p>}
+        <div className="diary-entries">
+          {entries.length === 0 && !notice && (
+            <p className="diary-notice">まだ日記はありません。たくさん話すと書いてくれます。</p>
+          )}
+          {entries.map((entry) => (
+            <article key={entry.entry_date} className="diary-entry">
+              <time>{entry.entry_date}</time>
+              <p>{entry.content}</p>
+            </article>
+          ))}
+        </div>
+      </aside>
+    </>
   );
 }

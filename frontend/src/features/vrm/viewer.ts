@@ -56,6 +56,11 @@ function clamp01(value: number): number {
   return Math.min(Math.max(value, 0), 1);
 }
 
+/** 視線オフセットが不自然(人間離れした角度)にならないよう範囲を制限する。 */
+function clampGaze(value: number, limit: number): number {
+  return Math.min(Math.max(value, -limit), limit);
+}
+
 export class CompanionViewer {
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
@@ -345,7 +350,26 @@ export class CompanionViewer {
               ? 0.7
               : 1;
       const settled = 1 - this.relationshipWarmth * 0.28;
-      this.gazeOffset.set(rand(-0.34, 0.34) * focus * settled, rand(-0.16, 0.13) * focus * settled);
+
+      // 時々、ちょっと視線を大きく外して部屋のあちこちを見るような「ワイドグランス」を挟む。
+      // 人と話していてもずっと真っ直ぐ見つめ続けることはないので、その自然さを再現する。
+      const wideGlanceChance =
+        this.attentionMode === 'idle'
+          ? 0.26
+          : this.attentionMode === 'listening'
+            ? 0.16
+            : this.attentionMode === 'speaking'
+              ? 0.12
+              : this.attentionMode === 'typing'
+                ? 0.08
+                : 0.05;
+      const isWideGlance = Math.random() < wideGlanceChance;
+      const wideScale = isWideGlance ? rand(1.8, 3.0) : 1;
+
+      this.gazeOffset.set(
+        clampGaze(rand(-0.34, 0.34) * focus * settled * wideScale, 0.58),
+        clampGaze(rand(-0.16, 0.13) * focus * settled * wideScale, 0.3),
+      );
 
       if (
         (this.currentEmotion === 'shy' || this.currentEmotion === 'sad') &&
@@ -365,7 +389,7 @@ export class CompanionViewer {
               : this.attentionMode === 'speaking'
                 ? rand(1.1, 2.4)
                 : rand(1.5, 4.4);
-      this.nextGazeShift = baseDelay;
+      this.nextGazeShift = isWideGlance ? baseDelay * rand(1.3, 1.9) : baseDelay;
     }
 
     const pointerAge = this.elapsed - this.lastPointerAt;

@@ -48,9 +48,10 @@ export default function App() {
         </button>
         <button
           type="button"
-          className="icon-button"
-          onClick={() => setDiaryOpen(true)}
-          title="シロの日記を読む"
+          className={`icon-button${diaryOpen ? ' active' : ''}`}
+          onClick={() => setDiaryOpen((prev) => !prev)}
+          aria-pressed={diaryOpen}
+          title={diaryOpen ? '日記を閉じる' : 'シロの日記を読む'}
         >
           📔
         </button>
