@@ -105,7 +105,10 @@ export class CompanionViewer {
 
   private disposed = false;
 
-  constructor(private canvas: HTMLCanvasElement) {
+  constructor(
+    private canvas: HTMLCanvasElement,
+    private options: { modelUrl?: string; fallbackModelUrl?: string } = {},
+  ) {
     this.renderer = new THREE.WebGLRenderer({
       canvas,
       alpha: true,
@@ -138,9 +141,19 @@ export class CompanionViewer {
     loader.register((parser) => new VRMLoaderPlugin(parser));
     loader.register((parser) => new VRMAnimationLoaderPlugin(parser));
 
-    const gltf = await loader.loadAsync(MODEL_URL, (e) => {
-      if (e.total > 0) onProgress?.(e.loaded / e.total);
-    });
+    const modelUrl = this.options.modelUrl ?? MODEL_URL;
+    let gltf;
+    try {
+      gltf = await loader.loadAsync(modelUrl, (e) => {
+        if (e.total > 0) onProgress?.(e.loaded / e.total);
+      });
+    } catch (error) {
+      const fallback = this.options.fallbackModelUrl ?? MODEL_URL;
+      if (fallback === modelUrl) throw error;
+      gltf = await loader.loadAsync(fallback, (e) => {
+        if (e.total > 0) onProgress?.(e.loaded / e.total);
+      });
+    }
     const vrm = gltf.userData.vrm as VRM;
     VRMUtils.removeUnnecessaryVertices(vrm.scene);
     VRMUtils.combineSkeletons(vrm.scene);

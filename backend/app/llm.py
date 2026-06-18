@@ -38,9 +38,13 @@ def _require_api_key() -> str:
 
 
 async def stream_chat(
-    system: str, messages: list[dict]
+    system: str, messages: list[dict], max_tokens: int | None = None
 ) -> AsyncIterator[str]:
-    """messages: [{"role": "user"|"assistant", "content": str}, ...] をクラウドへ流す。"""
+    """messages: [{"role": "user"|"assistant", "content": str}, ...] をクラウドへ流す。
+
+    max_tokens: 未指定なら無制限。ペルソナ指示(「1〜3文」等)はモデルが無視することがあるため、
+    会話のテンポを守る必要がある呼び出し元では明示的に上限を渡すこと。
+    """
     api_key = _require_api_key()
     payload_messages = (
         [{"role": "system", "content": system}] if system else []
@@ -51,6 +55,8 @@ async def stream_chat(
         "temperature": TEMPERATURE,
         "stream": True,
     }
+    if max_tokens is not None:
+        payload["max_tokens"] = max_tokens
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",

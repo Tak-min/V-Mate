@@ -3,6 +3,7 @@ import { useCompanion } from './features/chat/useCompanion';
 import { AuthBar } from './components/AuthBar';
 import { ChatPanel } from './components/ChatPanel';
 import { DiaryDrawer } from './components/DiaryDrawer';
+import { ResearchSurvey } from './components/ResearchSurvey';
 import { StatusBar } from './components/StatusBar';
 
 export default function App() {
@@ -14,18 +15,27 @@ export default function App() {
     ready,
     loadProgress,
     voiceEnabled,
+    condition,
+    userTurns,
     noticeInputActivity,
     send,
     saveName,
     toggleVoice,
+    submitSurvey,
   } = useCompanion();
   const [diaryOpen, setDiaryOpen] = useState(false);
+  const visualBodyEnabled = condition !== 'text';
 
   return (
-    <div className="app">
-      <div className="stage">
-        <canvas ref={canvasRef} className="vrm-canvas" />
-        {!ready && (
+    <div className={`app condition-${condition ?? 'loading'}`}>
+      <div className={`stage${visualBodyEnabled ? '' : ' stage-text-only'}`}>
+        {visualBodyEnabled && <canvas ref={canvasRef} className="vrm-canvas" />}
+        {condition && !visualBodyEnabled && (
+          <div className="text-only-presence" aria-hidden="true">
+            <span className="text-only-pulse" />
+          </div>
+        )}
+        {condition && !ready && (
           <div className="loading" role="status">
             <div className="loading-ring" />
             <p>シロを起こしてる… {Math.round(loadProgress * 100)}%</p>
@@ -63,6 +73,7 @@ export default function App() {
         onInputActivity={noticeInputActivity}
         onSend={send}
       />
+      <ResearchSurvey visible={userTurns >= 2} onSubmit={submitSurvey} />
       <DiaryDrawer open={diaryOpen} onClose={() => setDiaryOpen(false)} />
     </div>
   );

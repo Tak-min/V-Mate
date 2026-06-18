@@ -32,7 +32,8 @@
     "ENABLE_TTS": "true",
     "RATE_PER_USER_PER_DAY": "50",
     "RATE_GLOBAL_PER_DAY": "800",
-    "RATE_LOGIN_PER_IP_PER_DAY": "30"
+    "RATE_LOGIN_PER_IP_PER_DAY": "30",
+    "RESEARCH_ALLOW_CONDITION_OVERRIDE": "true"
   },
 
   "observability": {

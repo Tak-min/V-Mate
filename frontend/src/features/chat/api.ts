@@ -1,4 +1,12 @@
-import type { ChatMessage, CompanionState, DiaryEntry, Emotion } from './types';
+import type {
+  ChatMessage,
+  CompanionState,
+  DiaryEntry,
+  Emotion,
+  PresentationCondition,
+  ResearchSession,
+  ResearchSurveyScores,
+} from './types';
 
 // --- 認証トークン(localStorage)---
 const TOKEN_KEY = 'aikata_token';
@@ -57,11 +65,15 @@ export const fetchMe = (): Promise<{ authenticated: boolean; email: string | nul
   apiFetch('/api/auth/me').then((r) => r.json());
 
 // --- チャット ---
-export async function streamChat(message: string, events: ChatEvents): Promise<void> {
+export async function streamChat(
+  message: string,
+  condition: PresentationCondition,
+  events: ChatEvents,
+): Promise<void> {
   const response = await apiFetch('/api/chat', {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, condition }),
   });
   if (response.status === 429) {
     const data = await response.json().catch(() => ({}));
@@ -107,6 +119,42 @@ export interface ChatEvents {
   onToken: (text: string) => void;
   onDone: (state: CompanionState) => void;
   onError: (message: string) => void;
+}
+
+export function requestedConditionFromUrl(): PresentationCondition | null {
+  const value = new URLSearchParams(window.location.search).get('condition');
+  return value === 'text' || value === 'stylized' || value === 'realistic' ? value : null;
+}
+
+export async function startResearchSession(
+  requestedCondition: PresentationCondition | null,
+): Promise<ResearchSession> {
+  const r = await apiFetch('/api/research/session', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ condition: requestedCondition, source: 'web' }),
+  });
+  return r.json();
+}
+
+export async function logResearchEvent(
+  condition: PresentationCondition,
+  eventType: string,
+  payload: Record<string, unknown> = {},
+): Promise<void> {
+  await apiFetch('/api/research/event', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ condition, event_type: eventType, payload }),
+  }).catch(() => {});
+}
+
+export async function submitResearchSurvey(
+  condition: PresentationCondition,
+  scores: ResearchSurveyScores,
+  context: Record<string, unknown>,
+): Promise<void> {
+  await logResearchEvent(condition, 'survey_response', { scores, context });
 }
 
 export const fetchState = (): Promise<CompanionState> =>

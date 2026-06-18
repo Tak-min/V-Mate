@@ -16,6 +16,27 @@ ChatVRM・Replika・推し恋系アプリの調査をもとに、「親近感」
 | 感情表現 | ChatVRM | `[happy]`等のタグ→VRM表情+モーション切替+まばたき+視線追従 |
 | 音声+リップシンク | ChatVRM | ElevenLabs(クラウド)で合成。音量解析で口が動く |
 
+## 研究モード: 身体様式の3条件比較
+
+V-Mate は、論文用の実験プラットフォームとして **同一バックエンドで身体提示だけを変える** 構成を持つ。
+
+| 条件 | URL例 | 操作するもの | 固定するもの |
+|------|------|--------------|--------------|
+| `text` | `/?condition=text` | 3D身体を非表示 | LLM、プロンプト、記憶、親密度、音声、チャットUI |
+| `stylized` | `/?condition=stylized` | 二次元・可愛いVRM `shiro.vrm` | 同上 |
+| `realistic` | `/?condition=realistic` | 写実寄りVRM `realistic.vrm` | 同上 |
+
+URLで条件を指定しない場合、サーバが訪問者ごとに `text / stylized / realistic` を安定割付する。実験ログは `research_events` に保存される。
+
+記録される主なデータ:
+
+- `session_start`: 条件、割付方法、画面サイズ
+- `chat_sent`: ユーザー発話の文字数、疑問数、自己開示っぽい語の有無
+- `assistant_done`: AI応答の文字数、感情タグ
+- `survey_response`: 社会的存在感、信頼、自己開示しやすさ、継続利用意図、使いやすさ、不気味さの1〜7評価
+
+実験で主張するための重要な統制は、**条件によって LLM・記憶・親密度・音声を変えないこと**。`text` 条件でも音声は同じままにして、身体提示の有無/様式だけを比較する。
+
 ## 構成
 
 ```
@@ -63,6 +84,8 @@ npm run build          # backend/static に出力され、:8080 で配信され�
 | `ELEVENLABS_API_KEY` | **必須**(音声を使う場合)。未設定なら無音 |
 | `ELEVENLABS_VOICE_ID` | 声の指定。既定は多言語対応の "Sarah" |
 | `ELEVENLABS_MODEL` | 既定 `eleven_multilingual_v2` |
+| `RESEARCH_ALLOW_CONDITION_OVERRIDE` | `?condition=` による条件指定を許可 |
+| `RESEARCH_EXPORT_TOKEN` | `/api/research/export` を使う場合の秘密トークン |
 
 ## データ
 

@@ -6,8 +6,13 @@
  * — ローカル/ブラウザ読み上げへのフォールバックは持たない。
  */
 
+interface QueuedUtterance {
+  text: string;
+  emotion?: string;
+}
+
 export class SpeechQueue {
-  private queue: string[] = [];
+  private queue: QueuedUtterance[] = [];
   private playing = false;
   private enabled = true;
   private audioContext: AudioContext | null = null;
@@ -34,14 +39,26 @@ export class SpeechQueue {
     if (!enabled) this.stop();
   }
 
+  /**
+   * ブラウザの自動再生ポリシー対策: AudioContext はユーザー操作(クリック/キー入力等)
+   * を経ないと再生開始できない。挨拶やアイドル時の声かけはユーザー操作なしに発火するため、
+   * 最初のユーザー操作のタイミングで前もって AudioContext を作成・resume しておく。
+   */
+  unlock(): void {
+    this.audioContext ??= new AudioContext();
+    if (this.audioContext.state === 'suspended') {
+      void this.audioContext.resume();
+    }
+  }
+
   isEnabled(): boolean {
     return this.enabled;
   }
 
-  enqueue(text: string): void {
+  enqueue(text: string, emotion?: string): void {
     const clean = text.trim();
     if (!clean || !this.enabled) return;
-    this.queue.push(clean);
+    this.queue.push({ text: clean, emotion });
     if (!this.playing) void this.processQueue();
   }
 
@@ -62,9 +79,9 @@ export class SpeechQueue {
   private async processQueue(): Promise<void> {
     this.playing = true;
     while (this.queue.length > 0 && this.enabled) {
-      const text = this.queue.shift()!;
+      const utterance = this.queue.shift()!;
       try {
-        await this.playFromBackend(text);
+        await this.playFromBackend(utterance.text, utterance.emotion);
       } catch {
         // 1文の失敗(合成不可・再生不可)は無視して次へ。フォールバックはしない。
       }
@@ -72,8 +89,10 @@ export class SpeechQueue {
     this.playing = false;
   }
 
-  private async playFromBackend(text: string): Promise<void> {
-    const response = await fetch(`/api/tts?text=${encodeURIComponent(text)}`);
+  private async playFromBackend(text: string, emotion?: string): Promise<void> {
+    const params = new URLSearchParams({ text });
+    if (emotion) params.set('emotion', emotion);
+    const response = await fetch(`/api/tts?${params.toString()}`);
     // 204 = クラウド合成が使えない(キー未設定など)→ 無音で続行
     if (response.status !== 200) return;
     const buffer = await response.arrayBuffer();

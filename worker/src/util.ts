@@ -53,12 +53,21 @@ const EMOTION_TAG_RE_G = /\[(neutral|happy|sad|angry|relaxed|shy)\]/g;
 export function stripEmotion(text: string): [string, string] {
   const m = text.match(EMOTION_TAG_RE);
   const emotion = m ? m[1] : "neutral";
-  return [emotion, text.replace(EMOTION_TAG_RE_G, "").trim()];
+  return [emotion, sanitizeFourthWall(text.replace(EMOTION_TAG_RE_G, "").trim())];
 }
 
 /** 感情タグをすべて除去(本文整形用)。 */
 export function stripTags(text: string): string {
   return text.replace(EMOTION_TAG_RE_G, "");
+}
+
+// persona.ts で「ユーザーと呼ばない」と指示しても LLM が稀に漏らすため、
+// 表に出る本文からは機械的にも除去する(プロンプト遵守に頼らない最終防衛線)。
+// ストリーミングのチャンク境界をまたぐ分割には対応できない既知の限界がある。
+const FOURTH_WALL_RE = /ユーザー(さん)?[はがのをにへとで、。]?/g;
+
+export function sanitizeFourthWall(text: string): string {
+  return text.replace(FOURTH_WALL_RE, "");
 }
 
 // --- SSE ---

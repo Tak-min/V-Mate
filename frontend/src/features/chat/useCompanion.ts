@@ -4,11 +4,21 @@ import { SentenceSplitter, SpeechQueue } from '../voice/speech';
 import {
   fetchHistory,
   fetchState,
+  logResearchEvent,
+  requestedConditionFromUrl,
   requestNudge,
   setProfile,
+  startResearchSession,
   streamChat,
+  submitResearchSurvey,
 } from './api';
-import type { ChatMessage, CompanionState, Emotion } from './types';
+import type {
+  ChatMessage,
+  CompanionState,
+  Emotion,
+  PresentationCondition,
+  ResearchSurveyScores,
+} from './types';
 
 const IDLE_NUDGE_MS = 120_000;
 const RELAX_AFTER_MS = 6_000;
@@ -55,6 +65,8 @@ export function useCompanion() {
   const [ready, setReady] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [condition, setCondition] = useState<PresentationCondition | null>(null);
+  const [userTurns, setUserTurns] = useState(0);
 
   const greeted = useRef(false);
   const idleTimer = useRef<number | undefined>(undefined);
@@ -75,7 +87,7 @@ export function useCompanion() {
     (content: string, emotion: Emotion) => {
       setMessages((prev) => [...prev, { role: 'assistant', content, emotion }]);
       showEmotion(emotion);
-      speech.enqueue(content);
+      speech.enqueue(content, emotion);
     },
     [showEmotion, speech],
   );
@@ -97,10 +109,38 @@ export function useCompanion() {
     resetIdleTimer();
   }, [resetIdleTimer]);
 
-  // 3D ビューア初期化
+  // 研究条件の取得。URL指定が無ければサーバが参加者ごとに安定割付する。
   useEffect(() => {
-    if (!canvasRef.current || viewerRef.current) return;
-    const viewer = new CompanionViewer(canvasRef.current);
+    let cancelled = false;
+    startResearchSession(requestedConditionFromUrl())
+      .then((session) => {
+        if (cancelled) return;
+        setCondition(session.condition);
+        void logResearchEvent(session.condition, 'condition_loaded', {
+          viewport: { width: window.innerWidth, height: window.innerHeight },
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setCondition('stylized');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 3D ビューア初期化。text 条件では身体提示だけを消し、会話・記憶・音声は維持する。
+  useEffect(() => {
+    if (!condition || viewerRef.current) return;
+    if (condition === 'text') {
+      setLoadProgress(1);
+      setReady(true);
+      return;
+    }
+    if (!canvasRef.current) return;
+    const viewer = new CompanionViewer(canvasRef.current, {
+      modelUrl: condition === 'realistic' ? '/models/realistic.vrm' : '/models/shiro.vrm',
+      fallbackModelUrl: '/models/shiro.vrm',
+    });
     viewer.getMouthLevel = speech.mouthLevel;
     viewerRef.current = viewer;
     void viewer.load(setLoadProgress).then(() => setReady(true));
@@ -109,13 +149,29 @@ export function useCompanion() {
       viewerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [condition]);
 
   // 初期状態・履歴の取得
   useEffect(() => {
     fetchState().then(setState).catch(() => {});
     fetchHistory().then(setMessages).catch(() => {});
   }, []);
+
+  // 最初のユーザー操作で AudioContext を解禁する(挨拶・アイドル声かけが
+  // ユーザー操作なしに音声再生を試みて自動再生ブロックで無音になるのを防ぐ)。
+  useEffect(() => {
+    const unlock = () => {
+      speech.unlock();
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+  }, [speech]);
 
   useEffect(() => {
     if (state) viewerRef.current?.setAffinity(state.affinity);
@@ -136,10 +192,11 @@ export function useCompanion() {
   const send = useCallback(
     async (raw: string) => {
       const message = raw.trim();
-      if (!message || busy) return;
+      if (!message || busy || !condition) return;
       setBusy(true);
       viewerRef.current?.notice('thinking', 4.8);
       setMessages((prev) => [...prev, { role: 'user', content: message }]);
+      setUserTurns((prev) => prev + 1);
       setMessages((prev) => [
         ...prev,
         { role: 'assistant', content: '', emotion: 'relaxed', cue: waitingCueFor(message) },
@@ -161,7 +218,7 @@ export function useCompanion() {
         });
 
       try {
-        await streamChat(message, {
+        await streamChat(message, condition, {
           onEmotion: (e) => {
             emotion = e;
             showEmotion(e);
@@ -170,13 +227,13 @@ export function useCompanion() {
             viewerRef.current?.notice('speaking', 2.2);
             appendToLast(text);
             for (const sentence of splitter.feed(text)) {
-              speech.enqueue(sentence);
+              speech.enqueue(sentence, emotion);
             }
           },
           onDone: (nextState: CompanionState) => {
             setState(nextState);
             const rest = splitter.flush();
-            if (rest) speech.enqueue(rest);
+            if (rest) speech.enqueue(rest, emotion);
           },
           onError: (errorMessage) => {
             appendToLast(errorMessage);
@@ -189,7 +246,7 @@ export function useCompanion() {
         resetIdleTimer();
       }
     },
-    [busy, showEmotion, speech, resetIdleTimer],
+    [busy, condition, showEmotion, speech, resetIdleTimer],
   );
 
   const saveName = useCallback(async (name: string) => {
@@ -200,9 +257,22 @@ export function useCompanion() {
   const toggleVoice = useCallback(() => {
     setVoiceEnabled((prev) => {
       speech.setEnabled(!prev);
+      if (condition) void logResearchEvent(condition, 'voice_toggled', { enabled: !prev });
       return !prev;
     });
-  }, [speech]);
+  }, [condition, speech]);
+
+  const submitSurvey = useCallback(
+    async (scores: ResearchSurveyScores) => {
+      if (!condition) return;
+      await submitResearchSurvey(condition, scores, {
+        user_turns: userTurns,
+        message_count: messages.length,
+        voice_enabled: voiceEnabled,
+      });
+    },
+    [condition, messages.length, userTurns, voiceEnabled],
+  );
 
   // タイマー後始末
   useEffect(
@@ -222,9 +292,12 @@ export function useCompanion() {
     ready,
     loadProgress,
     voiceEnabled,
+    condition,
+    userTurns,
     noticeInputActivity,
     send,
     saveName,
     toggleVoice,
+    submitSurvey,
   };
 }

@@ -50,6 +50,10 @@ ENABLE_TTS = os.environ.get("ENABLE_TTS", "false").lower() in ("1", "true", "yes
 RATE_PER_USER_PER_DAY = int(os.environ.get("RATE_PER_USER_PER_DAY", "50"))
 RATE_GLOBAL_PER_DAY = int(os.environ.get("RATE_GLOBAL_PER_DAY", "800"))  # Groq無料1000/日を保護
 RATE_LOGIN_PER_IP_PER_DAY = int(os.environ.get("RATE_LOGIN_PER_IP_PER_DAY", "30"))
+# シロは「1〜3文」の短い相づち的な会話が persona.py の指示だが、LLMが指示を無視して
+# 長文を返すことがあり、チャット欄が一方的なAI長文で埋まって人間らしさが失われる原因になっていた。
+# max_tokens で物理的に上限を切る(日本語1〜3文+感情タグなら十分収まる長さ)。
+CHAT_MAX_TOKENS = int(os.environ.get("CHAT_MAX_TOKENS", "260"))
 RESEARCH_ALLOW_CONDITION_OVERRIDE = os.environ.get(
     "RESEARCH_ALLOW_CONDITION_OVERRIDE", "true"
 ).lower() in ("1", "true", "yes", "on")
@@ -151,7 +155,16 @@ def _strip_emotion(text: str) -> tuple[str, str]:
     """先頭の感情タグを抽出し、本文からすべてのタグを除去する。"""
     match = EMOTION_TAG_RE.search(text)
     emotion = match.group(1) if match else "neutral"
-    return emotion, EMOTION_TAG_RE.sub("", text).strip()
+    return emotion, _sanitize_fourth_wall(EMOTION_TAG_RE.sub("", text).strip())
+
+
+# persona.py で「ユーザーと呼ばない」と指示しても LLM が稀に漏らすため、
+# 表に出る本文からは機械的にも除去する(プロンプト遵守に頼らない最終防衛線)。
+_FOURTH_WALL_RE = re.compile(r"ユーザー(さん)?[はがのをにへとで、。]?")
+
+
+def _sanitize_fourth_wall(text: str) -> str:
+    return _FOURTH_WALL_RE.sub("", text)
 
 
 def _time_context() -> str:
@@ -409,7 +422,7 @@ async def chat(
         emotion: str | None = None
         full_text = ""
         try:
-            async for chunk in llm.stream_chat(system, history):
+            async for chunk in llm.stream_chat(system, history, max_tokens=CHAT_MAX_TOKENS):
                 buffer += chunk
                 if emotion is None:
                     # 感情タグが確定するまでバッファし、確定後にまとめて流す
@@ -424,7 +437,7 @@ async def chat(
                     else:
                         continue
                 if buffer:
-                    clean = EMOTION_TAG_RE.sub("", buffer)
+                    clean = _sanitize_fourth_wall(EMOTION_TAG_RE.sub("", buffer))
                     full_text += clean
                     yield sse({"type": "token", "text": clean})
                     buffer = ""
@@ -532,10 +545,10 @@ async def generate_diary(request: Request) -> dict:
 
 
 @app.get("/api/tts")
-async def get_tts(text: str) -> Response:
+async def get_tts(text: str, emotion: str | None = None) -> Response:
     if not ENABLE_TTS:  # 公開では既定オフ(無料枠保護)。無音=テキストのみ
         return Response(status_code=204)
-    audio = await tts.synthesize(text[:300])
+    audio = await tts.synthesize(text[:300], emotion)
     if audio is None:
         return Response(status_code=204)
     return Response(content=audio, media_type="audio/mpeg")

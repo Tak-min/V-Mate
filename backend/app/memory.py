@@ -93,6 +93,16 @@ users = Table(
     Column("created_at", DateTime(timezone=True), server_default=func.now()),
 )
 
+research_events = Table(
+    "research_events", metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("user_id", String(64), nullable=False, index=True),
+    Column("condition", String(24), nullable=False, index=True),
+    Column("event_type", String(64), nullable=False, index=True),
+    Column("payload", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), server_default=func.now()),
+)
+
 _engine: Engine | None = None
 
 
@@ -409,9 +419,40 @@ def bump_usage(scope: str, day: str) -> int:
 def reassign_user_data(from_user_id: str, to_user_id: str) -> None:
     """匿名Cookieユーザーのデータをログイン後アカウントへ引き継ぐ(Phase C)。"""
     with _get_engine().begin() as c:
-        for tbl in (messages, facts, diary, kv):
+        for tbl in (messages, facts, diary, kv, research_events):
             c.execute(
                 update(tbl)
                 .where(tbl.c.user_id == from_user_id)
                 .values(user_id=to_user_id)
             )
+
+
+# --- research events ---
+
+def add_research_event(user_id: str, condition: str, event_type: str, payload: str) -> None:
+    with _get_engine().begin() as c:
+        c.execute(
+            insert(research_events).values(
+                user_id=user_id,
+                condition=condition,
+                event_type=event_type,
+                payload=payload,
+            )
+        )
+
+
+def list_research_events(user_id: str, limit: int = 200) -> list[dict]:
+    with _get_engine().connect() as c:
+        rows = c.execute(
+            select(
+                research_events.c.id,
+                research_events.c.condition,
+                research_events.c.event_type,
+                research_events.c.payload,
+                research_events.c.created_at,
+            )
+            .where(research_events.c.user_id == user_id)
+            .order_by(research_events.c.id.desc())
+            .limit(limit)
+        ).mappings().all()
+    return [dict(r) for r in reversed(rows)]
