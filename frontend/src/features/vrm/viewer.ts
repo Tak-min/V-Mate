@@ -301,20 +301,24 @@ export class CompanionViewer {
     this.blinkCloseRatio = rand(0.24, 0.38);
     this.blinkStrength = rand(0.84, 1);
 
+    // ダブルまばたき(連続まばたき)の確率。会話への集中度が高いほど、緊張や反応で
+    // まばたきが連続しやすくなる人間の癖を少し強めに再現する(以前より全体的に頻度を上げた)。
     const doubleChance =
-      this.currentEmotion === 'shy' ? 0.24 : this.currentEmotion === 'happy' ? 0.12 : 0.07;
+      this.currentEmotion === 'shy' ? 0.3 : this.currentEmotion === 'happy' ? 0.18 : 0.11;
     this.queueDoubleBlink = allowDouble && Math.random() < doubleChance;
   }
 
   private randomBlinkInterval(): number {
     const attentionScale =
       this.attentionMode === 'speaking'
-        ? 0.78
-        : this.attentionMode === 'typing'
-          ? 0.86
-          : this.attentionMode === 'thinking'
-          ? 0.9
-            : 1;
+        ? 0.72
+        : this.attentionMode === 'listening'
+          ? 0.85
+          : this.attentionMode === 'typing'
+            ? 0.82
+            : this.attentionMode === 'thinking'
+              ? 0.9
+              : 1;
     const warmthScale =
       this.currentEmotion === 'neutral' || this.currentEmotion === 'relaxed'
         ? 1 + this.relationshipWarmth * 0.12
@@ -353,16 +357,19 @@ export class CompanionViewer {
 
       // 時々、ちょっと視線を大きく外して部屋のあちこちを見るような「ワイドグランス」を挟む。
       // 人と話していてもずっと真っ直ぐ見つめ続けることはないので、その自然さを再現する。
+      // 会話中(listening/speaking/typing)も一定の頻度で外すことで、相手と話している最中でも
+      // 視線がふっと逸れる自然な人間の癖を再現する(以前は会話中だけ極端に低く、結果的に
+      // 「会話中だけ一点を凝視しているように見える」原因になっていた)。
       const wideGlanceChance =
         this.attentionMode === 'idle'
           ? 0.26
           : this.attentionMode === 'listening'
-            ? 0.16
+            ? 0.22
             : this.attentionMode === 'speaking'
-              ? 0.12
+              ? 0.2
               : this.attentionMode === 'typing'
-                ? 0.08
-                : 0.05;
+                ? 0.16
+                : 0.1;
       const isWideGlance = Math.random() < wideGlanceChance;
       const wideScale = isWideGlance ? rand(1.8, 3.0) : 1;
 
@@ -400,15 +407,20 @@ export class CompanionViewer {
     const microY = Math.sin(this.elapsed * 0.61 + 0.4) * 0.02;
     const baseDirectness =
       this.attentionMode === 'typing'
-        ? 0.9
+        ? 0.74
         : this.attentionMode === 'listening'
-          ? 0.88
+          ? 0.7
           : this.attentionMode === 'thinking'
             ? 0.38
             : this.attentionMode === 'speaking'
-              ? 0.78
-              : 0.62;
-    const directness = Math.min(baseDirectness + this.relationshipWarmth * 0.16, 0.94);
+              ? 0.62
+              : 0.5;
+    // 上限を抑える(以前は0.94まで上がり、(1-directness)で後段の視線オフセットを
+    // ほぼゼロまで潰していた → 会話中だけ一点を凝視しているように見える原因だった)。
+    const directness = Math.min(baseDirectness + this.relationshipWarmth * 0.1, 0.78);
+    // 視線オフセットの可視性には必ず下限を設け、どんなにdirectnessが高くても
+    // 「完全固定」にはならないようにする(人間は集中していても眼球はわずかに動き続ける)。
+    const gazeVisibility = Math.max(1 - directness, 0.4);
     const thinkingSide = Math.sin(this.elapsed * 0.53 + 0.8) > 0 ? 1 : -1;
     const modeX = this.attentionMode === 'thinking' ? 0.05 * thinkingSide : 0;
     const modeY =
@@ -421,8 +433,8 @@ export class CompanionViewer {
             : 0;
 
     const target = this.lookTargetBase.clone();
-    target.x += this.gazeOffset.x * (1 - directness) + microX + modeX;
-    target.y += this.gazeOffset.y * (1 - directness) + microY + breath + modeY;
+    target.x += this.gazeOffset.x * gazeVisibility + microX + modeX;
+    target.y += this.gazeOffset.y * gazeVisibility + microY + breath + modeY;
     target.x += this.pointer.x * 0.18 * pointerWeight;
     target.y -= this.pointer.y * 0.08 * pointerWeight;
 
