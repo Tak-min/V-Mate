@@ -18,10 +18,14 @@ import {
   timeContext,
   jstToday,
   daysSince,
+  secondsSince,
 } from "./util";
 
 const COOKIE_NAME = "aikata_uid";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365 * 2; // 2年
+// AIが干渉しすぎる(リロードのたびに挨拶し直す等)との指摘を受けて追加。
+// 直前の活動(last_seen)からこの秒数未満なら「戻ってきた」とみなさず挨拶を省略する。
+const GREETING_MIN_GAP_SECONDS = 180;
 const RESEARCH_CONDITIONS = ["text", "stylized", "realistic"] as const;
 const RESEARCH_METRICS_VERSION = "2026-06-18-v1";
 type ResearchCondition = (typeof RESEARCH_CONDITIONS)[number];
@@ -248,6 +252,11 @@ async function postNudge(c: Ctx, body: { reason?: unknown }): Promise<Response> 
 
   let context: string;
   if (reason === "greeting") {
+    if (lastSeen && secondsSince(lastSeen) < GREETING_MIN_GAP_SECONDS) {
+      // ついさっき(リロード等)開いただけ。毎回挨拶し直すと干渉しすぎになるので省略する。
+      await c.store.touchLastSeen(uid);
+      return json({ text: "", emotion: "neutral" });
+    }
     let gap = "";
     if (lastSeen) {
       const days = daysSince(lastSeen);

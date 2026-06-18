@@ -54,6 +54,9 @@ RATE_LOGIN_PER_IP_PER_DAY = int(os.environ.get("RATE_LOGIN_PER_IP_PER_DAY", "30"
 # 長文を返すことがあり、チャット欄が一方的なAI長文で埋まって人間らしさが失われる原因になっていた。
 # max_tokens で物理的に上限を切る(日本語1〜3文+感情タグなら十分収まる長さ)。
 CHAT_MAX_TOKENS = int(os.environ.get("CHAT_MAX_TOKENS", "260"))
+# AIが干渉しすぎる(リロードのたびに挨拶し直す等)との指摘を受けて追加。
+# 直前の活動(last_seen)からこの秒数未満なら「戻ってきた」とみなさず挨拶を省略する。
+GREETING_MIN_GAP_SECONDS = int(os.environ.get("GREETING_MIN_GAP_SECONDS", "180"))
 RESEARCH_ALLOW_CONDITION_OVERRIDE = os.environ.get(
     "RESEARCH_ALLOW_CONDITION_OVERRIDE", "true"
 ).lower() in ("1", "true", "yes", "on")
@@ -483,6 +486,12 @@ async def nudge(req: NudgeRequest, request: Request) -> dict:
         else "相手の名前はまだ知らない(「ユーザーさん」のような呼び方はせず、名前を呼ばずに話す)。"
     )
     if req.reason == "greeting":
+        if last_seen:
+            elapsed = datetime.now() - datetime.fromisoformat(last_seen)
+            if elapsed.total_seconds() < GREETING_MIN_GAP_SECONDS:
+                # ついさっき(リロード等)開いただけ。毎回挨拶し直すと干渉しすぎになるので省略する。
+                memory.touch_last_seen(uid)
+                return {"text": "", "emotion": "neutral"}
         gap = ""
         if last_seen:
             days = (datetime.now() - datetime.fromisoformat(last_seen)).days

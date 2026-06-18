@@ -23,9 +23,14 @@ export function jstIso(): string {
 
 /** ISO 文字列(秒精度)から日数差(おおよそ)を返す。last_seen の経過日数判定用。 */
 export function daysSince(iso: string): number {
+  return Math.floor(secondsSince(iso) / (24 * 60 * 60));
+}
+
+/** ISO 文字列(秒精度)から秒数差を返す。直近の活動からの経過判定(挨拶の間引き等)用。 */
+export function secondsSince(iso: string): number {
   const then = new Date(iso + (iso.length <= 19 ? "Z" : "")).getTime();
   const now = jstNow().getTime();
-  return Math.floor((now - then) / (24 * 60 * 60 * 1000));
+  return Math.floor((now - then) / 1000);
 }
 
 /** "YYYY-MM-DDTHH:MM:SS"(JST)を「現在は MM月DD日 HH:MM(時間帯)」に整形。 */

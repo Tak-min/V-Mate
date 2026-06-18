@@ -20,7 +20,8 @@ import type {
   ResearchSurveyScores,
 } from './types';
 
-const IDLE_NUDGE_MS = 120_000;
+// AIが干渉しすぎる(短い間隔で自発的に話しかける)との指摘を受けて 120s → 240s に緩和。
+const IDLE_NUDGE_MS = 240_000;
 const RELAX_AFTER_MS = 6_000;
 
 const DEFAULT_WAITING_CUES = [
