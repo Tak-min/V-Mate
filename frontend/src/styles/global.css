@@ -1,3 +1,27 @@
+/*
+ * Zen Maru Gothic を自前ホスティング(/public/fonts)。
+ * Google Fonts の css2 API は CJK を unicode-range で100以上のファイルに
+ * 分割して配信するため、会話中に新しい漢字が出るたびに別ファイルが追加で
+ * フェッチされ、Network タブが大量のリクエストで埋まってしまっていた。
+ * 1ウェイトにつき1ファイル(woff2, ~1.5MB)に統一し、初回のみ2回のフェッチ
+ * (Regular/Bold)で完結させる。ウェイト500は未使用のため含めていない。
+ */
+@font-face {
+  font-family: "Zen Maru Gothic";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/ZenMaruGothic-Regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Zen Maru Gothic";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/ZenMaruGothic-Bold.woff2") format("woff2");
+}
+
 :root {
   --color-bg-top: oklch(96% 0.03 70);
   --color-bg-mid: oklch(93% 0.045 45);
