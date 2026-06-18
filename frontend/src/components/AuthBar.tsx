@@ -40,34 +40,36 @@ export function AuthBar() {
 
   if (email) {
     return (
-      <div style={barStyle}>
-        <span style={{ opacity: 0.8, fontSize: 12 }}>{email}</span>
-        <button type="button" style={linkBtn} onClick={logout}>
-          ログアウト
-        </button>
+      <div className="auth-bar">
+        <div className="auth-pill">
+          <span className="auth-email">{email}</span>
+          <button type="button" className="auth-logout" onClick={logout}>
+            ログアウト
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div style={barStyle}>
+    <div className="auth-bar">
       {!open ? (
-        <button type="button" style={pillBtn} onClick={() => setOpen(true)}>
+        <button type="button" className="auth-pill" onClick={() => setOpen(true)}>
           ログイン / 登録
         </button>
       ) : (
-        <form onSubmit={submit} style={cardStyle}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+        <form onSubmit={submit} className="auth-card">
+          <div className="auth-tabs">
             <button
               type="button"
-              style={tab(mode === 'login')}
+              className={`auth-tab${mode === 'login' ? ' active' : ''}`}
               onClick={() => setMode('login')}
             >
               ログイン
             </button>
             <button
               type="button"
-              style={tab(mode === 'signup')}
+              className={`auth-tab${mode === 'signup' ? ' active' : ''}`}
               onClick={() => setMode('signup')}
             >
               新規登録
@@ -79,7 +81,6 @@ export function AuthBar() {
             value={form.email}
             autoComplete="email"
             onChange={(e) => setForm({ ...form, email: e.target.value })}
-            style={inputStyle}
             required
           />
           <input
@@ -89,90 +90,22 @@ export function AuthBar() {
             autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             minLength={6}
             onChange={(e) => setForm({ ...form, password: e.target.value })}
-            style={inputStyle}
             required
           />
-          {error && <p style={{ color: '#ff8a8a', fontSize: 12, margin: '4px 0' }}>{error}</p>}
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button type="submit" style={pillBtn} disabled={busy}>
+          {error && <p className="auth-error">{error}</p>}
+          <div className="auth-actions">
+            <button type="submit" className="auth-submit" disabled={busy}>
               {busy ? '…' : mode === 'login' ? 'ログイン' : '登録する'}
             </button>
-            <button type="button" style={linkBtn} onClick={() => setOpen(false)}>
+            <button type="button" className="auth-cancel" onClick={() => setOpen(false)}>
               閉じる
             </button>
           </div>
           {mode === 'signup' && (
-            <p style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>
-              いまの会話と記憶はそのままアカウントに引き継がれます。
-            </p>
+            <p className="auth-hint">いまの会話と記憶はそのままアカウントに引き継がれます。</p>
           )}
         </form>
       )}
     </div>
   );
 }
-
-const barStyle: React.CSSProperties = {
-  position: 'fixed',
-  top: 12,
-  right: 12,
-  zIndex: 30,
-  display: 'flex',
-  alignItems: 'center',
-  gap: 8,
-  color: '#fff',
-};
-
-const pillBtn: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.16)',
-  border: '1px solid rgba(255,255,255,0.28)',
-  color: '#fff',
-  borderRadius: 999,
-  padding: '6px 14px',
-  fontSize: 13,
-  cursor: 'pointer',
-  backdropFilter: 'blur(8px)',
-};
-
-const linkBtn: React.CSSProperties = {
-  background: 'transparent',
-  border: 'none',
-  color: '#fff',
-  opacity: 0.75,
-  fontSize: 12,
-  cursor: 'pointer',
-  textDecoration: 'underline',
-};
-
-const cardStyle: React.CSSProperties = {
-  background: 'rgba(20,18,28,0.82)',
-  border: '1px solid rgba(255,255,255,0.16)',
-  borderRadius: 14,
-  padding: 14,
-  width: 240,
-  backdropFilter: 'blur(12px)',
-  boxShadow: '0 12px 40px rgba(0,0,0,0.4)',
-};
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  boxSizing: 'border-box',
-  background: 'rgba(255,255,255,0.08)',
-  border: '1px solid rgba(255,255,255,0.18)',
-  borderRadius: 8,
-  color: '#fff',
-  padding: '8px 10px',
-  fontSize: 13,
-  marginBottom: 8,
-};
-
-const tab = (active: boolean): React.CSSProperties => ({
-  flex: 1,
-  background: active ? 'rgba(255,255,255,0.2)' : 'transparent',
-  border: '1px solid rgba(255,255,255,0.2)',
-  color: '#fff',
-  borderRadius: 8,
-  padding: '5px 0',
-  fontSize: 12,
-  cursor: 'pointer',
-});
