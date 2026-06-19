@@ -10,7 +10,7 @@ Render を使わないため「DBが一定期間で消える」問題は発生�
               ├─ /api/*           → Worker(FastAPI 相当の TypeScript 実装)
               ├─ それ以外          → ASSETS(Vite ビルド済みフロント)
               ├─ D1(SQLite)       → 会話/記憶/日記/アカウント/レート制限
-              └─ fetch ──▶ Groq(LLM ストリーミング)/ ElevenLabs(任意TTS)
+              └─ fetch ──▶ Groq(LLM ストリーミング)/ Aivis Cloud API(任意TTS)
 ```
 
 ## 前提(本人が用意するもの)
@@ -20,7 +20,7 @@ Render を使わないため「DBが一定期間で消える」問題は発生�
 | [Cloudflare](https://dash.cloudflare.com/sign-up) | ホスティング(無料) | アカウント。**クレジットカード不要** |
 | [Groq](https://console.groq.com) | LLM(無料) | `LLM_API_KEY`(gsk_…) |
 
-> 音声(ElevenLabs)は無料枠が極小のため公開では既定オフ。使う場合のみ末尾参照。
+> 音声(Aivis Cloud API)はクレジット消費があるため公開では既定オフ。使う場合のみ末尾参照。
 
 ## 手順
 
@@ -99,11 +99,12 @@ npm run dev                    # http://localhost:8787
 ## 音声を有効にする場合(任意・無料枠注意)
 
 ```bash
-npx wrangler secret put ELEVENLABS_API_KEY
+npx wrangler secret put AIVIS_API_KEY
 # wrangler.jsonc の vars に "ENABLE_TTS": "true" を設定して再デプロイ
 ```
 
-ElevenLabs 無料枠は月あたりの文字数が小さいため、公開での常時ONは非推奨。
+キー取得: https://hub.aivis-project.com/cloud-api/api-keys 。クレジット消費があるため、
+公開での常時ONは利用量を見ながら判断すること。
 
 ## 無料枠の注意点(2026-06 時点)
 

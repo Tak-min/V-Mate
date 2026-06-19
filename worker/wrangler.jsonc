@@ -24,7 +24,7 @@
     }
   ],
 
-  // 機密でない設定。秘密(LLM_API_KEY / JWT_SECRET / ELEVENLABS_API_KEY)は
+  // 機密でない設定。秘密(LLM_API_KEY / JWT_SECRET / AIVIS_API_KEY)は
   // `wrangler secret put <NAME>` で登録する(ここには書かない)。
   "vars": {
     "LLM_BASE_URL": "https://api.groq.com/openai/v1",

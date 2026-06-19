@@ -14,7 +14,7 @@ ChatVRM・Replika・推し恋系アプリの調査をもとに、「親近感」
 | シロの日記 | Replika Diary | その日の会話を振り返ってシロが日記を書く |
 | 自発的な声かけ | Replika | 起動時の挨拶+放置2分で時間帯・記憶を踏まえた一言 |
 | 感情表現 | ChatVRM | `[happy]`等のタグ→VRM表情+モーション切替+まばたき+視線追従 |
-| 音声+リップシンク | ChatVRM | ElevenLabs(クラウド)で合成。音量解析で口が動く |
+| 音声+リップシンク | ChatVRM | Aivis Cloud API(クラウド)で合成。音量解析で口が動く |
 
 ## 研究モード: 身体様式の3条件比較
 
@@ -45,10 +45,11 @@ frontend/  Vite + React + three.js + @pixiv/three-vrm — VRM表示・UI
 ```
 
 - **LLM**: OpenAI互換API(既定 Groq・無料/高速)。`LLM_BASE_URL` 差し替えで Cerebras/OpenRouter へ移行可。返答はストリーミングで逐次表示
-- **TTS**: ElevenLabs(クラウド・APIキー必須)。文ごとに合成し逐次再生。キー未設定時は無音(テキストのみ)
+- **TTS**: Aivis Cloud API(クラウド・APIキー必須)。文ごとに合成し逐次再生。キー未設定時は無音(テキストのみ)
 - **モデル**: `frontend/public/models/shiro.vrm` + VRoid 待機モーション5種(.vrma)
 
-> ローカルAI(Ollama)・ローカルTTS(AivisSpeech)・ブラウザ読み上げは廃止し、すべてクラウドAPIに統一済み。
+> ローカルAI(Ollama)・ローカルTTSエンジン・ブラウザ読み上げは廃止し、すべてクラウドAPIに統一済み
+> (音声合成は ElevenLabs から Aivis Cloud API へ移行済み、2026-06-19)。
 
 ## 起動
 
@@ -66,7 +67,7 @@ frontend/  Vite + React + three.js + @pixiv/three-vrm — VRM表示・UI
 cd backend
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-cp .env.example .env   # GEMINI_API_KEY と ELEVENLABS_API_KEY を記入(クラウド必須)
+cp .env.example .env   # LLM_API_KEY と AIVIS_API_KEY を記入(クラウド必須)
 
 # フロントエンド
 cd ../frontend
@@ -81,9 +82,9 @@ npm run build          # backend/static に出力され、:8080 で配信され�
 | `LLM_API_KEY` | **必須**。LLM の APIキー(既定 Groq。`GROQ_API_KEY` でも可) |
 | `LLM_BASE_URL` | 既定 `https://api.groq.com/openai/v1`。OpenAI互換なら何でも可 |
 | `LLM_MODEL` | 既定 `llama-3.3-70b-versatile`(日本語重視は `qwen/qwen3-32b` 等) |
-| `ELEVENLABS_API_KEY` | **必須**(音声を使う場合)。未設定なら無音 |
-| `ELEVENLABS_VOICE_ID` | 声の指定。既定は多言語対応の "Sarah" |
-| `ELEVENLABS_MODEL` | 既定 `eleven_multilingual_v2` |
+| `AIVIS_API_KEY` | **必須**(音声を使う場合)。未設定なら無音。取得: https://hub.aivis-project.com/cloud-api/api-keys |
+| `AIVIS_MODEL_UUID` | 声の指定。既定モデルUUID(`a59cb814-...`) |
+| `AIVIS_SPEAKER_UUID` / `AIVIS_STYLE_NAME` | モデルに複数話者/スタイルがある場合の指定(任意) |
 | `RESEARCH_ALLOW_CONDITION_OVERRIDE` | `?condition=` による条件指定を許可 |
 | `RESEARCH_EXPORT_TOKEN` | `/api/research/export` を使う場合の秘密トークン |
 

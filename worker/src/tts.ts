@@ -1,22 +1,24 @@
-/** 音声合成 — ElevenLabs API。backend/app/tts.py の移植。
+/** 音声合成 — Aivis Cloud API (AivisSpeech)。backend/app/tts.py の移植。
  * キー未設定・失敗時は null を返し、フロントは無音(テキストのみ)で続行する。返す音声は MP3。 */
 
 import type { Env } from "./env";
 
-const ELEVENLABS_BASE = "https://api.elevenlabs.io/v1";
-const DEFAULT_VOICE_ID = "EXAVITQu4vr4xnSDxMaL"; // 多言語対応の女声 "Sarah"
-const DEFAULT_MODEL = "eleven_multilingual_v2";
+const AIVIS_BASE = "https://api.aivis-project.com/v1";
+const DEFAULT_MODEL_UUID = "a59cb814-0083-4369-8542-f51a29e72af7";
 
-// 感情ごとの声の表情づけ。固定の voice_settings だと全感情が同じ抑揚になり
-// 「人間味が薄い」と感じられる原因になっていたため、stability(低いほど抑揚が動く)と
-// style(高いほど誇張される、eleven_multilingual_v2 が対応)を感情別に変える。
-const DEFAULT_SETTINGS = { stability: 0.4, similarity_boost: 0.8, style: 0.2 };
-const EMOTION_VOICE_SETTINGS: Record<string, { stability: number; similarity_boost: number; style: number }> = {
-  happy: { stability: 0.28, similarity_boost: 0.8, style: 0.55 },
-  sad: { stability: 0.55, similarity_boost: 0.85, style: 0.1 },
-  angry: { stability: 0.3, similarity_boost: 0.75, style: 0.5 },
-  relaxed: { stability: 0.5, similarity_boost: 0.8, style: 0.15 },
-  shy: { stability: 0.5, similarity_boost: 0.85, style: 0.1 },
+// 感情ごとの声の表情づけ。固定パラメータだと全感情が同じ抑揚になり
+// 「人間味が薄い」と感じられる原因になっていたため、speaking_rate(話速)・
+// emotional_intensity(感情表現の強さ)・volume(音量)を感情別に変える。
+const DEFAULT_SETTINGS = { speaking_rate: 1.0, emotional_intensity: 1.0, volume: 1.0 };
+const EMOTION_VOICE_SETTINGS: Record<
+  string,
+  { speaking_rate: number; emotional_intensity: number; volume: number }
+> = {
+  happy: { speaking_rate: 1.08, emotional_intensity: 1.4, volume: 1.1 },
+  sad: { speaking_rate: 0.92, emotional_intensity: 0.7, volume: 0.9 },
+  angry: { speaking_rate: 1.05, emotional_intensity: 1.5, volume: 1.15 },
+  relaxed: { speaking_rate: 0.95, emotional_intensity: 0.9, volume: 1.0 },
+  shy: { speaking_rate: 0.95, emotional_intensity: 0.8, volume: 0.9 },
   neutral: DEFAULT_SETTINGS,
 };
 
@@ -25,25 +27,27 @@ export async function synthesize(
   text: string,
   emotion?: string | null,
 ): Promise<ArrayBuffer | null> {
-  const key = env.ELEVENLABS_API_KEY;
+  const key = env.AIVIS_API_KEY;
   if (!key || !text.trim()) return null;
-  const voiceId = env.ELEVENLABS_VOICE_ID || DEFAULT_VOICE_ID;
-  const model = env.ELEVENLABS_MODEL || DEFAULT_MODEL;
-  const url = `${ELEVENLABS_BASE}/text-to-speech/${voiceId}`;
+  const modelUuid = env.AIVIS_MODEL_UUID || DEFAULT_MODEL_UUID;
   const voiceSettings = EMOTION_VOICE_SETTINGS[emotion ?? "neutral"] ?? DEFAULT_SETTINGS;
+  const url = `${AIVIS_BASE}/tts/synthesize`;
+  const payload: Record<string, unknown> = {
+    model_uuid: modelUuid,
+    text,
+    output_format: "mp3",
+    ...voiceSettings,
+  };
+  if (env.AIVIS_SPEAKER_UUID) payload.speaker_uuid = env.AIVIS_SPEAKER_UUID;
+  if (env.AIVIS_STYLE_NAME) payload.style_name = env.AIVIS_STYLE_NAME;
   try {
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        "xi-api-key": key,
-        accept: "audio/mpeg",
+        Authorization: `Bearer ${key}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify({
-        text,
-        model_id: model,
-        voice_settings: voiceSettings,
-      }),
+      body: JSON.stringify(payload),
     });
     if (!response.ok) return null;
     return await response.arrayBuffer();

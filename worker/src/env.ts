@@ -17,7 +17,8 @@ export interface Env {
   LLM_API_KEY?: string;
   JWT_SECRET?: string;
   RESEARCH_EXPORT_TOKEN?: string;
-  ELEVENLABS_API_KEY?: string;
-  ELEVENLABS_VOICE_ID?: string;
-  ELEVENLABS_MODEL?: string;
+  AIVIS_API_KEY?: string;
+  AIVIS_MODEL_UUID?: string;
+  AIVIS_SPEAKER_UUID?: string;
+  AIVIS_STYLE_NAME?: string;
 }

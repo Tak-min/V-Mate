@@ -45,7 +45,7 @@ app.add_middleware(
 memory.init_db()
 
 # --- レート制限 / TTS ゲート(Phase D: 公開時のコスト・不正利用対策)---
-# 公開では既定で TTS オフ(ElevenLabs 無料枠が極小なため)。ローカルは .env で ENABLE_TTS=true。
+# 公開では既定で TTS オフ(Aivis Cloud API のクレジット消費を抑えるため)。ローカルは .env で ENABLE_TTS=true。
 ENABLE_TTS = os.environ.get("ENABLE_TTS", "false").lower() in ("1", "true", "yes", "on")
 RATE_PER_USER_PER_DAY = int(os.environ.get("RATE_PER_USER_PER_DAY", "50"))
 RATE_GLOBAL_PER_DAY = int(os.environ.get("RATE_GLOBAL_PER_DAY", "800"))  # Groq無料1000/日を保護

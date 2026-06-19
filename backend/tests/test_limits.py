@@ -12,9 +12,13 @@ def test_bump_usage_per_scope_and_day(db):
     assert memory.bump_usage("other", "2026-06-16") == 1  # 別scopeは別カウント
 
 
-def test_tts_gated_off_by_default(db):
-    from app.main import app  # ENABLE_TTS は既定 false
-    c = TestClient(app)
+def test_tts_gated_off_by_default(db, monkeypatch):
+    from app import main
+    # 本番既定は ENABLE_TTS=false だが、ローカル .env は開発用に true にしているため
+    # ゲート挙動そのものをテストするには明示的に false へ固定する必要がある
+    # (固定しないと AIVIS_API_KEY が有効な環境で実際に音声合成APIを叩いてしまう)。
+    monkeypatch.setattr(main, "ENABLE_TTS", False)
+    c = TestClient(main.app)
     r = c.get("/api/tts", params={"text": "こんにちは"})
     assert r.status_code == 204  # 公開既定オフ=無音
 
