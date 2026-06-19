@@ -107,7 +107,14 @@ export class CompanionViewer {
 
   constructor(
     private canvas: HTMLCanvasElement,
-    private options: { modelUrl?: string; fallbackModelUrl?: string } = {},
+    private options: {
+      modelUrl?: string;
+      fallbackModelUrl?: string;
+      // iOS版(縦長フルブリードの専用エントリ frontend/src/ios-avatar/)が、顔周りを大きく
+      // 見せる近め framing を指定するために追加。未指定なら従来のWeb版の値のまま。
+      cameraPosition?: { x: number; y: number; z: number };
+      cameraLookAt?: { x: number; y: number; z: number };
+    } = {},
   ) {
     this.renderer = new THREE.WebGLRenderer({
       canvas,
@@ -118,8 +125,10 @@ export class CompanionViewer {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     this.camera = new THREE.PerspectiveCamera(24, 1, 0.1, 20);
-    this.camera.position.set(0, 1.32, 2.2);
-    this.camera.lookAt(0, 1.12, 0);
+    const camPos = this.options.cameraPosition ?? { x: 0, y: 1.32, z: 2.2 };
+    const camLookAt = this.options.cameraLookAt ?? { x: 0, y: 1.12, z: 0 };
+    this.camera.position.set(camPos.x, camPos.y, camPos.z);
+    this.camera.lookAt(camLookAt.x, camLookAt.y, camLookAt.z);
 
     const key = new THREE.DirectionalLight(0xfff2e3, 1.6);
     key.position.set(1.2, 1.8, 1.5);

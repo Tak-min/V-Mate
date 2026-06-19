@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0179681B5236B507FEF3CCC5 /* ConversationOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = F85A2C14BCFC1EE04EA3C92E /* ConversationOverlay.swift */; };
 		328CC4E92129317DEBF554F9 /* AvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19C829075B174B8C436FC3DA /* AvatarView.swift */; };
 		375BEE64A4A15871B5D1B6CD /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 627E8E6FAA44CB248CAB829F /* Models.swift */; };
 		907ABF8A351B6015BD323EB3 /* VRMAvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 933F65D829A8A9996CE40018 /* VRMAvatarView.swift */; };
@@ -15,24 +16,25 @@
 		B9F0E31D043BE931467DC900 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 558AE6CB426801861C0885BC /* RootView.swift */; };
 		C0901E8F6B779605202C80FD /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C47781B2A06612BF80E4D5EC /* APIClient.swift */; };
 		C495EE1ADA4B65683FFDC067 /* VMateApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74FAF615F76F22005FB0978E /* VMateApp.swift */; };
-		C99EE7B443E3FF40E0A34DD3 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2FCC42185CD1ED2D7A5EF08 /* ChatView.swift */; };
+		CB34713627694B12F0FB9D1D /* AmbientBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EB522E1E135E38C317E0E7E /* AmbientBackground.swift */; };
 		F157BF2D376E4C8A75E47304 /* DiaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94DF2FE0B766B214BE732B0F /* DiaryView.swift */; };
 		F5D60551FEBE3DBD8F453370 /* SpeechQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = B88BE9409D8285B3B8DFD2CC /* SpeechQueue.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		19C829075B174B8C436FC3DA /* AvatarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarView.swift; sourceTree = "<group>"; };
+		1EB522E1E135E38C317E0E7E /* AmbientBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientBackground.swift; sourceTree = "<group>"; };
 		558AE6CB426801861C0885BC /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		627E8E6FAA44CB248CAB829F /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		74FAF615F76F22005FB0978E /* VMateApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VMateApp.swift; sourceTree = "<group>"; };
 		8D590B18853AE01E38AE6A30 /* CompanionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionViewModel.swift; sourceTree = "<group>"; };
 		933F65D829A8A9996CE40018 /* VRMAvatarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VRMAvatarView.swift; sourceTree = "<group>"; };
 		94DF2FE0B766B214BE732B0F /* DiaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiaryView.swift; sourceTree = "<group>"; };
-		B2FCC42185CD1ED2D7A5EF08 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		B7C5707F31A1E4C4C73FAED4 /* SentenceSplitter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SentenceSplitter.swift; sourceTree = "<group>"; };
 		B88BE9409D8285B3B8DFD2CC /* SpeechQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechQueue.swift; sourceTree = "<group>"; };
 		C47781B2A06612BF80E4D5EC /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		D17698B27B19C1BF08468D4F /* VMate.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = VMate.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F85A2C14BCFC1EE04EA3C92E /* ConversationOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationOverlay.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -93,8 +95,9 @@
 		C8B2D3E49CFDA968C8D0AF7B /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				1EB522E1E135E38C317E0E7E /* AmbientBackground.swift */,
 				19C829075B174B8C436FC3DA /* AvatarView.swift */,
-				B2FCC42185CD1ED2D7A5EF08 /* ChatView.swift */,
+				F85A2C14BCFC1EE04EA3C92E /* ConversationOverlay.swift */,
 				94DF2FE0B766B214BE732B0F /* DiaryView.swift */,
 				558AE6CB426801861C0885BC /* RootView.swift */,
 			);
@@ -193,9 +196,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				C0901E8F6B779605202C80FD /* APIClient.swift in Sources */,
+				CB34713627694B12F0FB9D1D /* AmbientBackground.swift in Sources */,
 				328CC4E92129317DEBF554F9 /* AvatarView.swift in Sources */,
-				C99EE7B443E3FF40E0A34DD3 /* ChatView.swift in Sources */,
 				A790AC8EC600EFF254AF3C34 /* CompanionViewModel.swift in Sources */,
+				0179681B5236B507FEF3CCC5 /* ConversationOverlay.swift in Sources */,
 				F157BF2D376E4C8A75E47304 /* DiaryView.swift in Sources */,
 				375BEE64A4A15871B5D1B6CD /* Models.swift in Sources */,
 				B9F0E31D043BE931467DC900 /* RootView.swift in Sources */,

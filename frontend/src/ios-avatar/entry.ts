@@ -31,6 +31,10 @@ function boot(): void {
   const viewer = new CompanionViewer(canvas, {
     modelUrl: '/models/shiro.vrm',
     fallbackModelUrl: '/models/shiro.vrm',
+    // 縦長フルブリード表示なので、Web版より少し寄って上半身〜顔を大きく見せる
+    // (2026-06-19 UI改善ループ: 「キャラクターが小さい」というフィードバックへの対応)。
+    cameraPosition: { x: 0, y: 1.38, z: 1.55 },
+    cameraLookAt: { x: 0, y: 1.22, z: 0 },
   });
 
   let mouthLevel = 0;
