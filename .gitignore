@@ -6,3 +6,9 @@ backend/data/
 backend/static/
 dist/
 .DS_Store
+
+# iOS (ios/VMate.xcodeproj は xcodegen 生成物だが、Xcodeで直接開けるよう commit 対象とする)
+ios/**/xcuserdata/
+ios/**/*.xcuserstate
+ios/DerivedData/
+ios/.build/
