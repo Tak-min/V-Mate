@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CompanionViewer } from '../vrm/viewer';
 import { SentenceSplitter, SpeechQueue } from '../voice/speech';
+import { isSpeechRecognitionSupported, SpeechRecognizer } from '../voice/recognition';
 import {
   fetchHistory,
   fetchState,
@@ -23,6 +24,11 @@ import type {
 // AIが干渉しすぎる(短い間隔で自発的に話しかける)との指摘を受けて 120s → 240s に緩和。
 const IDLE_NUDGE_MS = 240_000;
 const RELAX_AFTER_MS = 6_000;
+// 会話モードで「聞いてるよ」の所作を維持する注視時間。
+const LISTENING_NOTICE_S = 6;
+
+/** ハンズフリー音声会話の状態。off=テキストのみ / listening=聞き取り中 / thinking=応答待ち / speaking=発話中 */
+export type VoiceMode = 'off' | 'listening' | 'thinking' | 'speaking';
 
 const DEFAULT_WAITING_CUES = [
   'うん、聞いてる。',
@@ -69,11 +75,26 @@ export function useCompanion() {
   const [condition, setCondition] = useState<PresentationCondition | null>(null);
   const [userTurns, setUserTurns] = useState(0);
 
+  // --- ハンズフリー音声会話 ---
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>('off');
+  const [partialTranscript, setPartialTranscript] = useState('');
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [voiceSupported] = useState(isSpeechRecognitionSupported);
+
   const greeted = useRef(false);
   const idleTimer = useRef<number | undefined>(undefined);
   const relaxTimer = useRef<number | undefined>(undefined);
+  const recognizerRef = useRef<SpeechRecognizer | null>(null);
+  const voiceModeRef = useRef<VoiceMode>('off'); // 非同期コールバックから最新値を読むため
+  const responseDoneRef = useRef(false); // 応答ストリームが完了したか
+  const abortRef = useRef<AbortController | null>(null); // バージイン用
 
   const speech = speechRef.current;
+
+  const setVoiceModeBoth = useCallback((mode: VoiceMode) => {
+    voiceModeRef.current = mode;
+    setVoiceMode(mode);
+  }, []);
 
   const showEmotion = useCallback((emotion: Emotion) => {
     viewerRef.current?.setEmotion(emotion);
@@ -95,6 +116,8 @@ export function useCompanion() {
 
   const resetIdleTimer = useCallback(() => {
     window.clearTimeout(idleTimer.current);
+    // 会話モード中は常時聞き取っているので、自発的な声かけ(エコー源)は出さない。
+    if (voiceModeRef.current !== 'off') return;
     idleTimer.current = window.setTimeout(async () => {
       try {
         const { text, emotion } = await requestNudge('idle');
@@ -109,6 +132,185 @@ export function useCompanion() {
     viewerRef.current?.notice('typing', 1.6);
     resetIdleTimer();
   }, [resetIdleTimer]);
+
+  // 聞き取り再開(発話し終わって、まだ会話モードならマイクを開け直す)。
+  const resumeListening = useCallback(() => {
+    if (voiceModeRef.current === 'off') return;
+    responseDoneRef.current = false;
+    setPartialTranscript('');
+    setVoiceModeBoth('listening');
+    viewerRef.current?.notice('listening', LISTENING_NOTICE_S);
+    recognizerRef.current?.start();
+  }, [setVoiceModeBoth]);
+
+  // 「応答が終わっている」かつ「発話キューが空」になったら聞き取りへ戻す。
+  const maybeResumeListening = useCallback(() => {
+    if (voiceModeRef.current === 'off') return;
+    if (!responseDoneRef.current) return;
+    if (speech.isSpeaking()) return;
+    resumeListening();
+  }, [resumeListening, speech]);
+
+  const send = useCallback(
+    async (raw: string) => {
+      const message = raw.trim();
+      if (!message || busy || !condition) return;
+      setBusy(true);
+      viewerRef.current?.notice('thinking', 4.8);
+      setMessages((prev) => [...prev, { role: 'user', content: message }]);
+      setUserTurns((prev) => prev + 1);
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: '', emotion: 'relaxed', cue: waitingCueFor(message) },
+      ]);
+
+      const splitter = new SentenceSplitter();
+      let emotion: Emotion = 'neutral';
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      const appendToLast = (text: string) =>
+        setMessages((prev) => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          next[next.length - 1] = {
+            ...last,
+            content: last.content + text,
+            emotion,
+          };
+          return next;
+        });
+
+      try {
+        await streamChat(
+          message,
+          condition,
+          {
+            onEmotion: (e) => {
+              emotion = e;
+              showEmotion(e);
+            },
+            onToken: (text) => {
+              viewerRef.current?.notice('speaking', 2.2);
+              // 会話モードでは最初のトークンで「話し始めた」状態へ遷移。
+              if (voiceModeRef.current === 'thinking') setVoiceModeBoth('speaking');
+              appendToLast(text);
+              for (const sentence of splitter.feed(text)) {
+                speech.enqueue(sentence, emotion);
+              }
+            },
+            onDone: (nextState: CompanionState) => {
+              setState(nextState);
+              const rest = splitter.flush();
+              if (rest) speech.enqueue(rest, emotion);
+            },
+            onError: (errorMessage) => {
+              appendToLast(errorMessage);
+            },
+          },
+          controller.signal,
+        );
+      } catch {
+        // バージイン(意図的な中断)はエラー表示しない。
+        if (!controller.signal.aborted) {
+          appendToLast('(接続が切れちゃったみたい…バックエンドは起動してる?)');
+        }
+      } finally {
+        if (abortRef.current === controller) abortRef.current = null;
+        setBusy(false);
+        resetIdleTimer();
+        // 会話モードなら応答完了を記録し、発話キューが空き次第また聞き取りへ。
+        if (voiceModeRef.current !== 'off') {
+          responseDoneRef.current = true;
+          maybeResumeListening();
+        }
+      }
+    },
+    [busy, condition, showEmotion, speech, resetIdleTimer, maybeResumeListening, setVoiceModeBoth],
+  );
+
+  // マイクが1ターン分の発話を確定 → 送信。エコー防止に聞き取りは一旦止める。
+  const handleUtterance = useCallback(
+    (text: string) => {
+      if (voiceModeRef.current === 'off') return;
+      recognizerRef.current?.stop();
+      setPartialTranscript('');
+      setVoiceModeBoth('thinking');
+      responseDoneRef.current = false;
+      void send(text);
+    },
+    [send, setVoiceModeBoth],
+  );
+
+  // 認識エンジンは1度だけ生成され onUtterance を掴み続けるため、最新の
+  // handleUtterance(=最新の send)を ref 経由で呼べるようにしておく。
+  const handleUtteranceRef = useRef(handleUtterance);
+  handleUtteranceRef.current = handleUtterance;
+
+  const saveName = useCallback(async (name: string) => {
+    const next = await setProfile(name);
+    setState(next);
+  }, []);
+
+  const toggleVoice = useCallback(() => {
+    setVoiceEnabled((prev) => {
+      speech.setEnabled(!prev);
+      if (condition) void logResearchEvent(condition, 'voice_toggled', { enabled: !prev });
+      return !prev;
+    });
+  }, [condition, speech]);
+
+  // ハンズフリー会話モードの ON/OFF。
+  const toggleVoiceMode = useCallback(() => {
+    if (voiceModeRef.current !== 'off') {
+      recognizerRef.current?.stop();
+      setPartialTranscript('');
+      setVoiceModeBoth('off');
+      viewerRef.current?.relax();
+      resetIdleTimer();
+      if (condition) void logResearchEvent(condition, 'voice_mode', { active: false });
+      return;
+    }
+    if (!voiceSupported) {
+      setVoiceError('このブラウザは音声入力に対応していません(Chrome / Edge 推奨)。');
+      return;
+    }
+    setVoiceError(null);
+    speech.unlock(); // 自動再生ポリシー解禁(声かけが無音にならないように)
+    if (!voiceEnabled) toggleVoice(); // 会話なので相手の声も聞こえるように
+    window.clearTimeout(idleTimer.current);
+    if (!recognizerRef.current) {
+      recognizerRef.current = new SpeechRecognizer({
+        onPartial: (t) => {
+          setPartialTranscript(t);
+          viewerRef.current?.notice('listening', 4);
+        },
+        onUtterance: (t) => handleUtteranceRef.current(t),
+        onError: (kind, message) => {
+          if (kind === 'permission') {
+            setVoiceError(message);
+            recognizerRef.current?.stop();
+            setVoiceModeBoth('off');
+            viewerRef.current?.relax();
+          }
+        },
+      });
+    }
+    responseDoneRef.current = false;
+    setVoiceModeBoth('listening');
+    viewerRef.current?.notice('listening', LISTENING_NOTICE_S);
+    recognizerRef.current.start();
+    if (condition) void logResearchEvent(condition, 'voice_mode', { active: true });
+  }, [voiceSupported, voiceEnabled, condition, speech, toggleVoice, resetIdleTimer, setVoiceModeBoth]);
+
+  // バージイン: 発話/応答待ちの最中にユーザーが割り込んで止める → すぐ聞き取りへ。
+  const interrupt = useCallback(() => {
+    if (voiceModeRef.current === 'off') return;
+    abortRef.current?.abort(); // 進行中のSSEを中断
+    speech.stop(); // 再生中のTTSを止める
+    responseDoneRef.current = true;
+    resumeListening();
+  }, [speech, resumeListening]);
 
   // 研究条件の取得。URL指定が無ければサーバが参加者ごとに安定割付する。
   useEffect(() => {
@@ -158,6 +360,14 @@ export function useCompanion() {
     fetchHistory().then(setMessages).catch(() => {});
   }, []);
 
+  // 発話キューが空いたら聞き取り再開を試みる(会話モードの自動ターン回し)。
+  useEffect(() => {
+    speech.onDrained = maybeResumeListening;
+    return () => {
+      speech.onDrained = null;
+    };
+  }, [speech, maybeResumeListening]);
+
   // 最初のユーザー操作で AudioContext を解禁する(挨拶・アイドル声かけが
   // ユーザー操作なしに音声再生を試みて自動再生ブロックで無音になるのを防ぐ)。
   useEffect(() => {
@@ -190,79 +400,6 @@ export function useCompanion() {
       .catch(() => {});
   }, [ready, pushAssistant, resetIdleTimer]);
 
-  const send = useCallback(
-    async (raw: string) => {
-      const message = raw.trim();
-      if (!message || busy || !condition) return;
-      setBusy(true);
-      viewerRef.current?.notice('thinking', 4.8);
-      setMessages((prev) => [...prev, { role: 'user', content: message }]);
-      setUserTurns((prev) => prev + 1);
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: '', emotion: 'relaxed', cue: waitingCueFor(message) },
-      ]);
-
-      const splitter = new SentenceSplitter();
-      let emotion: Emotion = 'neutral';
-
-      const appendToLast = (text: string) =>
-        setMessages((prev) => {
-          const next = [...prev];
-          const last = next[next.length - 1];
-          next[next.length - 1] = {
-            ...last,
-            content: last.content + text,
-            emotion,
-          };
-          return next;
-        });
-
-      try {
-        await streamChat(message, condition, {
-          onEmotion: (e) => {
-            emotion = e;
-            showEmotion(e);
-          },
-          onToken: (text) => {
-            viewerRef.current?.notice('speaking', 2.2);
-            appendToLast(text);
-            for (const sentence of splitter.feed(text)) {
-              speech.enqueue(sentence, emotion);
-            }
-          },
-          onDone: (nextState: CompanionState) => {
-            setState(nextState);
-            const rest = splitter.flush();
-            if (rest) speech.enqueue(rest, emotion);
-          },
-          onError: (errorMessage) => {
-            appendToLast(errorMessage);
-          },
-        });
-      } catch {
-        appendToLast('(接続が切れちゃったみたい…バックエンドは起動してる?)');
-      } finally {
-        setBusy(false);
-        resetIdleTimer();
-      }
-    },
-    [busy, condition, showEmotion, speech, resetIdleTimer],
-  );
-
-  const saveName = useCallback(async (name: string) => {
-    const next = await setProfile(name);
-    setState(next);
-  }, []);
-
-  const toggleVoice = useCallback(() => {
-    setVoiceEnabled((prev) => {
-      speech.setEnabled(!prev);
-      if (condition) void logResearchEvent(condition, 'voice_toggled', { enabled: !prev });
-      return !prev;
-    });
-  }, [condition, speech]);
-
   const submitSurvey = useCallback(
     async (scores: ResearchSurveyScores) => {
       if (!condition) return;
@@ -275,11 +412,13 @@ export function useCompanion() {
     [condition, messages.length, userTurns, voiceEnabled],
   );
 
-  // タイマー後始末
+  // タイマー・認識エンジンの後始末
   useEffect(
     () => () => {
       window.clearTimeout(idleTimer.current);
       window.clearTimeout(relaxTimer.current);
+      recognizerRef.current?.dispose();
+      recognizerRef.current = null;
       speech.stop();
     },
     [speech],
@@ -295,10 +434,16 @@ export function useCompanion() {
     voiceEnabled,
     condition,
     userTurns,
+    voiceMode,
+    partialTranscript,
+    voiceSupported,
+    voiceError,
     noticeInputActivity,
     send,
     saveName,
     toggleVoice,
+    toggleVoiceMode,
+    interrupt,
     submitSurvey,
   };
 }

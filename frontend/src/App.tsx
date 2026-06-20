@@ -5,6 +5,7 @@ import { ChatPanel } from './components/ChatPanel';
 import { DiaryDrawer } from './components/DiaryDrawer';
 import { ResearchSurvey } from './components/ResearchSurvey';
 import { StatusBar } from './components/StatusBar';
+import { VoiceControl } from './components/VoiceControl';
 
 export default function App() {
   const {
@@ -17,10 +18,16 @@ export default function App() {
     voiceEnabled,
     condition,
     userTurns,
+    voiceMode,
+    partialTranscript,
+    voiceSupported,
+    voiceError,
     noticeInputActivity,
     send,
     saveName,
     toggleVoice,
+    toggleVoiceMode,
+    interrupt,
     submitSurvey,
   } = useCompanion();
   const [diaryOpen, setDiaryOpen] = useState(false);
@@ -47,6 +54,14 @@ export default function App() {
       <StatusBar state={state} onSaveName={saveName} />
 
       <div className="toolbar">
+        <VoiceControl
+          supported={voiceSupported}
+          mode={voiceMode}
+          partial={partialTranscript}
+          error={voiceError}
+          onToggle={toggleVoiceMode}
+          onInterrupt={interrupt}
+        />
         <button
           type="button"
           className={`icon-button${voiceEnabled ? ' active' : ''}`}

@@ -20,6 +20,17 @@ export class SpeechQueue {
   private analyserData: Uint8Array | null = null;
   private currentSource: AudioBufferSourceNode | null = null;
 
+  /**
+   * キューを再生し切って無音になった瞬間に呼ばれる。
+   * 会話モードでは「相手が話し終わった」= ユーザーの聞き取りを再開する合図に使う。
+   */
+  onDrained: (() => void) | null = null;
+
+  /** いま発話中か(再生中 or 再生待ちが残っている)。 */
+  isSpeaking(): boolean {
+    return this.playing || this.queue.length > 0;
+  }
+
   /** 現在の口の開き具合 (0..1) — Viewer が毎フレーム参照する */
   mouthLevel = (): number => {
     if (this.analyser && this.analyserData) {
@@ -87,6 +98,8 @@ export class SpeechQueue {
       }
     }
     this.playing = false;
+    // 発話し切ったことを通知(会話モードの聞き取り再開トリガ)。
+    if (this.queue.length === 0) this.onDrained?.();
   }
 
   private async playFromBackend(text: string, emotion?: string): Promise<void> {

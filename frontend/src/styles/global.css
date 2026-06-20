@@ -471,6 +471,155 @@ body {
   box-shadow: var(--shadow-soft), inset 0 0 0 1px oklch(99% 0.01 80 / 0.4);
 }
 
+.icon-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* --- 音声会話モード --- */
+.voice-control {
+  display: contents;
+}
+
+.voice-mic.pulsing {
+  animation: voice-pulse 1.6s var(--ease-out) infinite;
+}
+
+@keyframes voice-pulse {
+  0% {
+    box-shadow: var(--shadow-soft), 0 0 0 0 oklch(70% 0.16 35 / 0.45);
+  }
+  70% {
+    box-shadow: var(--shadow-soft), 0 0 0 12px oklch(70% 0.16 35 / 0);
+  }
+  100% {
+    box-shadow: var(--shadow-soft), 0 0 0 0 oklch(70% 0.16 35 / 0);
+  }
+}
+
+.voice-hud {
+  position: fixed;
+  left: 50%;
+  bottom: calc(86px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 6;
+  width: min(440px, calc(100vw - 36px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 18px;
+  background: var(--color-glass);
+  border: 1px solid var(--color-glass-border);
+  backdrop-filter: blur(16px);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-soft);
+  text-align: center;
+  animation: voice-hud-in var(--duration-fast) var(--ease-out);
+}
+
+@keyframes voice-hud-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.voice-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-accent-deep);
+  letter-spacing: 0.02em;
+}
+
+.voice-status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--color-accent);
+}
+
+.voice-status-listening .voice-status-dot {
+  animation: voice-blink 1.2s ease-in-out infinite;
+}
+
+.voice-status-thinking .voice-status-dot {
+  background: oklch(75% 0.13 90);
+  animation: voice-blink 0.7s ease-in-out infinite;
+}
+
+.voice-status-speaking .voice-status-dot {
+  background: oklch(70% 0.16 350);
+}
+
+@keyframes voice-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.voice-partial {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--color-ink);
+  word-break: break-word;
+}
+
+.voice-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-ink-soft);
+}
+
+.voice-interrupt {
+  margin-top: 2px;
+  padding: 7px 16px;
+  border: 1px solid var(--color-glass-border);
+  border-radius: 999px;
+  background: oklch(99% 0.01 80 / 0.5);
+  color: var(--color-accent-deep);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.voice-interrupt:hover {
+  transform: translateY(-1px);
+}
+
+.voice-error {
+  position: fixed;
+  left: 50%;
+  bottom: calc(86px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 6;
+  max-width: min(360px, calc(100vw - 36px));
+  margin: 0;
+  padding: 10px 16px;
+  background: var(--color-glass);
+  border: 1px solid var(--color-glass-border);
+  backdrop-filter: blur(14px);
+  border-radius: 16px;
+  box-shadow: var(--shadow-soft);
+  font-size: 0.84rem;
+  color: var(--color-accent-deep);
+  text-align: center;
+}
+
 /* --- チャットパネル --- */
 .chat-panel {
   position: absolute;

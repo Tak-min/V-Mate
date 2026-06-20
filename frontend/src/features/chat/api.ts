@@ -69,11 +69,13 @@ export async function streamChat(
   message: string,
   condition: PresentationCondition,
   events: ChatEvents,
+  signal?: AbortSignal,
 ): Promise<void> {
   const response = await apiFetch('/api/chat', {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({ message, condition }),
+    signal,
   });
   if (response.status === 429) {
     const data = await response.json().catch(() => ({}));
