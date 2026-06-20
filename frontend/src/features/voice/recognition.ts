@@ -6,9 +6,15 @@
  * 非対応環境(iOS WKWebView / 旧Firefox 等)では isSpeechRecognitionSupported() が
  * false を返す。STT は本クラスに閉じているため、将来クラウドSTT(Groq Whisper 等)や
  * iOSネイティブ(SFSpeechRecognizer)へ差し替える場合もここを置き換えるだけで済む。
+ *
+ * 【再起動ストーム対策】Web Speech は継続モードでも周期的に onend を発火する。
+ * これを無条件に start() し直すと、音声サービスに繋がらない/即終了する環境では
+ * 「録音が何度も呼ばれるループ」になる。そこで「生産的セッション(結果が出た or
+ * 一定時間続いた)」かどうかで再起動を判定し、不発が続いたら指数バックオフ→上限で
+ * 停止する。正常環境では結果が出るたびカウンタがリセットされるので影響しない。
  */
 
-type RecognizerErrorKind = 'permission' | 'transient';
+type RecognizerErrorKind = 'permission' | 'no-mic' | 'stalled' | 'transient';
 
 export interface RecognizerCallbacks {
   /** 確定+暫定を結合した「いま聞こえている文字列」。リアルタイム表示用。 */
@@ -20,8 +26,15 @@ export interface RecognizerCallbacks {
 
 // 沈黙がこの時間続いたら「話し終わった」とみなす。短すぎると言い淀みで切れる。
 const SILENCE_MS = 1400;
-// onend 後の再開ディレイ(Chrome は継続モードでも周期的にエンジンを止めるため)。
-const RESTART_DELAY_MS = 250;
+// 短すぎる確定はエコー/雑音の誤爆とみなして捨てる(自分の声の拾い込み対策)。
+const MIN_UTTERANCE_LEN = 2;
+// 再起動バックオフ。不発が続くほど間隔を空け、最終的に停止する。
+const BASE_RESTART_MS = 400;
+const MAX_RESTART_MS = 5000;
+// このミリ秒以上続いたセッションは「正常(沈黙待ち)」とみなし、不発カウントしない。
+const PRODUCTIVE_SESSION_MS = 2000;
+// 不発(=即終了)がこの回数を超えたら会話モードを諦める。
+const MAX_UNPRODUCTIVE = 6;
 
 // --- Web Speech API の最小型(vendor-prefixed で lib.dom に無い環境があるため自前定義) ---
 interface SpeechAlternativeLike {
@@ -77,16 +90,20 @@ export class SpeechRecognizer {
   private finalText = ''; // このターンで確定済みのテキスト
   private silenceTimer: number | undefined;
   private restartTimer: number | undefined;
+  private sessionStartTs = 0; // 直近セッションの onstart 時刻
+  private gotResultThisSession = false; // 直近セッションで結果が出たか
+  private unproductiveStreak = 0; // 即終了(不発)が連続した回数
 
   constructor(
     private readonly callbacks: RecognizerCallbacks,
     private readonly lang = 'ja-JP',
   ) {}
 
-  /** 聞き取り開始(1ターン分のバッファをリセットして稼働させる)。 */
+  /** 聞き取り開始(1ターン分のバッファと不発カウンタをリセットして稼働させる)。 */
   start(): void {
     this.shouldRun = true;
     this.finalText = '';
+    this.unproductiveStreak = 0;
     this.ensureRunning();
   }
 
@@ -124,13 +141,14 @@ export class SpeechRecognizer {
     rec.maxAlternatives = 1;
     rec.onstart = () => {
       this.running = true;
+      this.sessionStartTs = performance.now();
+      this.gotResultThisSession = false;
     };
     rec.onresult = (event) => this.handleResult(event);
     rec.onerror = (event) => this.handleError(event.error);
     rec.onend = () => {
       this.running = false;
-      // 継続モードでも周期的に止まる → 稼働すべきなら再開する。
-      if (this.shouldRun) this.scheduleRestart();
+      if (this.shouldRun) this.scheduleNextSession();
     };
     this.recognition = rec;
     try {
@@ -140,12 +158,41 @@ export class SpeechRecognizer {
     }
   }
 
-  private scheduleRestart(): void {
+  /**
+   * onend 後に再起動するか/どれだけ待つかを決める。
+   * 結果が出た or 一定時間続いたセッションは「正常」とみなして即時再開。
+   * 即終了(不発)が続く場合は指数バックオフし、上限を超えたら停止する。
+   */
+  private scheduleNextSession(): void {
+    const sessionMs = performance.now() - this.sessionStartTs;
+    const productive = this.gotResultThisSession || sessionMs >= PRODUCTIVE_SESSION_MS;
+    if (productive) {
+      this.unproductiveStreak = 0;
+    } else {
+      this.unproductiveStreak++;
+    }
+
+    if (this.unproductiveStreak > MAX_UNPRODUCTIVE) {
+      this.shouldRun = false;
+      this.clearTimers();
+      this.callbacks.onError(
+        'stalled',
+        '音声認識がうまく繋がらないみたい。会話モードをいったん切るね。',
+      );
+      return;
+    }
+
+    const delay =
+      this.unproductiveStreak === 0
+        ? BASE_RESTART_MS
+        : Math.min(BASE_RESTART_MS * 2 ** this.unproductiveStreak, MAX_RESTART_MS);
     window.clearTimeout(this.restartTimer);
-    this.restartTimer = window.setTimeout(() => this.ensureRunning(), RESTART_DELAY_MS);
+    this.restartTimer = window.setTimeout(() => this.ensureRunning(), delay);
   }
 
   private handleResult(event: SpeechRecognitionEventLike): void {
+    this.gotResultThisSession = true;
+    this.unproductiveStreak = 0;
     let interim = '';
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const result = event.results[i];
@@ -166,17 +213,24 @@ export class SpeechRecognizer {
   private commitUtterance(): void {
     const text = this.finalText.trim();
     this.finalText = '';
-    if (text) this.callbacks.onUtterance(text);
+    // 1〜0文字の確定はエコー/雑音とみなして捨てる。
+    if (text.length >= MIN_UTTERANCE_LEN) this.callbacks.onUtterance(text);
   }
 
   private handleError(kind: string): void {
     if (kind === 'not-allowed' || kind === 'service-not-allowed') {
       this.shouldRun = false;
       this.clearTimers();
-      this.callbacks.onError('permission', 'マイクの使用が許可されていません。設定から許可してね。');
+      this.callbacks.onError('permission', 'マイクの使用が許可されていないみたい。設定から許可してね。');
       return;
     }
-    // no-speech / aborted / network / audio-capture は一時的 → onend が再開を担当。
+    if (kind === 'audio-capture') {
+      this.shouldRun = false;
+      this.clearTimers();
+      this.callbacks.onError('no-mic', 'マイクが見つからないみたい。接続を確認してね。');
+      return;
+    }
+    // no-speech / aborted / network は一時的。再起動の可否は onend(scheduleNextSession)が判断する。
     this.callbacks.onError('transient', kind);
   }
 

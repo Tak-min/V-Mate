@@ -26,6 +26,8 @@ const IDLE_NUDGE_MS = 240_000;
 const RELAX_AFTER_MS = 6_000;
 // 会話モードで「聞いてるよ」の所作を維持する注視時間。
 const LISTENING_NOTICE_S = 6;
+// 発話し終えてからマイクを開け直すまでの待ち。スピーカー残響の拾い込みを防ぐ。
+const RESUME_DELAY_MS = 500;
 
 /** ハンズフリー音声会話の状態。off=テキストのみ / listening=聞き取り中 / thinking=応答待ち / speaking=発話中 */
 export type VoiceMode = 'off' | 'listening' | 'thinking' | 'speaking';
@@ -88,6 +90,7 @@ export function useCompanion() {
   const voiceModeRef = useRef<VoiceMode>('off'); // 非同期コールバックから最新値を読むため
   const responseDoneRef = useRef(false); // 応答ストリームが完了したか
   const abortRef = useRef<AbortController | null>(null); // バージイン用
+  const resumeTimer = useRef<number | undefined>(undefined); // 聞き取り再開の遅延タイマ
 
   const speech = speechRef.current;
 
@@ -140,7 +143,11 @@ export function useCompanion() {
     setPartialTranscript('');
     setVoiceModeBoth('listening');
     viewerRef.current?.notice('listening', LISTENING_NOTICE_S);
-    recognizerRef.current?.start();
+    // スピーカー出力が落ち着くまで少し待ってからマイクを開く(自分の声の拾い込み防止)。
+    window.clearTimeout(resumeTimer.current);
+    resumeTimer.current = window.setTimeout(() => {
+      if (voiceModeRef.current === 'listening') recognizerRef.current?.start();
+    }, RESUME_DELAY_MS);
   }, [setVoiceModeBoth]);
 
   // 「応答が終わっている」かつ「発話キューが空」になったら聞き取りへ戻す。
@@ -264,6 +271,7 @@ export function useCompanion() {
   const toggleVoiceMode = useCallback(() => {
     if (voiceModeRef.current !== 'off') {
       recognizerRef.current?.stop();
+      window.clearTimeout(resumeTimer.current);
       setPartialTranscript('');
       setVoiceModeBoth('off');
       viewerRef.current?.relax();
@@ -287,12 +295,14 @@ export function useCompanion() {
         },
         onUtterance: (t) => handleUtteranceRef.current(t),
         onError: (kind, message) => {
-          if (kind === 'permission') {
-            setVoiceError(message);
-            recognizerRef.current?.stop();
-            setVoiceModeBoth('off');
-            viewerRef.current?.relax();
-          }
+          // transient(no-speech/network 等)は再起動ロジックに任せて無視。
+          // permission / no-mic / stalled は会話継続不能 → モードを切って知らせる。
+          if (kind === 'transient') return;
+          setVoiceError(message);
+          recognizerRef.current?.stop();
+          window.clearTimeout(resumeTimer.current);
+          setVoiceModeBoth('off');
+          viewerRef.current?.relax();
         },
       });
     }
@@ -346,7 +356,11 @@ export function useCompanion() {
     });
     viewer.getMouthLevel = speech.mouthLevel;
     viewerRef.current = viewer;
-    void viewer.load(setLoadProgress).then(() => setReady(true));
+    // 読み込み失敗(モデル欠損・パース失敗等)でもローディング画面で固まらせない。
+    void viewer
+      .load(setLoadProgress)
+      .then(() => setReady(true))
+      .catch(() => setReady(true));
     return () => {
       viewer.dispose();
       viewerRef.current = null;
@@ -417,6 +431,7 @@ export function useCompanion() {
     () => () => {
       window.clearTimeout(idleTimer.current);
       window.clearTimeout(relaxTimer.current);
+      window.clearTimeout(resumeTimer.current);
       recognizerRef.current?.dispose();
       recognizerRef.current = null;
       speech.stop();
