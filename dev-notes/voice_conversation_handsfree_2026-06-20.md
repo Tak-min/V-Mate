@@ -86,6 +86,22 @@ speaking ──(TTSキュー枯渇)──▶ listening   ← 「更新ボタン�
   - `viewer.load(...).catch(() => setReady(true))`: モデル読み込み失敗でもローディング画面で固まらせない(`realistic.vrm` がデプロイ退避で 818B のSPA HTMLになり GLTFLoader がパース失敗 → 内部で shiro.vrm にフォールバックするが、二重失敗時の保険)。
 - **gotcha(環境差)**: 同じheadlessでも **localhost では start=1で安定**、**本番httpsでは onend が周期発火してストーム**という差があった。Web Speech の挙動はオリジン/ネットワーク状況に依存するため、**音声認識の検証は必ず本番(https)相当で行うこと**。localhostの安定だけ見て「直った」と判断しない。
 
+## 重大バグ修正・第2弾(2026-06-21)— VADゲーティングで録音ループを根絶
+
+- **Symptom**: バックオフ修正後もユーザー報告「マイクのレコーディングが何度も連続で行われ、無限ループに陥っている」。
+  - **真因(設計上の欠陥)**: バックオフは**タイトループを緩めただけ**で根本を直していなかった。`continuous=true` の認識を**常時回し、終わるたびに再起動する**方式そのものが間違い。実ブラウザでは沈黙中もセッションが終わるたびに再録音され、それが永遠に続く(=ユーザーには「録音が無限ループ」に見える)。「沈黙でも録り続ける」のが構造的な原因。
+  - **正しい設計 = VAD(音声区間検出)ゲーティング**(`recognition.ts` を全面刷新):
+    - `getUserMedia` で**マイクストリームを常時開き、Web Audio の AnalyserNode で RMS 音量を周期監視(`setInterval` 60ms)**。
+    - 音量がしきい値(ノイズフロア追従 + 余裕)を **`ONSET_FRAMES=2` 連続で超えた時だけ** `recognition.start()`(発話検出ゲート)。
+    - **`HANGOVER_MS=1100` の沈黙**で `recognition.stop()` → `onend` で1ターン確定。**認識自身は再起動しない**(VADが次の発話で再起動)。
+    - つまり **沈黙中は recognition.start() が一切呼ばれない=録音ループが構造的に発生しない**。録音は「ユーザーが実際に話している間」だけ。
+    - マイクは発話待機中も開くが、`stop()`(発話中のエコー防止/会話モード終了)で**ストリーム・AudioContextごと解放**。
+    - 権限拒否 `NotAllowedError`→`onError('permission')`、デバイス無し→`onError('no-mic')` で会話モードを切って通知。
+  - **検証**(ローカル新ビルド・本番https相当): 会話モードON後 **`recognition.start()` が 8秒間で 0回**(修正前は 6回/6秒のストーム)。`getUserMedia` は1回だけ。listening 表示のまま録音は起動せず=ループ消滅を確認。実ブラウザでは許可済みマイクで getUserMedia 即解決し、**発話時のみ1キャプチャ**になる。
+  - **gotcha**: SpeechRecognition は自前の getUserMedia ストリームと**別に**マイクを掴む(2消費者)。Chrome/Edge では同時利用OK。VAD用ストリームは Analyser 専用、認識は内部で別途キャプチャ。
+  - **tuning余地**: `MIN_THRESHOLD`/`NOISE_MARGIN`(感度)、`HANGOVER_MS`(言い淀みの許容)、`ONSET_FRAMES`(誤爆耐性)。実機で詰める。
+- **gotcha(headless検証の限界・更新)**: Playwright の Chromium は fake-media フラグ無しだと `getUserMedia` が**解決もエラーもせず pending** のまま(8秒待っても resolved/error 共に0)。よって headless では「VADが回って発話で start する」フルパスは踏めない。**確認できるのは『沈黙時に start が呼ばれない(=0)』という最重要不変条件まで**。実マイクの発話→確定はやはり実機確認が必要。
+
 ## 本番反映の手順(未実施)
 
 **本機能はフロントエンドのみ**なので worker/src は無改修。だが配信は Worker 経由なので:
