@@ -87,12 +87,25 @@ export class SpeechQueue {
     this.analyserData = null;
   }
 
+  /**
+   * 文と文の間でTTS取得(ネットワーク往復)を逐次awaitすると、その往復の間だけ無音区間が
+   * できてしまう(ユーザー報告「音声がたまに途切れる」の正体。ネットワーク遅延が大きい時ほど
+   * 目立つので「たまに」起こるように見える)。次に再生する文のTTSを、今の文の再生中に
+   * 先読み(prefetch)しておくことで、再生がギャップ無く連続するようにする。
+   */
   private async processQueue(): Promise<void> {
     this.playing = true;
+    let prefetch: Promise<ArrayBuffer | null> | null = this.queue[0]
+      ? this.fetchTTSBuffer(this.queue[0].text, this.queue[0].emotion)
+      : null;
     while (this.queue.length > 0 && this.enabled) {
       const utterance = this.queue.shift()!;
+      const task = prefetch ?? this.fetchTTSBuffer(utterance.text, utterance.emotion);
+      const next = this.queue[0];
+      prefetch = next ? this.fetchTTSBuffer(next.text, next.emotion) : null;
       try {
-        await this.playFromBackend(utterance.text, utterance.emotion);
+        const buffer = await task;
+        if (buffer) await this.playBuffer(buffer);
       } catch {
         // 1文の失敗(合成不可・再生不可)は無視して次へ。フォールバックはしない。
       }
@@ -102,14 +115,16 @@ export class SpeechQueue {
     if (this.queue.length === 0) this.onDrained?.();
   }
 
-  private async playFromBackend(text: string, emotion?: string): Promise<void> {
+  private async fetchTTSBuffer(text: string, emotion?: string): Promise<ArrayBuffer | null> {
     const params = new URLSearchParams({ text });
     if (emotion) params.set('emotion', emotion);
     const response = await fetch(`/api/tts?${params.toString()}`);
     // 204 = クラウド合成が使えない(キー未設定など)→ 無音で続行
-    if (response.status !== 200) return;
-    const buffer = await response.arrayBuffer();
+    if (response.status !== 200) return null;
+    return await response.arrayBuffer();
+  }
 
+  private async playBuffer(buffer: ArrayBuffer): Promise<void> {
     this.audioContext ??= new AudioContext();
     if (this.audioContext.state === 'suspended') {
       await this.audioContext.resume();

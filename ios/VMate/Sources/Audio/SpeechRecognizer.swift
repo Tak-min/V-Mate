@@ -32,6 +32,13 @@ final class SpeechRecognizer {
     private var task: SFSpeechRecognitionTask?
     private var running = false
     private var finalText = ""
+    /// オンデバイス認識を試すかどうか。端末にその言語のオンデバイスモデルが
+    /// 未ダウンロードだと requiresOnDeviceRecognition=true は1件も結果を返さず
+    /// 即時失敗する(既知のSFSpeechRecognizerの挙動)。最初の発話で検出したら
+    /// 以後はサーバー認識にフォールバックする。
+    private var useOnDeviceRecognition = true
+    private var onDeviceFailureNotified = false
+    private var receivedAnyResult = false
 
     init(locale: Locale = Locale(identifier: "ja-JP")) {
         recognizer = SFSpeechRecognizer(locale: locale)
@@ -122,16 +129,16 @@ final class SpeechRecognizer {
         guard let recognizer else { return }
         let req = SFSpeechAudioBufferRecognitionRequest()
         req.shouldReportPartialResults = true
-        if recognizer.supportsOnDeviceRecognition {
-            req.requiresOnDeviceRecognition = true
-        }
+        let usedOnDevice = recognizer.supportsOnDeviceRecognition && useOnDeviceRecognition
+        req.requiresOnDeviceRecognition = usedOnDevice
         request = req
         finalText = ""
+        receivedAnyResult = false
         callbacks?.onSpeechOnset()
 
         task = recognizer.recognitionTask(with: req) { [weak self] result, error in
             Task { @MainActor [weak self] in
-                self?.handleRecognitionResult(result: result, error: error)
+                self?.handleRecognitionResult(result: result, error: error, usedOnDevice: usedOnDevice)
             }
         }
     }
@@ -140,8 +147,9 @@ final class SpeechRecognizer {
         request?.endAudio()
     }
 
-    private func handleRecognitionResult(result: SFSpeechRecognitionResult?, error: Error?) {
+    private func handleRecognitionResult(result: SFSpeechRecognitionResult?, error: Error?, usedOnDevice: Bool) {
         if let result {
+            receivedAnyResult = true
             finalText = result.bestTranscription.formattedString
             callbacks?.onPartial(finalText)
             if result.isFinal {
@@ -149,6 +157,15 @@ final class SpeechRecognizer {
             }
         }
         if error != nil {
+            // オンデバイスモデル未ダウンロード等で1件も結果が来ずに失敗した場合、
+            // 以後はオンデバイスを諦めてサーバー認識に切り替える(無音のまま固まるのを防ぐ)。
+            if usedOnDevice, !receivedAnyResult {
+                useOnDeviceRecognition = false
+                if !onDeviceFailureNotified {
+                    onDeviceFailureNotified = true
+                    callbacks?.onError(.transient, "音声認識をサーバー方式に切り替えたよ。もう一度話してみてね。")
+                }
+            }
             commit()
         }
     }

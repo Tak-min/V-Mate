@@ -41,25 +41,35 @@ final class SpeechQueue: NSObject, ObservableObject {
         resumePlaybackContinuationIfNeeded()
     }
 
+    /// 文と文の間でTTS取得(ネットワーク往復)を逐次awaitすると、その往復の間だけ無音区間が
+    /// できてしまう(=ユーザー報告「音声がたまに途切れる」の正体。ネットワーク遅延が大きい
+    /// 時ほど目立つので「たまに」起こるように見える)。次に再生する文のTTSを、今の文の再生中に
+    /// 先読み(prefetch)しておくことで、再生がギャップ無く連続するようにする。
     private func processQueue() async {
         playing = true
         isSpeaking = true
+        var prefetch: Task<Data?, Never>? = queue.first.map(makeFetchTask)
         while !queue.isEmpty, enabled {
             let item = queue.removeFirst()
-            await playFromBackend(text: item.text, emotion: item.emotion)
+            let task = prefetch ?? makeFetchTask(item)
+            prefetch = queue.first.map(makeFetchTask)
+            if let data = await task.value {
+                await play(data: data)
+            }
         }
         playing = false
         isSpeaking = false
     }
 
-    private func playFromBackend(text: String, emotion: Emotion?) async {
+    private func makeFetchTask(_ item: (text: String, emotion: Emotion?)) -> Task<Data?, Never> {
+        Task { try? await APIClient.shared.fetchTTS(text: item.text, emotion: item.emotion) }
+    }
+
+    private func play(data: Data) async {
         // AVAudioSessionの構成はAudioSessionManagerに一元化した(録音とのカテゴリ衝突を防ぐため、
         // SpeechQueueからは直接.playbackを設定しない)。テキストのみ利用時はbootstrap時に
         // configureForPlaybackOnly()、音声会話モード中はconfigureForConversation()が
         // CompanionViewModel側で既に呼ばれている前提。
-        guard let data = try? await APIClient.shared.fetchTTS(text: text, emotion: emotion) else {
-            return
-        }
         guard let newPlayer = try? AVAudioPlayer(data: data) else { return }
         newPlayer.isMeteringEnabled = true
         newPlayer.delegate = self
