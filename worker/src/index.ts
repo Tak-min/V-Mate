@@ -365,9 +365,29 @@ async function readJson(request: Request): Promise<Record<string, unknown>> {
   }
 }
 
+// Workers静的アセットは1ファイル25MiB上限。それを超えるVRM(realistic.vrm)はR2から配信する。
+const R2_MODEL_KEYS: Record<string, string> = {
+  "/models/realistic.vrm": "models/realistic.vrm",
+};
+
+async function serveR2Model(env: Env, request: Request, key: string): Promise<Response> {
+  const object = await env.MODELS.get(key, { range: request.headers });
+  if (!object) return new Response("Not Found", { status: 404 });
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("etag", object.httpEtag);
+  headers.set("content-type", "model/gltf-binary");
+  headers.set("cache-control", "public, max-age=31536000, immutable");
+  const status = "range" in object && object.range ? 206 : 200;
+  return new Response(object.body, { status, headers });
+}
+
 export default {
   async fetch(request: Request, env: Env, execCtx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+
+    const r2Key = R2_MODEL_KEYS[url.pathname];
+    if (r2Key) return serveR2Model(env, request, r2Key);
 
     // /api 以外は静的アセット(ビルド済みフロント)へ。run_worker_first で /api/* のみ Worker が先行。
     if (!url.pathname.startsWith("/api/")) {

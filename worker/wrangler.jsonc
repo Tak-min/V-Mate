@@ -7,13 +7,23 @@
   "compatibility_date": "2025-06-01",
 
   // 静的フロント(Vite ビルド成果物)を同一オリジンで配信する。
-  // /api/* だけは必ず Worker を先に実行し、それ以外は静的アセット→SPAフォールバック。
+  // /api/* と /models/realistic.vrm(R2配信、25MiB超のため静的アセットに置けない)は
+  // 必ず Worker を先に実行し、それ以外は静的アセット→SPAフォールバック。
   "assets": {
     "directory": "../backend/static",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"]
+    "run_worker_first": ["/api/*", "/models/realistic.vrm"]
   },
+
+  // R2(オブジェクトストレージ)。Workers静的アセットは1ファイル25MiB上限のため、
+  // それを超える大型VRM(realistic.vrm)はここに置き、Worker側でstreamして配信する。
+  "r2_buckets": [
+    {
+      "binding": "MODELS",
+      "bucket_name": "aikata-models"
+    }
+  ],
 
   // D1(SQLite・無料・永続)。database_id は `wrangler d1 create aikata` で発行された値に置き換える。
   "d1_databases": [

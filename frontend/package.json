@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build:ios-avatar": "esbuild src/ios-avatar/entry.ts --bundle --format=iife --target=es2019 --minify --outfile=public/ios-avatar/avatar.bundle.js",
-    "build": "npm run build:ios-avatar && tsc -b && vite build",
+    "build": "npm run build:ios-avatar && tsc -b && vite build && rm -f ../backend/static/models/realistic.vrm",
     "preview": "vite preview"
   },
   "dependencies": {

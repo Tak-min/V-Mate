@@ -3,6 +3,7 @@ export interface Env {
   // バインディング
   DB: D1Database;
   ASSETS: Fetcher;
+  MODELS: R2Bucket;
 
   // vars(wrangler.jsonc)
   LLM_BASE_URL: string;
