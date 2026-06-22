@@ -163,6 +163,7 @@ final class APIClient {
                     }
 
                     for try await line in bytes.lines {
+                        try Task.checkCancellation()
                         guard line.hasPrefix("data: ") else { continue }
                         let jsonText = String(line.dropFirst(6))
                         guard let jsonData = jsonText.data(using: .utf8),
@@ -189,6 +190,9 @@ final class APIClient {
                             break
                         }
                     }
+                    continuation.finish()
+                } catch is CancellationError {
+                    // バージイン(意図的な中断)。エラー表示はしない。
                     continuation.finish()
                 } catch {
                     continuation.yield(.error("接続が切れちゃったみたい…バックエンドは起動してる?"))

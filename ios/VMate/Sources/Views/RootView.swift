@@ -33,6 +33,15 @@ struct RootView: View {
         .preferredColorScheme(.dark)
     }
 
+    private var micIconName: String {
+        switch viewModel.voiceMode {
+        case .off: return "mic.slash.fill"
+        case .listening: return "mic.fill"
+        case .thinking: return "ellipsis.circle.fill"
+        case .speaking: return "waveform"
+        }
+    }
+
     @ViewBuilder
     private var avatar: some View {
         if vrmFailed {
@@ -56,6 +65,18 @@ struct RootView: View {
                 }
             }
             Spacer()
+            if let voiceError = viewModel.voiceError {
+                Text(voiceError)
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.8))
+                    .lineLimit(1)
+            }
+            Button {
+                Task { await viewModel.toggleHandsFree() }
+            } label: {
+                Image(systemName: micIconName)
+                    .foregroundStyle(viewModel.voiceMode == .off ? .white : Color.accentColor)
+            }
             Button {
                 viewModel.toggleVoice()
             } label: {

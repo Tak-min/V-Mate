@@ -18,6 +18,8 @@ targets:
       path: VMate/Info.plist
       properties:
         CFBundleDisplayName: V-Mate
+        NSMicrophoneUsageDescription: "シロと声で会話するためにマイクを使います。"
+        NSSpeechRecognitionUsageDescription: "あなたの声をその場で文字にしてシロに伝えるために使います。音声は会話の認識にのみ使われます。"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
@@ -30,6 +32,19 @@ targets:
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: NVZB82UK53
         GENERATE_INFOPLIST_FILE: NO
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
+  VMateTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: VMate/Tests
+    settings:
+      base:
+        SWIFT_VERSION: "5.0"
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: VMate

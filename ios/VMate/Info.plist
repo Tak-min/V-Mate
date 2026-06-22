@@ -20,6 +20,10 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>シロと声で会話するためにマイクを使います。</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>あなたの声をその場で文字にしてシロに伝えるために使います。音声は会話の認識にのみ使われます。</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

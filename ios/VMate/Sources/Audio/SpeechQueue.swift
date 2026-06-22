@@ -8,6 +8,8 @@ import Combine
 final class SpeechQueue: NSObject, ObservableObject {
     /// 現在の口の開き具合 (0..1)。AvatarView が毎フレーム参照する。
     @Published private(set) var mouthLevel: Double = 0
+    /// 再生中(キューが空でない、または再生中)か。会話モードの聞き取り再開トリガに使う。
+    @Published private(set) var isSpeaking = false
 
     private var queue: [(text: String, emotion: Emotion?)] = []
     private var playing = false
@@ -41,20 +43,20 @@ final class SpeechQueue: NSObject, ObservableObject {
 
     private func processQueue() async {
         playing = true
+        isSpeaking = true
         while !queue.isEmpty, enabled {
             let item = queue.removeFirst()
             await playFromBackend(text: item.text, emotion: item.emotion)
         }
         playing = false
+        isSpeaking = false
     }
 
     private func playFromBackend(text: String, emotion: Emotion?) async {
-        do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
-            try AVAudioSession.sharedInstance().setActive(true)
-        } catch {
-            // セッション設定失敗時も無音で続行(Web版のフォールバック方針に合わせる)
-        }
+        // AVAudioSessionの構成はAudioSessionManagerに一元化した(録音とのカテゴリ衝突を防ぐため、
+        // SpeechQueueからは直接.playbackを設定しない)。テキストのみ利用時はbootstrap時に
+        // configureForPlaybackOnly()、音声会話モード中はconfigureForConversation()が
+        // CompanionViewModel側で既に呼ばれている前提。
         guard let data = try? await APIClient.shared.fetchTTS(text: text, emotion: emotion) else {
             return
         }

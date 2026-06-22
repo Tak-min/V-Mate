@@ -1,5 +1,15 @@
 import Foundation
 import Combine
+import Speech
+
+/// ハンズフリー音声会話の状態。Web版 useCompanion.ts の VoiceMode と同じ役割。
+/// off=テキストのみ / listening=聞き取り中 / thinking=応答待ち / speaking=発話中
+enum VoiceMode {
+    case off
+    case listening
+    case thinking
+    case speaking
+}
 
 /// Web版 frontend/src/features/chat/useCompanion.ts のSwift移植。
 /// 同じ本番Cloudflare Workerバックエンドに接続し、同じ会話フロー(挨拶→チャット→アイドル声かけ)を再現する。
@@ -14,7 +24,15 @@ final class CompanionViewModel: ObservableObject {
     @Published var avatarMouthLevel: Double = 0
     @Published var currentEmotion: Emotion = .neutral
 
+    // --- ハンズフリー音声会話 ---
+    @Published var voiceMode: VoiceMode = .off
+    @Published var partialTranscript: String = ""
+    @Published var voiceError: String?
+    let voiceSupported = SFSpeechRecognizer.authorizationStatus() != .restricted
+
     let speech = SpeechQueue()
+    private let recognizer = SpeechRecognizer()
+    private var streamTask: Task<Void, Never>?
 
     // Web版と同じ間引き設定(2026-06-19 干渉低減対応)。
     private let idleNudgeSeconds: TimeInterval = 240
@@ -24,11 +42,19 @@ final class CompanionViewModel: ObservableObject {
     private var relaxTimer: Timer?
     private var greeted = false
     private var mouthLevelCancellable: AnyCancellable?
+    private var isSpeakingCancellable: AnyCancellable?
 
     init() {
         mouthLevelCancellable = speech.$mouthLevel
             .receive(on: DispatchQueue.main)
             .sink { [weak self] level in self?.avatarMouthLevel = level }
+        // TTS再生キューが空になったら、会話モード中は聞き取りを再開する。
+        isSpeakingCancellable = speech.$isSpeaking
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isSpeaking in
+                guard let self, !isSpeaking, self.voiceMode == .speaking else { return }
+                self.resumeListening()
+            }
     }
 
     func bootstrap() async {
@@ -39,6 +65,7 @@ final class CompanionViewModel: ObservableObject {
         } catch {
             condition = .stylized
         }
+        try? AudioSessionManager.shared.configureForPlaybackOnly()
         ready = true
 
         async let stateTask: CompanionState? = try? APIClient.shared.fetchState()
@@ -63,10 +90,12 @@ final class CompanionViewModel: ObservableObject {
 
         let splitter = SentenceSplitter()
         var emotion: Emotion = .neutral
+        if voiceMode != .off { voiceMode = .thinking }
 
-        Task {
+        streamTask = Task {
             do {
                 for try await event in APIClient.shared.streamChat(message: message, condition: condition) {
+                    try Task.checkCancellation()
                     switch event {
                     case .emotion(let e):
                         emotion = e
@@ -74,6 +103,7 @@ final class CompanionViewModel: ObservableObject {
                         scheduleRelax()
                     case .token(let text):
                         appendToMessage(at: placeholderIndex, text: text, emotion: emotion)
+                        if voiceMode == .thinking { voiceMode = .speaking }
                         for sentence in splitter.feed(text) {
                             speech.enqueue(sentence, emotion: emotion)
                         }
@@ -86,12 +116,89 @@ final class CompanionViewModel: ObservableObject {
                         appendToMessage(at: placeholderIndex, text: message, emotion: emotion)
                     }
                 }
+            } catch is CancellationError {
+                // バージイン(意図的な中断)。エラー表示はしない。
             } catch {
                 appendToMessage(at: placeholderIndex, text: "(接続が切れちゃったみたい…バックエンドは起動してる?)", emotion: emotion)
             }
             busy = false
             resetIdleTimer()
+            // 音声会話中は、応答完了かつTTS再生キューが空ならここで即座に聞き取りへ戻す
+            // (TTSキューがそもそも空=無音応答だった場合、speech.$isSpeakingのfalse遷移が
+            // 発火しないため、ここでも明示的にチェックする)。
+            if voiceMode != .off, !speech.isSpeaking {
+                resumeListening()
+            }
         }
+    }
+
+    // MARK: - ハンズフリー音声会話
+
+    /// マイクボタン: off⇄listening。初回は権限要求。
+    func toggleHandsFree() async {
+        if voiceMode != .off {
+            stopListening()
+            return
+        }
+        guard voiceSupported else {
+            voiceError = "このデバイスは音声入力に対応していないみたい。"
+            return
+        }
+        let granted = await recognizer.requestAuthorization()
+        guard granted else {
+            voiceError = "マイク/音声認識の使用が許可されていないみたい。設定から許可してね。"
+            return
+        }
+        voiceError = nil
+        try? AudioSessionManager.shared.configureForConversation()
+        if !voiceEnabled { toggleVoice() } // 会話なので相手の声も聞こえるように
+        startListening()
+        if let condition {
+            APIClient.shared.logResearchEvent(condition: condition, eventType: "voice_mode", payload: ["active": true])
+        }
+    }
+
+    private func startListening() {
+        partialTranscript = ""
+        voiceMode = .listening
+        recognizer.start(callbacks: .init(
+            onPartial: { [weak self] text in self?.partialTranscript = text },
+            onUtterance: { [weak self] text in self?.handleUtterance(text) },
+            onSpeechOnset: { [weak self] in self?.handleSpeechOnset() },
+            onError: { [weak self] _, message in self?.voiceError = message }
+        ))
+    }
+
+    private func stopListening() {
+        recognizer.stop()
+        partialTranscript = ""
+        voiceMode = .off
+        try? AudioSessionManager.shared.configureForPlaybackOnly()
+        if let condition {
+            APIClient.shared.logResearchEvent(condition: condition, eventType: "voice_mode", payload: ["active": false])
+        }
+    }
+
+    /// マイクが1ターン分の発話を確定 → 送信。エコー防止に聞き取りは一旦止める。
+    private func handleUtterance(_ text: String) {
+        guard voiceMode != .off else { return }
+        recognizer.stop()
+        partialTranscript = ""
+        send(text)
+    }
+
+    /// バージイン: 発話/応答待ちの最中にユーザーが話し始めたら、中断してそのまま聞き取りを続ける。
+    private func handleSpeechOnset() {
+        guard voiceMode == .thinking || voiceMode == .speaking else { return }
+        streamTask?.cancel()
+        speech.stop()
+        voiceMode = .listening
+    }
+
+    /// 応答完了+TTS再生キューが空になったら聞き取りを再開する。
+    private func resumeListening() {
+        guard voiceMode != .off else { return }
+        startListening()
     }
 
     func saveName(_ name: String) {
