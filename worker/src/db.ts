@@ -41,10 +41,21 @@ export class Store {
     return parseInt(v || "0", 10) || 0;
   }
 
+  /**
+   * 親密度をSQL側で原子的に加算する。get→setの2段階だと、同一ユーザーからの並行リクエスト
+   * (フロントの二重送信や複数タブ/デバイス)で両方が同じ古い値を読んでしまい、片方の加算が
+   * 失われるread-modify-writeレースが起きる。INSERT..ON CONFLICT..RETURNINGで1クエリにする。
+   */
   async addAffinity(userId: string, delta: number): Promise<number> {
-    const score = (await this.getAffinity(userId)) + delta;
-    await this.setKv(userId, "affinity", String(score));
-    return score;
+    const row = await this.db
+      .prepare(
+        "INSERT INTO kv (user_id, key, value) VALUES (?, 'affinity', ?) " +
+          "ON CONFLICT(user_id, key) DO UPDATE SET value = CAST(CAST(kv.value AS INTEGER) + ? AS TEXT) " +
+          "RETURNING value",
+      )
+      .bind(userId, String(delta), delta)
+      .first<{ value: string }>();
+    return parseInt(row?.value ?? "0", 10) || 0;
   }
 
   // --- messages ---

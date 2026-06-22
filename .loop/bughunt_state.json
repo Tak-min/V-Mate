@@ -1,6 +1,6 @@
 {
   "project": "v-mate-bughunt",
-  "iteration": 1,
+  "iteration": 4,
   "max_iterations": 20,
   "checked_aspects": ["chat_basic_flow_ime"],
   "issues_found": [
