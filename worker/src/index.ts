@@ -299,7 +299,13 @@ async function generateDiary(c: Ctx): Promise<Response> {
     .map((m) => `${m.role === "user" ? "ユーザー" : "シロ"}: ${m.content}`)
     .join("\n");
   const userName = (await c.store.getKv(uid, "user_name")) || "ユーザー";
-  const content = stripEmotion(await complete(c.env, diaryPrompt(userName, conversation)))[1];
+  let content: string;
+  try {
+    content = stripEmotion(await complete(c.env, diaryPrompt(userName, conversation)))[1];
+  } catch {
+    // LLM呼び出し失敗時、生のエラーをクライアントに露出させない(キャラクター性も壊れる)。
+    return json({ ok: false, reason: "今は日記がうまく書けないみたい。少ししてからまた試してね。" });
+  }
   await c.store.addDiary(uid, today, content);
   return json({ ok: true, entry: { entry_date: today, content } });
 }

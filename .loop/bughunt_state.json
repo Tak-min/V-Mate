@@ -1,12 +1,35 @@
 {
   "project": "v-mate-bughunt",
-  "iteration": 0,
+  "iteration": 1,
   "max_iterations": 20,
-  "checked_aspects": [],
-  "issues_found": [],
-  "issues_fixed": [],
+  "checked_aspects": ["chat_basic_flow_ime"],
+  "issues_found": [
+    "frontend: double-send race in useCompanion.send (busy state timing)",
+    "frontend: lipsync overlap in speech.ts processQueue",
+    "frontend: idle nudge double-fire timer cleanup",
+    "frontend: gaze stuck after conversation ends (attentionUntil keeps extending)",
+    "frontend: blink/expression desync on relax()",
+    "frontend: resume-listening timer duplicate set",
+    "frontend: onDone not called after SSE abort -> affinity/stage front/back drift",
+    "frontend: IME composing Enter triggers premature form submit (FIXED iter1)",
+    "worker: generateDiary uncaught exception on complete() -> 500",
+    "worker: getTts silently swallows synth failure, no user notification",
+    "worker: readJson returns {} on parse failure, skips validation",
+    "worker: research/export token has no size/rate limiting",
+    "worker: zero test files",
+    "ios: SSE parse/disconnect errors silently swallowed (APIClient.swift)",
+    "ios: SpeechQueue polling deadlock risk if isPlaying never flips false",
+    "ios: placeholderIndex race when idle nudge appends mid-stream",
+    "ios: evaluateJavaScript errors ignored in VRMAvatarView",
+    "ios: idleTimer/scheduleRelax invalidate race off MainActor",
+    "ios: non-429 HTTP errors lose status code, generic message shown",
+    "ios: 30s request timeout may be too short for LLM/VRM load, no resource timeout set"
+  ],
+  "issues_fixed": [
+    "frontend: IME composing Enter premature submit (ChatPanel.tsx onKeyDown isComposing guard)"
+  ],
   "no_progress_count": 0,
-  "last_action": "Phase 0: anchor files created (BUGHUNT_VISION.md / BUGHUNT_PROMPT.md / bughunt_state.json)",
-  "last_verify": null,
-  "notes": "別ゴール(.loop/VISION.md, 公開デプロイ化)はDONE済みで無関係。このstateはバグハントループ専用。"
+  "last_action": "Iteration 1 complete: fixed IME-composing-Enter premature submit in ChatPanel.tsx. Verified tsc clean, committed (27cb39b), deployed to https://aikata.taku810616.workers.dev (also picked up pre-existing uncommitted R2 realistic.vrm fix as side effect - confirmed /models/realistic.vrm now 206 instead of 404).",
+  "last_verify": "frontend tsc --noEmit clean; prod curl checks: / 200, /models/realistic.vrm 206, /api/state 200",
+  "notes": "別ゴール(.loop/VISION.md, 公開デプロイ化)はDONE済みで無関係。このstateはバグハントループ専用。次イテレーションはworker generateDiaryの未catch例外(index.ts:302)を予定。"
 }
