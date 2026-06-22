@@ -40,11 +40,12 @@ struct VoiceActivityDetectorTests {
 
     @Test("沈黙中の環境ノイズにノイズフロアが追従し、同じrmsが発話と判定されなくなる")
     func noiseFloorAdaptsDuringSilenceOnly() {
+        // iOS実機スケール(無音 ~0.0003 / 発話 ~0.004)に合わせた値。
         let config = VADConfig(onsetFrames: 2, minThreshold: 0.001, noiseMargin: 2.0)
-        let testRms: Float = 0.04
-        let ambientRms: Float = 0.025 // 初期しきい値(0.03)未満 = 沈黙として常に扱われる環境ノイズ
+        let testRms: Float = 0.0025
+        let ambientRms: Float = 0.0012 // 初期しきい値(~0.0013)未満 = 沈黙として扱われる環境ノイズ
 
-        // ウォームアップ前: 初期ノイズフロア(0.01)のままなので testRms はすぐ発話と判定される。
+        // ウォームアップ前: 初期ノイズフロア(0.0004)のままなので testRms はすぐ発話と判定される。
         let fresh = VoiceActivityDetector(config: config)
         _ = fresh.process(rms: testRms, nowMs: 0)
         #expect(fresh.process(rms: testRms, nowMs: 60) == .speechStarted)
