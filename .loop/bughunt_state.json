@@ -1,6 +1,6 @@
 {
   "project": "v-mate-bughunt",
-  "iteration": 5,
+  "iteration": 6,
   "max_iterations": 20,
   "checked_aspects": ["chat_basic_flow_ime"],
   "issues_found": [
@@ -28,8 +28,8 @@
   "issues_fixed": [
     "frontend: IME composing Enter premature submit (ChatPanel.tsx onKeyDown isComposing guard)"
   ],
-  "no_progress_count": 1,
+  "no_progress_count": 2,
   "last_action": "Iteration 5 (live browser verification on prod, real user simulation via Playwright): confirmed IME fix works live (composing-Enter blocked, normal Enter sends), confirmed normal chat round-trip clean (0 console errors, affinity atomic increment 0->7 across turns), investigated mobile 375px viewport horizontal overflow (body.scrollWidth>window.innerWidth due to .diary-drawer position:absolute+translateX(105%)) but body{overflow:hidden} already prevents actual user-visible scrolling (verified via wheel/scrollX test) -> not a confirmed bug, no fix applied. Investigated starter-chip rapid double-click race -> inconclusive (chips unmount too fast to reliably reproduce via automation), no fix applied. Investigated apparent LLM echo of user's greeting in assistant reply -> judged likely intentional conversational mirroring by the LLM, not a code defect.",
   "last_verify": "Live prod testing via Playwright: 0 console errors across multiple turns; IME regression-checked (blocked during composition, sent normally otherwise); SQL atomic affinity increment confirmed via local D1 (5->8).",
-  "notes": "別ゴール(.loop/VISION.md, 公開デプロイ化)はDONE済みで無関係。このstateはバグハントループ専用。iteration4で新規issue(affinity race)を修正、iteration5は新規の確証済みissueなし(no_progress_count=1)。次に新規issueが見つからなければ収束(DoD: 2連続)。残る未検証観点: 音声ハンズフリー会話(マイク実機が必要で自動化困難)、iOS実機/シミュレータでの対話、worker usageカウンタの並行性。"
+  "notes": "iteration6: usageカウンタ(レート制限)はaffinityと同型のINSERT..ON CONFLICT..RETURNINGで既に原子的実装済みと確認、修正不要。no_progress_count=2でDoD収束条件に到達。別ゴール(.loop/VISION.md, 公開デプロイ化)はDONE済みで無関係。残る未検証観点(将来再開する場合): 音声ハンズフリー会話(マイク実機が必要で自動化困難)、iOS実機/シミュレータでの対話、長時間セッションでの記憶/日記の一貫性。"
 }
