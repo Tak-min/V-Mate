@@ -44,8 +44,16 @@
   に絞り、過度な探索的subagent展開は避ける。
 
 ## TODO / progress
-- [ ] architectエージェントにiOS音声入力パイプラインの設計を依頼(SFSpeechRecognizer vs
-      他選択肢、VAD移植方針、ViewModel/UI結線方針)
-- [ ] 設計に基づき実装
-- [ ] xcodebuildで検証
-- [ ] commit → push
+- [x] architectエージェントにiOS音声入力パイプラインの設計を依頼
+- [x] 設計に基づき実装(AudioSessionManager/VoiceActivityDetector/SpeechRecognizer/
+      CompanionViewModelのVoiceMode/APIClientのキャンセル対応/RootViewのマイクボタン)
+- [x] xcodebuildで検証(ビルド警告0・エラー0、VADユニットテスト6件パス、起動確認)
+- [x] commit(`0b0e584`) → push
+- [ ] マイク実機でのエンドツーエンド動作確認(発話→認識→送信、バージインの自己エコー耐性)
+      — シミュレータ+セッションコスト都合で未実施。次回起動時の最優先確認事項。
+- [ ] Web版側の人間らしさのさらなる改善 — セッションコスト($28超)のため今回は見送り
+
+## 収束状況(2026-06-22)
+コア機能(iOSのハンズフリー音声入力)は実装・ビルド検証済みで一区切り。実機マイクでの
+動作確認が次回の最優先事項。セッションコスト・変更ファイル数(21件)の両方が閾値を超えた
+ため、ここでループを一旦停止して報告する。
