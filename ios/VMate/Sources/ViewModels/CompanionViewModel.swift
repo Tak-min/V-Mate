@@ -43,6 +43,11 @@ final class CompanionViewModel: ObservableObject {
     private var greeted = false
     private var mouthLevelCancellable: AnyCancellable?
     private var isSpeakingCancellable: AnyCancellable?
+    /// 応答終了→聞き取り再開を遅延させるための待機ジョブ(キャンセル可能)。
+    private var resumeWorkItem: DispatchWorkItem?
+    /// TTS再生終了から聞き取りを再開するまでの待ち時間。即座に開くとMP3末尾やスピーカー
+    /// 残響をマイクが自己検出してしまうため、残響が物理的に減衰するまで少し待つ。
+    private let resumeListeningDelay: TimeInterval = 0.45
 
     init() {
         mouthLevelCancellable = speech.$mouthLevel
@@ -159,6 +164,8 @@ final class CompanionViewModel: ObservableObject {
     }
 
     private func startListening() {
+        resumeWorkItem?.cancel()
+        resumeWorkItem = nil
         partialTranscript = ""
         voiceMode = .listening
         recognizer.start(callbacks: .init(
@@ -170,6 +177,8 @@ final class CompanionViewModel: ObservableObject {
     }
 
     private func stopListening() {
+        resumeWorkItem?.cancel()
+        resumeWorkItem = nil
         recognizer.stop()
         partialTranscript = ""
         voiceMode = .off
@@ -190,15 +199,25 @@ final class CompanionViewModel: ObservableObject {
     /// バージイン: 発話/応答待ちの最中にユーザーが話し始めたら、中断してそのまま聞き取りを続ける。
     private func handleSpeechOnset() {
         guard voiceMode == .thinking || voiceMode == .speaking else { return }
+        resumeWorkItem?.cancel()
+        resumeWorkItem = nil
         streamTask?.cancel()
         speech.stop()
         voiceMode = .listening
     }
 
-    /// 応答完了+TTS再生キューが空になったら聞き取りを再開する。
+    /// 応答完了+TTS再生キューが空になったら聞き取りを再開する。即座にマイクを開くと
+    /// TTS(MP3)末尾やスピーカー残響を自己検出してしまうため、resumeListeningDelay 待って
+    /// 残響が減衰してから開く(VAD側のウォームアップと二段構え)。
     private func resumeListening() {
         guard voiceMode != .off else { return }
-        startListening()
+        resumeWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.voiceMode != .off else { return }
+            self.startListening()
+        }
+        resumeWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + resumeListeningDelay, execute: work)
     }
 
     func saveName(_ name: String) {

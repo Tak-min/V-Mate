@@ -7,20 +7,24 @@ struct VADConfig {
     var onsetFrames = 2
     var hangoverMs: Double = 1100
     /// 発話とみなす最小RMS。iOSの AVAudioEngine(.voiceChatの音声処理後)では実機の
-    /// 生RMSが「無音 ~0.0003 / 発話ピーク ~0.004」という非常に小さいスケールになる
-    /// (実機ログで計測)。Web版(Web Audioスケール、発話 ~0.1)の値をそのまま移植すると
-    /// しきい値が10〜60倍高すぎて発話が永遠に検出されないため、iOS実測スケールに較正している。
-    var minThreshold: Float = 0.001
-    var noiseMargin: Float = 2.2
+    /// 生RMSが「無音 ~0.0003 / 通常発話 ~0.004 / 小声・遠距離 ~0.001-0.0015」という
+    /// 非常に小さいスケールになる(実機ログで計測)。小声やマイクから遠い発話を取りこぼさない
+    /// よう、絶対下限は低めにし、検出は主にノイズフロア相対(noiseMargin)で行う。
+    var minThreshold: Float = 0.0006
+    /// ノイズフロアに対する倍率。これを下げるほど感度が上がる(小さなSNRの発話も拾う)。
+    /// 遠距離小声(SNR ~2-3倍)でも拾えるよう 1.8。誤検出は onsetFrames(2連続=200ms持続要求)、
+    /// resume遅延、ウォームアップで抑える。
+    var noiseMargin: Float = 1.8
     /// しきい値の加算オフセット。ノイズフロアが極小のときに最低限の余裕を持たせる。
-    /// 旧実装ではここが 0.01 固定(Webスケール)で、iOSでは発話ピーク(~0.004)を上回って
-    /// しまい検出不能だった。iOSスケールに合わせて小さくしている。
-    var thresholdOffset: Float = 0.0005
+    /// 旧実装ではここが 0.01 固定(Webスケール)で発話ピークを上回り検出不能だった。
+    var thresholdOffset: Float = 0.0003
     var maxCaptureMs: Double = 15_000
-    /// ノイズフロアの初期値。iOSの実測無音レベル(~0.0003)に合わせる。旧実装の 0.01 だと
-    /// 起動直後の数秒はしきい値が高止まりして発話を取りこぼす(0.95の指数追従で 0.01→0.0003 に
-    /// 落ちるまで ~7秒かかるため)。
-    var initialNoiseFloor: Float = 0.0004
+    /// ノイズフロアの初期値。iOSの実測無音レベル(~0.0003)に合わせる。
+    var initialNoiseFloor: Float = 0.0003
+    /// マイクを開いた直後のウォームアップ期間(ms)。この間は発話開始を起こさない。
+    /// 直前のTTS(MP3)末尾やスピーカー残響がマイクに回り込んでも誤検出しないための保険。
+    /// 主対策は CompanionViewModel 側の resume遅延(残響の物理減衰待ち)で、これはその二段目。
+    var warmupMs: Double = 200
 }
 
 enum VADEvent: Equatable {
@@ -38,6 +42,8 @@ final class VoiceActivityDetector {
     private var lastVoiceMs: Double = 0
     private var captureStartMs: Double = 0
     private var noiseFloor: Float
+    /// reset後の最初の process() フレームの時刻。ウォームアップ判定の基準。
+    private var startedMs: Double?
 
     init(config: VADConfig = .init()) {
         self.config = config
@@ -45,10 +51,21 @@ final class VoiceActivityDetector {
     }
 
     /// 1フレーム分のRMSと現在時刻(ms)を渡すと、発話開始/終了/上限到達のイベントを返す。
-    /// Web版 monitor() と同一の判定: しきい値は noiseFloor 追従 + 下限、ノイズフロアの
-    /// 追従は非capturing時のみ行う。
+    /// しきい値は noiseFloor 追従 + 下限、ノイズフロアの追従は非capturing時のみ行う。
     func process(rms: Float, nowMs: Double) -> VADEvent {
+        if startedMs == nil { startedMs = nowMs }
         let threshold = max(config.minThreshold, noiseFloor * config.noiseMargin + config.thresholdOffset)
+
+        // ウォームアップ期間: マイクを開いた直後はTTS末尾/残響の回り込みやエンジンの不安定
+        // フレームがあり得るため発話開始を抑制する。大きな音でノイズフロアを汚さないよう、
+        // floor追従はしきい値以下のとき(=環境音とみなせるとき)だけ行う。
+        if let started = startedMs, nowMs - started < config.warmupMs {
+            aboveFrames = 0
+            if rms <= threshold {
+                noiseFloor = noiseFloor * 0.95 + rms * 0.05
+            }
+            return .silence
+        }
 
         if rms > threshold {
             aboveFrames += 1
@@ -83,6 +100,7 @@ final class VoiceActivityDetector {
         lastVoiceMs = 0
         captureStartMs = 0
         noiseFloor = config.initialNoiseFloor
+        startedMs = nil
     }
 
     /// AVAudioPCMBuffer 1個分のRMS(正規化、-1..1のfloatサンプル前提)を計算する。
