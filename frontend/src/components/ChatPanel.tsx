@@ -103,6 +103,13 @@ export function ChatPanel({ messages, busy, onInputActivity, onSend }: Props) {
             setDraft(event.target.value);
             onInputActivity();
           }}
+          onKeyDown={(event) => {
+            // IME変換確定のEnterがそのままフォーム送信に化けて、未確定の文字列が
+            // 送られてしまうのを防ぐ(日本語入力で頻発する既知のReactフォーム不具合)。
+            if (event.key === 'Enter' && event.nativeEvent.isComposing) {
+              event.preventDefault();
+            }
+          }}
           aria-label="メッセージ入力"
         />
         <button type="submit" disabled={busy || !draft.trim()} aria-label="送信">

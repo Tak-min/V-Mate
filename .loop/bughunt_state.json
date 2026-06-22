@@ -1,0 +1,12 @@
+{
+  "project": "v-mate-bughunt",
+  "iteration": 0,
+  "max_iterations": 20,
+  "checked_aspects": [],
+  "issues_found": [],
+  "issues_fixed": [],
+  "no_progress_count": 0,
+  "last_action": "Phase 0: anchor files created (BUGHUNT_VISION.md / BUGHUNT_PROMPT.md / bughunt_state.json)",
+  "last_verify": null,
+  "notes": "別ゴール(.loop/VISION.md, 公開デプロイ化)はDONE済みで無関係。このstateはバグハントループ専用。"
+}
