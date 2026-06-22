@@ -5,7 +5,7 @@ import Combine
 /// バックエンド /api/tts (ElevenLabs) が返す MP3 を順番に再生し、音量レベルでアバターの口を動かす。
 /// 合成が使えない場合(キー未設定=204 や失敗)は無音で続行する。
 @MainActor
-final class SpeechQueue: ObservableObject {
+final class SpeechQueue: NSObject, ObservableObject {
     /// 現在の口の開き具合 (0..1)。AvatarView が毎フレーム参照する。
     @Published private(set) var mouthLevel: Double = 0
 
@@ -14,6 +14,8 @@ final class SpeechQueue: ObservableObject {
     private var enabled = true
     private var player: AVAudioPlayer?
     private var meterTimer: Timer?
+    /// 再生完了待ちの継続。delegate通知 or タイムアウトのどちらかが先に解決する。
+    private var playbackContinuation: CheckedContinuation<Void, Never>?
 
     func setEnabled(_ value: Bool) {
         enabled = value
@@ -34,6 +36,7 @@ final class SpeechQueue: ObservableObject {
         meterTimer?.invalidate()
         meterTimer = nil
         mouthLevel = 0
+        resumePlaybackContinuationIfNeeded()
     }
 
     private func processQueue() async {
@@ -57,14 +60,29 @@ final class SpeechQueue: ObservableObject {
         }
         guard let newPlayer = try? AVAudioPlayer(data: data) else { return }
         newPlayer.isMeteringEnabled = true
+        newPlayer.delegate = self
         player = newPlayer
         newPlayer.play()
         startMetering()
-        while newPlayer.isPlaying {
-            try? await Task.sleep(nanoseconds: 60_000_000)
+        // isPlayingのポーリングだけに頼ると、オーディオ割り込み(着信等)で isPlaying が
+        // false に落ちないケースでここが永久に抜けず、キュー全体(以降の発話すべて)が
+        // 止まってしまう。delegateの再生完了通知を主経路にしつつ、再生時間+余裕分の
+        // タイムアウトを必ず仕掛けて、どちらか早い方で抜けるようにする。
+        let timeoutSeconds = max(newPlayer.duration + 2.0, 1.0)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            playbackContinuation = continuation
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
+                self?.resumePlaybackContinuationIfNeeded()
+            }
         }
         stopMetering()
         mouthLevel = 0
+    }
+
+    private func resumePlaybackContinuationIfNeeded() {
+        playbackContinuation?.resume()
+        playbackContinuation = nil
     }
 
     private func startMetering() {
@@ -84,5 +102,19 @@ final class SpeechQueue: ObservableObject {
     private func stopMetering() {
         meterTimer?.invalidate()
         meterTimer = nil
+    }
+}
+
+extension SpeechQueue: AVAudioPlayerDelegate {
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor [weak self] in
+            self?.resumePlaybackContinuationIfNeeded()
+        }
+    }
+
+    nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+        Task { @MainActor [weak self] in
+            self?.resumePlaybackContinuationIfNeeded()
+        }
     }
 }
