@@ -351,7 +351,10 @@ export function useCompanion() {
     }
     if (!canvasRef.current) return;
     const viewer = new CompanionViewer(canvasRef.current, {
-      modelUrl: condition === 'realistic' ? '/models/realistic.vrm' : '/models/shiro.vrm',
+      // 一時対応: realistic.vrm(53MB)はCloudflare資産上限超過のため本番デプロイ時に
+      // 毎回除外されており、condition==='realistic'のユーザーはモデル404で読み込み失敗していた。
+      // 復旧するまでconditionに関わらずshiro.vrmを読み込む(関連: dev-notes 落とし穴1)。
+      modelUrl: '/models/shiro.vrm',
       fallbackModelUrl: '/models/shiro.vrm',
     });
     viewer.getMouthLevel = speech.mouthLevel;
