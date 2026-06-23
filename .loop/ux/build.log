@@ -7,5 +7,5 @@ rendering chunks...
 computing gzip size...
 ../backend/static/index.html                   0.82 kB │ gzip:   0.47 kB
 ../backend/static/assets/index-lQw3T5LP.css   18.18 kB │ gzip:   4.17 kB
-../backend/static/assets/index-vQSsfVA7.js   959.39 kB │ gzip: 255.33 kB
-✓ built in 1.17s
+../backend/static/assets/index-CDBprVzK.js   960.09 kB │ gzip: 255.70 kB
+✓ built in 1.13s

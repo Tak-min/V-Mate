@@ -93,3 +93,4 @@ no-opになった場合は3反復で正しく停止するようにする。
 - [x] Phase 0: アンカーファイル作成(本ファイル)
 - [x] Phase 1: recon (planner/opusブループリント受領)
 - [ ] Phase 2: ヘッドレスループ実行
+- [x] タスク1完了: `ChatPanel.tsx`の`STARTER_PROMPTS`を`buildStarters(state, now)`に置き換え。時間帯(朝/日中/夕方/夜)とstage(はじめまして=新規 / それ以降=既知)で呼びかけ文を切り替え。`App.tsx`から`state`をPropsで渡すよう変更。build green。

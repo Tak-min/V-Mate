@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import type { ChatMessage, Emotion } from '../features/chat/types';
+import type { ChatMessage, CompanionState, Emotion } from '../features/chat/types';
 
 const EMOTION_EMOJI: Record<Emotion, string> = {
   neutral: '',
@@ -10,23 +10,46 @@ const EMOTION_EMOJI: Record<Emotion, string> = {
   shy: '😳',
 };
 
-const STARTER_PROMPTS = [
-  '今日あったことを話したいな',
-  '好きな食べ物は?',
-  'いま何してるの?',
-  '少し元気がないの聞いてほしいな',
-];
+const NEW_VISITOR_STAGE = 'はじめまして';
+
+const TIME_OF_DAY_PROMPTS = {
+  morning: ['おはよう、今日はどんな一日にする?', '朝ごはん食べた?'],
+  daytime: ['今日あったことを話したいな', 'いま何してるの?'],
+  evening: ['今日も一日お疲れさま。何があった?', '夕方になると少し落ち着くね。今の気分は?'],
+  night: ['もう遅い時間だね。眠れてる?', '今日のこと、寝る前に少し話そうか'],
+} as const;
+
+const NEW_VISITOR_PROMPTS = ['好きな食べ物は?', 'はじめまして、よろしくね。何て呼んだらいい?'];
+
+const FAMILIAR_PROMPTS = ['少し元気がないの聞いてほしいな', '前に話してたこと、また聞きたいな'];
+
+function timeBucketFor(now: Date): keyof typeof TIME_OF_DAY_PROMPTS {
+  const hour = now.getHours();
+  if (hour >= 5 && hour < 10) return 'morning';
+  if (hour >= 10 && hour < 17) return 'daytime';
+  if (hour >= 17 && hour < 21) return 'evening';
+  return 'night';
+}
+
+function buildStarters(state: CompanionState | null, now: Date): string[] {
+  const timePrompts = TIME_OF_DAY_PROMPTS[timeBucketFor(now)];
+  const isNewVisitor = !state || state.stage === NEW_VISITOR_STAGE;
+  const tailoredPrompts = isNewVisitor ? NEW_VISITOR_PROMPTS : FAMILIAR_PROMPTS;
+  return [...timePrompts, ...tailoredPrompts];
+}
 
 interface Props {
   messages: ChatMessage[];
   busy: boolean;
+  state: CompanionState | null;
   onInputActivity: () => void;
   onSend: (text: string) => void;
 }
 
-export function ChatPanel({ messages, busy, onInputActivity, onSend }: Props) {
+export function ChatPanel({ messages, busy, state, onInputActivity, onSend }: Props) {
   const [draft, setDraft] = useState('');
   const logRef = useRef<HTMLDivElement | null>(null);
+  const starterPrompts = buildStarters(state, new Date());
 
   useEffect(() => {
     logRef.current?.scrollTo({
@@ -49,7 +72,7 @@ export function ChatPanel({ messages, busy, onInputActivity, onSend }: Props) {
           <div className="chat-empty">
             <p>シロに話しかけてみよう。今日あったこと、好きなもの、なんでも。</p>
             <div className="chat-suggestions">
-              {STARTER_PROMPTS.map((prompt) => (
+              {starterPrompts.map((prompt) => (
                 <button
                   key={prompt}
                   type="button"

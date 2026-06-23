@@ -85,6 +85,7 @@ export default function App() {
       <ChatPanel
         messages={messages}
         busy={busy}
+        state={state}
         onInputActivity={noticeInputActivity}
         onSend={send}
       />
