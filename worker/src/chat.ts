@@ -42,17 +42,20 @@ export interface StatePayload {
   stage: string;
   next_stage_at: number | null;
   provider: string;
+  recent_facts?: string[];
 }
 
 export async function statePayload(store: Store, env: Env, userId: string): Promise<StatePayload> {
   const score = await store.getAffinity(userId);
   const [stageName] = stageFor(score);
+  const facts = await store.listFacts(userId, 2);
   return {
     user_name: await store.getKv(userId, "user_name"),
     affinity: score,
     stage: stageName,
     next_stage_at: nextStageThreshold(score),
     provider: provider(env),
+    recent_facts: facts.length > 0 ? facts : undefined,
   };
 }
 

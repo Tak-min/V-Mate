@@ -736,6 +736,29 @@ body {
   transform: scale(0.96);
 }
 
+.chat-remembered {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-remembered-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--color-ink-faint, var(--color-ink-soft));
+  opacity: 0.75;
+}
+
+.chat-remembered-chip {
+  border: 1px dashed var(--color-glass-border);
+  background: transparent;
+  color: var(--color-ink-soft);
+  font-size: 0.8rem;
+  border-radius: 999px;
+  padding: 6px 13px;
+}
+
 .bubble {
   max-width: 82%;
   padding: 10px 14px;

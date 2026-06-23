@@ -1,10 +1,10 @@
 {
-  "iteration": 4,
+  "iteration": 5,
   "status": "working",
   "task_backlog": [1, 2, 3, 4, 5, 6, 7, 8],
-  "completed_tasks": [1, 2, 3, 6],
+  "completed_tasks": [1, 2, 3, 4, 6],
   "skipped_tasks": [],
-  "last_task": 6,
-  "last_action": "task6: VoiceControl.tsx に音声モードの初回オンボーディングを実装。localStorageキー'vmate.voiceOnboardingSeen'で初回起動時のみ説明文(「話し終えたら少し待つと、シロが応えるよ。『とめて話す』で割り込めるよ」)をvoice-hud内に表示。useRefでコンポーネントのライフタイム中は表示状態を固定し、2回目以降のtoggleでは表示しない。global.cssに.voice-onboardingスタイル追加。純フロントタスクのためreviewer省略。build green (frontend tsc+vite, worker tsc)。",
+  "last_task": 4,
+  "last_action": "task4: 「覚えている」ことをチャット欄に見せるを実装。worker/src/chat.tsのStatePayloadにoptionalな`recent_facts?: string[]`を追加し、既存store.listFacts(userId, 2)を読み取るだけ(新規DB/エンドポイント無し)。空配列ならundefinedにしてJSON上は省略され既存クライアントと後方互換。frontend/src/features/chat/types.tsのCompanionStateにも同フィールドをミラー。ChatPanel.tsxの空状態に「覚えていること」ラベル+plain textのchip(dangerouslySetInnerHTML不使用)を最大2件表示。global.cssに.chat-remembered系スタイル追加。バックエンド変更タスクのためtypescript-reviewer(sonnet)をディスパッチしCRITICAL/HIGH無しを確認(承認)。build green (frontend tsc+vite, worker tsc)。",
   "no_progress_hint": "task_backlog/completed_tasks/skipped_tasks length must change each iteration that makes progress; if a task is genuinely blocked (e.g. backend task too risky), move it to skipped_tasks with a reason in last_action rather than retrying identically"
 }

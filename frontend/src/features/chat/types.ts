@@ -14,6 +14,7 @@ export interface CompanionState {
   stage: string;
   next_stage_at: number | null;
   provider: string;
+  recent_facts?: string[];
 }
 
 export interface ResearchSession {

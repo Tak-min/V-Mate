@@ -71,6 +71,18 @@ export function ChatPanel({ messages, busy, state, onInputActivity, onSend }: Pr
         {messages.length === 0 && (
           <div className="chat-empty">
             <p>シロに話しかけてみよう。今日あったこと、好きなもの、なんでも。</p>
+            {state?.recent_facts && state.recent_facts.length > 0 && (
+              <div className="chat-remembered">
+                <span className="chat-remembered-label">覚えていること</span>
+                <div className="chat-suggestions">
+                  {state.recent_facts.slice(0, 2).map((fact) => (
+                    <span key={fact} className="chat-remembered-chip">
+                      {fact}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="chat-suggestions">
               {starterPrompts.map((prompt) => (
                 <button
