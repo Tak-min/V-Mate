@@ -1,0 +1,17 @@
+[loop-engine 09:51:48] Starting loop. MAX_ITER=20 MODEL=sonnet VERIFY='bash .loop/uiux_verify.sh' NO_PROGRESS_LIMIT=3 BUDGET_USD=0
+[loop-engine 09:51:48] === iteration 1 / 20 ===
+タスク1(アイドルクリップローテーション基盤)を実装し、ビルドgreen・typescript-reviewerのHIGH指摘も修正済みです。`viewer.ts`に既存5クリップを文脈駆動でローテーションする`updateIdleMotion`/`chooseNextIdleClip`を追加し、`setEmotion()`との競合(二重クロスフェード)も解消しました。`completed_tasks: [1]`に更新済みで、次回反復はタスク2(emotion lock)に進めます。
+--- tsc --noEmit ---
+--- vite build ---
+vite v6.4.3 building for production...
+transforming...
+✓ 45 modules transformed.
+rendering chunks...
+computing gzip size...
+../backend/static/index.html                   0.82 kB │ gzip:   0.47 kB
+../backend/static/assets/index-lhyixOC7.css   17.72 kB │ gzip:   4.10 kB
+../backend/static/assets/index-ZRZEG1ry.js   958.10 kB │ gzip: 254.99 kB
+✓ built in 1.11s
+backlog remaining: 8 (completed=1)
+Backlog not yet complete (8 remaining) — continue looping.
+[loop-engine 09:54:31] VERIFY failing (rc=1). Identical-failure streak: 1/3.

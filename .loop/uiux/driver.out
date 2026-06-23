@@ -1,0 +1,3 @@
+[loop-engine 09:51:48] Starting loop. MAX_ITER=20 MODEL=sonnet VERIFY='bash .loop/uiux_verify.sh' NO_PROGRESS_LIMIT=3 BUDGET_USD=0
+[loop-engine 09:51:48] === iteration 1 / 20 ===
+[loop-engine 09:54:31] VERIFY failing (rc=1). Identical-failure streak: 1/3.

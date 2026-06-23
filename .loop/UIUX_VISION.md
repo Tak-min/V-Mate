@@ -97,3 +97,9 @@
 - [ ] Phase 0: アンカーファイル作成(本ファイル) — 完了
 - [ ] Phase 1: recon (code-architect blueprint) — 進行中
 - [ ] Phase 2: ヘッドレスループ実行 (loop-engine.sh)
+- [x] iter1: タスク1「アイドルクリップローテーション基盤」実装。`viewer.ts`に
+      `idleClipUrls`/`currentIdleClipUrl`/`nextIdleSwitch`/`chooseNextIdleClip()`/
+      `updateIdleMotion()`を追加し、`renderLoop`の`updateGaze`後に呼ぶ。idle+neutral/relaxed時、
+      既存5クリップを14-26s(warmthで延長)毎にneutral寄り重み付きでクロスフェード。
+      typescript-reviewerのHIGH指摘(setEmotion直後の二重クロスフェード)を`setEmotion()`内で
+      `nextIdleSwitch`リセットして解消。tsc+vite build green。

@@ -100,6 +100,10 @@ export class CompanionViewer {
   private modelBaseRotationX = 0;
   private modelBaseRotationY = 0;
   private modelBaseRotationZ = 0;
+  /** アイドル時にローテーションさせる待機クリップの候補(既存5クリップ、重複除去)。 */
+  private idleClipUrls = [...new Set(Object.values(MOTIONS))];
+  private currentIdleClipUrl: string = MOTIONS.neutral;
+  private nextIdleSwitch = rand(14, 26);
   /** リップシンク中の口の開き(0..1)を毎フレーム取得する関数 */
   getMouthLevel: (() => number) | null = null;
 
@@ -210,6 +214,9 @@ export class CompanionViewer {
     this.targetWeights = EXPRESSIONS[emotion] ?? {};
     this.playMotion(MOTIONS[emotion] ?? MOTIONS.neutral);
     this.notice('speaking', 3.2);
+    // setEmotionが直接クリップを切り替えるので、直後にidleローテーションが二重に
+    // クロスフェードして落ち着きなく見えないよう、タイマーをここで張り直す。
+    this.nextIdleSwitch = rand(14, 26);
   }
 
   /** 発話終了などで素の表情へ戻す */
@@ -237,6 +244,39 @@ export class CompanionViewer {
       this.currentAction.crossFadeTo(action, CROSSFADE_SECONDS, false);
     }
     this.currentAction = action;
+    if (this.idleClipUrls.includes(url)) this.currentIdleClipUrl = url;
+  }
+
+  /**
+   * アイドル中(attentionMode==='idle'かつ感情がneutral/relaxed)だけ、既存の待機クリップを
+   * 文脈重み付きでローテーションする。単一クリップの永久ループだと「止まっている」印象が
+   * 強くなるため、直前と違うクリップへ時間経過(relationshipWarmthで延長)に応じて
+   * クロスフェードし、「実際に呼吸・佇まいを変えている」ような意図性を出す。
+   */
+  private updateIdleMotion(delta: number): void {
+    const isIdleEmotion = this.currentEmotion === 'neutral' || this.currentEmotion === 'relaxed';
+    if (this.attentionMode !== 'idle' || !isIdleEmotion) return;
+
+    this.nextIdleSwitch -= delta;
+    if (this.nextIdleSwitch > 0) return;
+
+    this.playMotion(this.chooseNextIdleClip());
+    this.nextIdleSwitch = rand(14, 26) * (1 + this.relationshipWarmth * 0.3);
+  }
+
+  /** 直前と違うクリップを、neutral(mujaki)寄りの重みで選ぶ。完全な毎回ランダムにはしない。 */
+  private chooseNextIdleClip(): string {
+    const weights: Record<string, number> = { [MOTIONS.neutral]: 2.2 };
+    const candidates = this.idleClipUrls.filter((url) => url !== this.currentIdleClipUrl);
+    if (candidates.length === 0) return this.currentIdleClipUrl;
+
+    const total = candidates.reduce((sum, url) => sum + (weights[url] ?? 1), 0);
+    let pick = rand(0, total);
+    for (const url of candidates) {
+      pick -= weights[url] ?? 1;
+      if (pick <= 0) return url;
+    }
+    return candidates[candidates.length - 1];
   }
 
   private updateExpressions(delta: number): void {
@@ -526,6 +566,7 @@ export class CompanionViewer {
     this.mixer?.update(delta);
     this.updateRelationship(delta);
     this.updateGaze(delta);
+    this.updateIdleMotion(delta);
     this.updatePresence(delta);
     this.updateExpressions(delta);
     this.vrm?.update(delta);
