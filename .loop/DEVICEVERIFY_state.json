@@ -1,0 +1,16 @@
+{
+  "task": "実機(iPhone 15 Pro/ワイヤレス)へ書き込み→マイク常時稼働化+応答短縮の動作検証ループ",
+  "device": {
+    "name": "俺のGALAXY Pro Max",
+    "id": "FF649B7E-F19F-5E73-9AA2-797C297B8916",
+    "model": "iPhone 15 Pro"
+  },
+  "bundle_id": "com.takmin.vmate",
+  "iteration": 1,
+  "max_iterations": 12,
+  "no_progress_count": 0,
+  "phase": "DONE",
+  "definition_of_done": "実機にビルドがインストール・起動し、コンソールで(1)会話モード突入時にbeginSessionが1回だけ、(2)ターンをまたいでresumeTurn/pauseTurnのみでbeginSessionが再発しない(=エンジン非再起動)、(3)クラッシュ/AVAudioSessionエラー無し、を確認。可能なら発話で🎤speechStartedとRMSを観測。",
+  "last_action": "署名ビルド→ワイヤレスinstall/launch --console→3ターン会話のMICDBGトレース観測→計測ログ削除→クリーン版再インストール",
+  "last_result": "PASS: beginSession=1/endSession=1/resumeTurn=3/pauseTurn=3(エンジン非再起動を実証)、speechStarted×4で発話冒頭から文字起こし、クラッシュ無し"
+}

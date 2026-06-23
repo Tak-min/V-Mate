@@ -135,3 +135,27 @@ Aivis Cloud API(`/v1/tts/synthesize`、OpenAPI spec確認済み)の所見:
    バックエンドは `client.stream()` + `StreamingResponse(media_type="audio/mpeg")` 化が必要。
 5. 実機較正値(`minThreshold`/`noiseMargin`/`thresholdOffset`/`initialNoiseFloor`)は今回も**未変更**
    (実機ログ無しでは触らない方針を踏襲)。
+
+---
+
+## 実機検証(2026-06-24・iPhone 15 Pro「俺のGALAXY Pro Max」ワイヤレス)
+申し送りの最優先項目を実機で確認した。手順: 一時計測ログ`micdbg("[MICDBG] …")`を
+beginSession/endSession/resumeTurn/pauseTurn/speechStarted/transcriptに仕込み →
+`xcodebuild -destination 'id=FF649B7E-…' -allowProvisioningUpdates`で署名ビルド(自動署名・
+Team NVZB82UK53で解決) → `xcrun devicectl device install/process launch --console`で
+ワイヤレス書き込み&stdout観測(`log stream`は実機を拾えないため`devicectl --console`が正解)。
+
+3ターン会話したコンソールトレースの実測:
+- **`▶︎ beginSession`=1回のみ / `■ endSession`=1回のみ / `↻ resumeTurn`=3 / `⏸ pauseTurn`=3。
+  3ターンをまたいでbeginSessionが再発ゼロ=エンジン非再起動を実証**(=本修正のコア仮説が実機で成立。
+  毎ターンのAEC冷間再収束が消えた)。
+- `🎤 speechStarted`=4回、rms=0.00189/0.00278/0.00189/0.00178(較正済みminThreshold 0.0006を
+  超過、小さめRMSでも検出)。**各speechStartedの直後にpartial transcriptが発話の頭
+  (「いや」「お」)から出力=発話冒頭ロスなし**。
+- transcript: 「いや元気」「いや眠い」「おやすみ」を各ターン文字起こし。クラッシュ/
+  AVAudioSessionエラーなし。TTS再生中もエンジン稼働のまま会話成立(自己バージイン誤発火は
+  このセッションでは観測されず。長時間/大音量での再確認は引き続き推奨)。
+- 検証後、`[MICDBG]`計測ログは全削除しクリーン版を再ビルド・再インストール(iOSソースは
+  commit 04c4082とバイト一致=17テスト緑の状態を維持)。
+- 残課題: `warmupMs=100`の最適値とTTS大音量時の自己バージイン耐性は、より長い実利用での
+  継続観察に委ねる(現状の短時間検証では問題なし)。

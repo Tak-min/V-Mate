@@ -16,3 +16,4 @@ ios/**/xcuserdata/
 ios/**/*.xcuserstate
 ios/DerivedData/
 ios/.build/
+ios/build_device/
