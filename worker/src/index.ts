@@ -251,16 +251,20 @@ async function postNudge(c: Ctx, body: { reason?: unknown }): Promise<Response> 
     : "相手の名前はまだ知らない(「ユーザーさん」のような呼び方はせず、名前を呼ばずに話す)。";
 
   let context: string;
+  let daysAway: number | null = null;
   if (reason === "greeting") {
     if (lastSeen && secondsSince(lastSeen) < GREETING_MIN_GAP_SECONDS) {
       // ついさっき(リロード等)開いただけ。毎回挨拶し直すと干渉しすぎになるので省略する。
       await c.store.touchLastSeen(uid);
-      return json({ text: "", emotion: "neutral" });
+      return json({ text: "", emotion: "neutral", days_away: null });
     }
     let gap = "";
     if (lastSeen) {
       const days = daysSince(lastSeen);
-      if (days >= 2) gap = `ユーザーと会うのは約${days}日ぶり。`;
+      if (days >= 2) {
+        gap = `ユーザーと会うのは約${days}日ぶり。`;
+        daysAway = days;
+      }
     }
     context = `${timeContext()}${nameNote}${gap}ユーザーがアプリを開いて現れたところ。挨拶する。`;
   } else {
@@ -273,12 +277,12 @@ async function postNudge(c: Ctx, body: { reason?: unknown }): Promise<Response> 
   try {
     raw = await complete(c.env, nudgePrompt(context));
   } catch {
-    return json({ text: "", emotion: "neutral" });
+    return json({ text: "", emotion: "neutral", days_away: null });
   }
   const [emotion, text] = stripEmotion(raw);
   if (text) await c.store.addMessage(uid, "assistant", text, emotion);
   await c.store.touchLastSeen(uid);
-  return json({ text, emotion });
+  return json({ text, emotion, days_away: daysAway });
 }
 
 async function getDiary(c: Ctx): Promise<Response> {

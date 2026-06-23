@@ -18,6 +18,7 @@ export default function App() {
     voiceEnabled,
     condition,
     userTurns,
+    daysAway,
     voiceMode,
     partialTranscript,
     voiceSupported,
@@ -86,6 +87,7 @@ export default function App() {
         messages={messages}
         busy={busy}
         state={state}
+        daysAway={daysAway}
         onInputActivity={noticeInputActivity}
         onSend={send}
       />

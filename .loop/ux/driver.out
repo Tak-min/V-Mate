@@ -9,3 +9,5 @@
 [loop-engine 13:38:26] VERIFY failing (rc=1). Identical-failure streak: 1/3.
 [loop-engine 13:38:26] === iteration 5 / 15 ===
 [loop-engine 13:41:40] VERIFY failing (rc=1). Identical-failure streak: 1/3.
+[loop-engine 13:41:40] === iteration 6 / 15 ===
+[loop-engine 13:46:43] VERIFY failing (rc=1). Identical-failure streak: 1/3.

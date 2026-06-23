@@ -42,11 +42,12 @@ interface Props {
   messages: ChatMessage[];
   busy: boolean;
   state: CompanionState | null;
+  daysAway: number | null;
   onInputActivity: () => void;
   onSend: (text: string) => void;
 }
 
-export function ChatPanel({ messages, busy, state, onInputActivity, onSend }: Props) {
+export function ChatPanel({ messages, busy, state, daysAway, onInputActivity, onSend }: Props) {
   const [draft, setDraft] = useState('');
   const logRef = useRef<HTMLDivElement | null>(null);
   const starterPrompts = buildStarters(state, new Date());
@@ -67,6 +68,9 @@ export function ChatPanel({ messages, busy, state, onInputActivity, onSend }: Pr
 
   return (
     <section className="chat-panel" aria-label="シロとのチャット">
+      {daysAway !== null && (
+        <p className="chat-welcome-back">おかえり。{daysAway}日ぶりだね。</p>
+      )}
       <div className="chat-log" ref={logRef}>
         {messages.length === 0 && (
           <div className="chat-empty">

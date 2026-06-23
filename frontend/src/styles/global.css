@@ -759,6 +759,15 @@ body {
   padding: 6px 13px;
 }
 
+.chat-welcome-back {
+  margin: 0 0 6px;
+  padding: 6px 14px;
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--color-ink-soft);
+  opacity: 0.85;
+}
+
 .bubble {
   max-width: 82%;
   padding: 10px 14px;

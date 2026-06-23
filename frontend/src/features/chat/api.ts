@@ -178,8 +178,8 @@ export const setProfile = (userName: string): Promise<CompanionState> =>
 
 export const requestNudge = (
   reason: 'idle' | 'greeting',
-): Promise<{ text: string; emotion: Emotion }> => {
-  const fallback = { text: '', emotion: 'neutral' as Emotion };
+): Promise<{ text: string; emotion: Emotion; days_away?: number | null }> => {
+  const fallback = { text: '', emotion: 'neutral' as Emotion, days_away: null };
   return apiFetch('/api/nudge', {
     method: 'POST',
     headers: jsonHeaders,

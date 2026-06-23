@@ -76,6 +76,7 @@ export function useCompanion() {
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [condition, setCondition] = useState<PresentationCondition | null>(null);
   const [userTurns, setUserTurns] = useState(0);
+  const [daysAway, setDaysAway] = useState<number | null>(null);
 
   // --- ハンズフリー音声会話 ---
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('off');
@@ -412,8 +413,9 @@ export function useCompanion() {
     if (!ready || greeted.current) return;
     greeted.current = true;
     requestNudge('greeting')
-      .then(({ text, emotion }) => {
+      .then(({ text, emotion, days_away }) => {
         if (text) pushAssistant(text, emotion);
+        setDaysAway(typeof days_away === 'number' && days_away >= 2 ? days_away : null);
         resetIdleTimer();
       })
       .catch(() => {});
@@ -454,6 +456,7 @@ export function useCompanion() {
     voiceEnabled,
     condition,
     userTurns,
+    daysAway,
     voiceMode,
     partialTranscript,
     voiceSupported,
