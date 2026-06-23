@@ -1,0 +1,10 @@
+{
+  "iteration": 0,
+  "status": "working",
+  "task_backlog": [1, 2, 3, 4, 5, 6, 7, 8],
+  "completed_tasks": [],
+  "skipped_tasks": [],
+  "last_task": null,
+  "last_action": "anchor files created, planner blueprint received (round 2: retention/engagement UX)",
+  "no_progress_hint": "task_backlog/completed_tasks/skipped_tasks length must change each iteration that makes progress; if a task is genuinely blocked (e.g. backend task too risky), move it to skipped_tasks with a reason in last_action rather than retrying identically"
+}
