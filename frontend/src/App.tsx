@@ -91,6 +91,7 @@ export default function App() {
         voiceMode={voiceMode}
         onInputActivity={noticeInputActivity}
         onSend={send}
+        onOpenDiary={() => setDiaryOpen(true)}
       />
       <ResearchSurvey visible={userTurns >= 2} onSubmit={submitSurvey} />
       <DiaryDrawer open={diaryOpen} onClose={() => setDiaryOpen(false)} />

@@ -1,10 +1,10 @@
 {
-  "iteration": 7,
-  "status": "working",
+  "iteration": 8,
+  "status": "done",
   "task_backlog": [1, 2, 3, 4, 5, 6, 7, 8],
-  "completed_tasks": [1, 2, 3, 4, 6, 5, 7],
+  "completed_tasks": [1, 2, 3, 4, 6, 5, 7, 8],
   "skipped_tasks": [],
-  "last_task": 7,
-  "last_action": "task7: 会話継続のフォローアップ提案を実装。ChatPanel.tsxにFOLLOW_UP_PROMPTS(Emotion別の控えめな相槌+深掘り質問)とbuildFollowUps(messages)を追加し、直前のassistant発話(contentがある最後のもの)のemotionに応じて1〜2件のチップを表示。表示条件はmessages.length>0 && !busy && voiceMode==='off'(busy中/音声モード中は出さない)。voiceModeをuseCompanionの戻り値からApp.tsx経由でChatPanelにpropとして新規追加(型はuseCompanion.tsのVoiceMode)。タスク1の空状態starterとは別物として、chat-logとchat-inputの間にchat-follow-ups divとして配置。global.cssに.chat-follow-ups(padding)を追加(既存.chat-suggestion-chipスタイルを再利用)。純フロントタスクのためreviewerディスパッチは省略(VISIONの規定通り)。build green (frontend tsc+vite, worker tsc)。残りは純フロントのタスク8のみ。",
+  "last_task": 8,
+  "last_action": "task8: 空状態での日記コールバックを実装。ChatPanel.tsxで既存fetchDiary()をマウント時に呼び、entries[0](最新日記)をlatestDiaryEntryとしてuseStateに保持。チャットログが空の時のみ、'{entry_date}の日記にこう書いたよ'ラベル+本文プレビュー(36文字でプレーンテキストのみ、dangerouslySetInnerHTML不使用、previewDiaryEntryでトリム)を.chat-diary-callbackボタンとして表示。タップでApp.tsxから渡したonOpenDiary(setDiaryOpen(true))を呼び日記ドロワーを開く(タスク1の空状態starterやタスク7のフォローアップとは別物として共存)。global.cssに.chat-diary-callback系スタイルを追加(既存chip系トーンに合わせる)。純フロントタスクのためreviewerディスパッチは省略(VISIONの規定通り)。bash .loop/ux_verify.shでfrontend build OK / worker tsc OK / backlog remaining 0を確認、Definition of Done達成。純フロント6件(1,2,3,6,7,8)+バックエンド2件(4,5)の全8タスクが完了。",
   "no_progress_hint": "task_backlog/completed_tasks/skipped_tasks length must change each iteration that makes progress; if a task is genuinely blocked (e.g. backend task too risky), move it to skipped_tasks with a reason in last_action rather than retrying identically"
 }

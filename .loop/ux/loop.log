@@ -73,3 +73,18 @@ worker tsc: OK
 backlog remaining: 1
 Backlog not yet complete (1 remaining) — continue looping.
 [loop-engine 18:43:16] VERIFY failing (rc=1). Identical-failure streak: 1/3.
+[loop-engine 18:43:17] === iteration 2 / 6 ===
+タスク8(空状態での日記コールバック)を実装し、ビルド緑を確認しました。これでバックログ8件全てが完了し、DoDを達成しています。
+
+- `ChatPanel.tsx`: マウント時に既存`fetchDiary()`を呼び、空状態時に最新の日記プレビュー(プレーンテキスト)をボタン表示、タップで日記ドロワーを開く
+- `App.tsx`: `onOpenDiary`propを新規追加し`ChatPanel`に渡す
+- `global.css`: `.chat-diary-callback`系スタイル追加
+- `.loop/ux_verify.sh` → `backlog remaining: 0`、build green、DoD達成
+- `.loop/UX_state.json`を更新（`completed_tasks: [1,2,3,4,6,5,7,8]`、`status: "done"`）、`UX_VISION.md`進捗ログに追記
+
+純フロント6件(1,2,3,6,7,8)+バックエンド2件(4,5)の全8タスクが完了し、ループのオーケストレーターはこの状態を検知して自動停止するはずです。
+frontend build: OK
+worker tsc: OK
+backlog remaining: 0
+All backlog tasks complete/skipped and build green. Definition of Done met.
+[loop-engine 20:59:51] VERIFY PASSED on iteration 2.

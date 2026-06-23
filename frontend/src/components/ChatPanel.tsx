@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
+import { fetchDiary } from '../features/chat/api';
 import type { VoiceMode } from '../features/chat/useCompanion';
-import type { ChatMessage, CompanionState, Emotion } from '../features/chat/types';
+import type { ChatMessage, CompanionState, DiaryEntry, Emotion } from '../features/chat/types';
 
 const EMOTION_EMOJI: Record<Emotion, string> = {
   neutral: '',
@@ -39,6 +40,14 @@ function buildFollowUps(messages: ChatMessage[]): string[] {
   return FOLLOW_UP_PROMPTS[lastAssistant.emotion ?? 'neutral'];
 }
 
+const DIARY_CALLBACK_PREVIEW_LENGTH = 36;
+
+function previewDiaryEntry(entry: DiaryEntry): string {
+  const trimmed = entry.content.trim();
+  if (trimmed.length <= DIARY_CALLBACK_PREVIEW_LENGTH) return trimmed;
+  return `${trimmed.slice(0, DIARY_CALLBACK_PREVIEW_LENGTH)}…`;
+}
+
 function timeBucketFor(now: Date): keyof typeof TIME_OF_DAY_PROMPTS {
   const hour = now.getHours();
   if (hour >= 5 && hour < 10) return 'morning';
@@ -62,10 +71,12 @@ interface Props {
   voiceMode: VoiceMode;
   onInputActivity: () => void;
   onSend: (text: string) => void;
+  onOpenDiary: () => void;
 }
 
-export function ChatPanel({ messages, busy, state, daysAway, voiceMode, onInputActivity, onSend }: Props) {
+export function ChatPanel({ messages, busy, state, daysAway, voiceMode, onInputActivity, onSend, onOpenDiary }: Props) {
   const [draft, setDraft] = useState('');
+  const [latestDiaryEntry, setLatestDiaryEntry] = useState<DiaryEntry | null>(null);
   const logRef = useRef<HTMLDivElement | null>(null);
   const starterPrompts = buildStarters(state, new Date());
   const showFollowUps = messages.length > 0 && !busy && voiceMode === 'off';
@@ -77,6 +88,12 @@ export function ChatPanel({ messages, busy, state, daysAway, voiceMode, onInputA
       behavior: 'smooth',
     });
   }, [messages]);
+
+  useEffect(() => {
+    fetchDiary()
+      .then(({ entries }) => setLatestDiaryEntry(entries[0] ?? null))
+      .catch(() => setLatestDiaryEntry(null));
+  }, []);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -105,6 +122,12 @@ export function ChatPanel({ messages, busy, state, daysAway, voiceMode, onInputA
                   ))}
                 </div>
               </div>
+            )}
+            {latestDiaryEntry && (
+              <button type="button" className="chat-diary-callback" onClick={onOpenDiary}>
+                <span className="chat-diary-callback-label">{latestDiaryEntry.entry_date}の日記にこう書いたよ</span>
+                <span className="chat-diary-callback-preview">「{previewDiaryEntry(latestDiaryEntry)}」</span>
+              </button>
             )}
             <div className="chat-suggestions">
               {starterPrompts.map((prompt) => (
