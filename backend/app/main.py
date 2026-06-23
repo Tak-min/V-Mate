@@ -15,10 +15,13 @@ import uuid
 from datetime import date, datetime
 from pathlib import Path
 
+from contextlib import asynccontextmanager
+
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
+import httpx  # noqa: E402
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Response  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import StreamingResponse  # noqa: E402
@@ -34,7 +37,29 @@ def _cors_origins() -> list[str]:
     return base
 
 
-app = FastAPI(title="Aikata")
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """LLM/TTS用のhttpxクライアントをプロセス寿命で共有する(毎ターンのTLSハンドシェイクを回避)。"""
+    llm_client = httpx.AsyncClient(
+        timeout=llm.REQUEST_TIMEOUT,
+        limits=httpx.Limits(max_keepalive_connections=20, keepalive_expiry=30),
+    )
+    tts_client = httpx.AsyncClient(
+        timeout=tts.REQUEST_TIMEOUT,
+        limits=httpx.Limits(max_keepalive_connections=20, keepalive_expiry=30),
+    )
+    llm.set_client(llm_client)
+    tts.set_client(tts_client)
+    try:
+        yield
+    finally:
+        await llm_client.aclose()
+        await tts_client.aclose()
+        llm.set_client(None)
+        tts.set_client(None)
+
+
+app = FastAPI(title="Aikata", lifespan=_lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins(),
@@ -80,6 +105,23 @@ def _enforce_rate_limit(uid: str) -> None:
 COOKIE_NAME = "aikata_uid"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 365 * 2  # 2年
 EMOTION_TAG_RE = re.compile(r"\[(neutral|happy|sad|angry|relaxed|shy)\]")
+_EMOTION_TAG_LITERALS = tuple(f"[{e}]" for e in persona.EMOTIONS)
+
+
+def _could_still_be_tag_prefix(buffer: str) -> bool:
+    """bufferが冒頭の感情タグ([happy]等)の途中である可能性が残っているかを判定する。
+
+    応答ストリームの最初のトークンを「感情タグが確定するまで」待たせると、モデルが
+    タグを書かない/書くのが遅いケースで不要なレイテンシが乗る。タグの途中である
+    可能性が無くなった時点(=先頭が`[`でない、または6種いずれの接頭辞でもない)で
+    即座にバッファ保持をやめられるよう、この判定だけを切り出す。
+    """
+    candidate = buffer.lstrip()
+    if not candidate:
+        return True
+    return any(literal.startswith(candidate) for literal in _EMOTION_TAG_LITERALS)
+
+
 RESEARCH_CONDITIONS = ("text", "stylized", "realistic")
 RESEARCH_METRICS_VERSION = "2026-06-18-v1"
 SENSITIVE_SELF_DISCLOSURE_RE = re.compile(
@@ -428,13 +470,18 @@ async def chat(
             async for chunk in llm.stream_chat(system, history, max_tokens=CHAT_MAX_TOKENS):
                 buffer += chunk
                 if emotion is None:
-                    # 感情タグが確定するまでバッファし、確定後にまとめて流す
+                    # 感情タグはペルソナ指示で応答冒頭に来る前提だが、全部确定するまで待つと
+                    # タグが無い/遅いケースで不要なレイテンシが乗る。「まだタグの途中かも
+                    # しれない」間だけバッファし、タグが来ない/タグが終わった時点で即座に流す。
                     match = EMOTION_TAG_RE.search(buffer)
                     if match:
                         emotion = match.group(1)
                         yield sse({"type": "emotion", "emotion": emotion})
-                        buffer = EMOTION_TAG_RE.sub("", buffer).lstrip()
-                    elif len(buffer) > 24:
+                        # タグ自身だけを取り除き、タグより前のテキスト(本来は無い想定だが
+                        # モデルが守らない場合もある)は保持する。match.end()からの切り出しは
+                        # タグ前のテキストを失うため使わない。
+                        buffer = (buffer[:match.start()] + buffer[match.end():]).lstrip()
+                    elif len(buffer) > 24 or not _could_still_be_tag_prefix(buffer):
                         emotion = "neutral"
                         yield sse({"type": "emotion", "emotion": emotion})
                     else:

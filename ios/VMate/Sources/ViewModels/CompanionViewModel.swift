@@ -157,18 +157,21 @@ final class CompanionViewModel: ObservableObject {
         voiceError = nil
         try? AudioSessionManager.shared.configureForConversation()
         if !voiceEnabled { toggleVoice() } // 会話なので相手の声も聞こえるように
-        startListening()
+        beginVoiceSession()
         if let condition {
             APIClient.shared.logResearchEvent(condition: condition, eventType: "voice_mode", payload: ["active": true])
         }
     }
 
-    private func startListening() {
+    /// 会話モードに入る時に1回だけ呼ぶ。マイク/AVAudioEngineを開いたまま会話を通して
+    /// 使い続けることで、ターンごとのエンジン再起動(AEC再収束による発話冒頭ロス)を無くす。
+    /// 以後のターンの聞き取り再開/休止は `resumeListening()`/`handleUtterance()` が行う。
+    private func beginVoiceSession() {
         resumeWorkItem?.cancel()
         resumeWorkItem = nil
         partialTranscript = ""
         voiceMode = .listening
-        recognizer.start(callbacks: .init(
+        recognizer.beginSession(callbacks: .init(
             onPartial: { [weak self] text in self?.partialTranscript = text },
             onUtterance: { [weak self] text in self?.handleUtterance(text) },
             onSpeechOnset: { [weak self] in self?.handleSpeechOnset() },
@@ -179,7 +182,7 @@ final class CompanionViewModel: ObservableObject {
     private func stopListening() {
         resumeWorkItem?.cancel()
         resumeWorkItem = nil
-        recognizer.stop()
+        recognizer.endSession()
         partialTranscript = ""
         voiceMode = .off
         try? AudioSessionManager.shared.configureForPlaybackOnly()
@@ -188,10 +191,11 @@ final class CompanionViewModel: ObservableObject {
         }
     }
 
-    /// マイクが1ターン分の発話を確定 → 送信。エコー防止に聞き取りは一旦止める。
+    /// マイクが1ターン分の発話を確定 → 送信。エコー防止に聞き取りは一旦休止する
+    /// (エンジン自体は止めない。`resumeListening()`がターン再開時に`resumeTurn()`で再開する)。
     private func handleUtterance(_ text: String) {
         guard voiceMode != .off else { return }
-        recognizer.stop()
+        recognizer.pauseTurn()
         partialTranscript = ""
         send(text)
     }
@@ -214,7 +218,9 @@ final class CompanionViewModel: ObservableObject {
         resumeWorkItem?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.voiceMode != .off else { return }
-            self.startListening()
+            self.partialTranscript = ""
+            self.voiceMode = .listening
+            self.recognizer.resumeTurn()
         }
         resumeWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + resumeListeningDelay, execute: work)

@@ -153,3 +153,58 @@ struct PreRollBufferTests {
         return AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 16)!
     }
 }
+
+@Suite("AudioCapturePipeline gate")
+struct AudioCapturePipelineGateTests {
+    // tapスレッドのゲート判定(エンジンを止めずにターン単位で聞き取りを切り替える設計)の
+    // 真理値表を、AVAudioEngine/SFSpeechRecognizer非依存の純関数として検証する。
+
+    @Test("arm直後(enabled=true, pendingArm=true)は前ターンをリセットしてから処理する")
+    func armedWithPendingResetsThenProcesses() {
+        let gate = AudioCapturePipeline.gateDecision(enabled: true, pendingArm: true)
+        #expect(gate.doReset == true)
+        #expect(gate.process == true)
+    }
+
+    @Test("通常の聞き取り中(enabled=true, pendingArm=false)はリセットせず処理する")
+    func armedSteadyStateProcessesWithoutReset() {
+        let gate = AudioCapturePipeline.gateDecision(enabled: true, pendingArm: false)
+        #expect(gate.doReset == false)
+        #expect(gate.process == true)
+    }
+
+    @Test("休止中(enabled=false, pendingArm=false)はフレームを破棄する")
+    func disarmedDropsFrame() {
+        let gate = AudioCapturePipeline.gateDecision(enabled: false, pendingArm: false)
+        #expect(gate.doReset == false)
+        #expect(gate.process == false)
+    }
+
+    @Test("arm→disarmが立て続けに来た場合(enabled=false, pendingArm=true)もリセットは消費しつつ処理はしない")
+    func armThenDisarmConsumesResetButDoesNotProcess() {
+        // arm()はpendingArm/enabled両方をtrueにするが、tapが走る前にdisarm()でenabledがfalseに
+        // なるケース。取り残しrequestのクローズ(doReset)は行い、フレーム処理(process)はしない。
+        let gate = AudioCapturePipeline.gateDecision(enabled: false, pendingArm: true)
+        #expect(gate.doReset == true)
+        #expect(gate.process == false)
+    }
+}
+
+@Suite("LockedFlag")
+struct LockedFlagTests {
+    @Test("初期値を保持し、読み書きが往復する")
+    func roundTrips() {
+        let flag = LockedFlag(false)
+        #expect(flag.value == false)
+        flag.value = true
+        #expect(flag.value == true)
+        flag.value = false
+        #expect(flag.value == false)
+    }
+
+    @Test("初期値trueで生成できる")
+    func initialTrue() {
+        let flag = LockedFlag(true)
+        #expect(flag.value == true)
+    }
+}

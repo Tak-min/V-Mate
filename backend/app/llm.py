@@ -23,6 +23,28 @@ LLM_API_KEY = os.environ.get("LLM_API_KEY") or os.environ.get("GROQ_API_KEY", ""
 TEMPERATURE = 0.85
 REQUEST_TIMEOUT = 120
 
+# 毎ターン httpx.AsyncClient を新規生成すると TCP+TLS ハンドシェイクを毎回払うことになり
+# 応答レイテンシを悪化させる。アプリのlifespanから set_client() で keep-alive 接続を共有する
+# クライアントを注入する。未注入(lifespan外、テスト等)の場合は遅延生成したクライアントに
+# フォールバックし、呼び出し側の挙動は変えない。
+_client: httpx.AsyncClient | None = None
+_fallback_client: httpx.AsyncClient | None = None
+
+
+def set_client(client: httpx.AsyncClient | None) -> None:
+    """アプリのlifespanから呼ぶ。注入したクライアントのクローズもlifespan側の責務。"""
+    global _client
+    _client = client
+
+
+def _get_client() -> httpx.AsyncClient:
+    global _fallback_client
+    if _client is not None:
+        return _client
+    if _fallback_client is None:
+        _fallback_client = httpx.AsyncClient(timeout=REQUEST_TIMEOUT)
+    return _fallback_client
+
 
 def provider() -> str:
     """状態表示用。使用中のモデル名を返す。"""
@@ -62,23 +84,23 @@ async def stream_chat(
         "Content-Type": "application/json",
     }
     url = f"{LLM_BASE_URL}/chat/completions"
-    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
-        async with client.stream("POST", url, json=payload, headers=headers) as response:
-            response.raise_for_status()
-            async for line in response.aiter_lines():
-                if not line.startswith("data: "):
-                    continue
-                data = line[len("data: "):].strip()
-                if data == "[DONE]":
-                    break
-                try:
-                    chunk = json.loads(data)
-                except json.JSONDecodeError:
-                    continue
-                for choice in chunk.get("choices", []):
-                    text = choice.get("delta", {}).get("content")
-                    if text:
-                        yield text
+    client = _get_client()
+    async with client.stream("POST", url, json=payload, headers=headers, timeout=REQUEST_TIMEOUT) as response:
+        response.raise_for_status()
+        async for line in response.aiter_lines():
+            if not line.startswith("data: "):
+                continue
+            data = line[len("data: "):].strip()
+            if data == "[DONE]":
+                break
+            try:
+                chunk = json.loads(data)
+            except json.JSONDecodeError:
+                continue
+            for choice in chunk.get("choices", []):
+                text = choice.get("delta", {}).get("content")
+                if text:
+                    yield text
 
 
 async def complete(prompt: str) -> str:

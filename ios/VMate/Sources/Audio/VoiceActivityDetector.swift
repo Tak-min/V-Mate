@@ -27,10 +27,15 @@ struct VADConfig {
     /// ノイズフロアが下降する方向(環境が静かになった)のEMA係数。attackより速くすることで、
     /// 騒音が収まった直後にしきい値が高止まりせず、小声をより早く拾えるようにする。
     var floorDecay: Float = 0.2
-    /// マイクを開いた直後のウォームアップ期間(ms)。この間は発話開始を起こさない。
+    /// 聞き取り再開直後のウォームアップ期間(ms)。この間は発話開始を起こさない。
     /// 直前のTTS(MP3)末尾やスピーカー残響がマイクに回り込んでも誤検出しないための保険。
     /// 主対策は CompanionViewModel 側の resume遅延(残響の物理減衰待ち)で、これはその二段目。
-    var warmupMs: Double = 200
+    /// 旧実装ではAVAudioEngineをターンごとに再起動していたため、エンジン/AEC再収束の
+    /// 不安定フレームも吸収する必要があり200msだったが、エンジンを会話中ずっと起動したまま
+    /// にする設計(SpeechRecognizer.beginSession/resumeTurn)に変えたことで、ここが
+    /// 吸収すべきものは「TTS残響の保険」だけになった。値を下げて発話冒頭の取りこぼしを
+    /// 減らす(実機ログでの再較正が必要、要件は dev-notes 参照)。
+    var warmupMs: Double = 100
 }
 
 enum VADEvent: Equatable {
