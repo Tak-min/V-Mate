@@ -3,3 +3,4 @@
 [loop-engine 18:43:16] VERIFY failing (rc=1). Identical-failure streak: 1/3.
 [loop-engine 18:43:17] === iteration 2 / 6 ===
 [loop-engine 20:59:51] VERIFY PASSED on iteration 2.
+[loop-engine 20:59:51] Definition of Done proxy (green gate) reached. Exiting 0.

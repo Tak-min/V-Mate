@@ -92,12 +92,28 @@ no-opになった場合は3反復で正しく停止するようにする。
 ## 進捗ログ
 - [x] Phase 0: アンカーファイル作成(本ファイル)
 - [x] Phase 1: recon (planner/opusブループリント受領)
-- [ ] Phase 2: ヘッドレスループ実行
+- [x] Phase 2: ヘッドレスループ実行(2回再開を要した。詳細は下記)
 - [x] タスク1完了: `ChatPanel.tsx`の`STARTER_PROMPTS`を`buildStarters(state, now)`に置き換え。時間帯(朝/日中/夕方/夜)とstage(はじめまして=新規 / それ以降=既知)で呼びかけ文を切り替え。`App.tsx`から`state`をPropsで渡すよう変更。build green。
 - [x] タスク2完了: `StatusBar.tsx`の親密度バー進捗バグを修正。`worker/src/persona.ts`の`AFFINITY_STAGES`をミラーした`STAGE_FLOORS`/`STAGE_NAMES`を追加し、絶対比率(affinity/next_stage_at)ではなく現在ステージ内での進捗に直した。「あと20で『友達』」的な次段階ラベルも追加。react-reviewer(sonnet)でCRITICAL/HIGH無しを確認。build green。
 - [x] タスク3完了: `state.stage`の変化を`useRef`で検知し、初回マウント時は発火しないようにした上で、段階アップ時のみ2.4秒間`.affinity-fill`にbox-shadowパルスアニメーション(`.affinity-fill-stage-up`)+「『{stage}』になったよ」の一言テキストを表示。`prefers-reduced-motion`ブロックに追加済み。build green。
 - [x] タスク6完了: `VoiceControl.tsx`の`voice-hud`に、初回起動時のみ`localStorage`フラグ(`vmate.voiceOnboardingSeen`)を見て説明文(「話し終えたら少し待つと、シロが応えるよ。『とめて話す』で割り込めるよ」)を表示。2回目以降は出さない。`global.css`に`.voice-onboarding`スタイル追加。build green。
 - [x] タスク4完了: `worker/src/chat.ts`の`StatePayload`にoptionalな`recent_facts?: string[]`を追加し、既存`listFacts()`を読み取るだけで実装(新規DB/エンドポイント無し、空時はundefinedで省略され後方互換)。`CompanionState`型にミラーし、`ChatPanel.tsx`の空状態に「覚えていること」chip(plain textのみ、dangerouslySetInnerHTML不使用)を最大2件表示。typescript-reviewer(sonnet)でCRITICAL/HIGH無しを確認。build green。
 - [x] タスク5完了: `worker/src/index.ts`の`postNudge`が既に計算していた`daysSince(lastSeen)`を`days_away: number | null`としてJSON応答に追加(新規DB/エンドポイント無し、既存クライアントは未知フィールドを無視するため後方互換)。`api.ts`/`useCompanion.ts`/`App.tsx`経由で`ChatPanel.tsx`に渡し、`days_away>=2`の時だけplain textの「おかえり」表示(dangerouslySetInnerHTML不使用)。typescript-reviewer(sonnet)でCRITICAL/HIGH無しを確認(MEDIUM指摘のstale banner問題は対応済み)。build green。
+- [!] iteration7で再びClaude Codeのセッション利用上限に到達("resets 5:30pm Asia/Tokyo")。
+      今回は`ux_verify.sh`の出力を決定的にした修正(前ラウンドの反省)が効き、同一verify結果が
+      3反復連続したのを正しく検知し、20反復まで空費せず**iteration9で早期HALT**した
+      (round1の20反復浪費に対する改善が実証された)。利用上限解消後(18:33頃)に
+      `LOOP_MAX_ITER=6`で再起動して再開。
+- [x] タスク7完了(再開後iteration1): `ChatPanel.tsx`に`FOLLOW_UP_PROMPTS`(Emotion別の
+      控えめな相槌+深掘り質問)と`buildFollowUps(messages)`を追加。直前のassistant発話の
+      emotionに応じて1〜2件のフォローアップチップを`chat-log`と`chat-input`の間に表示。
+      `messages.length>0 && !busy && voiceMode==='off'`の時のみ表示。build green。
+- [x] タスク8完了(再開後iteration2、verify green→Definition of Done達成):
+      マウント時に`fetchDiary()`を呼び最新エントリを`latestDiaryEntry`として保持。
+      チャットログが空の時のみ「{entry_date}の日記にこう書いたよ」+本文プレビュー
+      (36文字、plain textのみ)を`.chat-diary-callback`ボタンとして表示、タップで
+      日記ドロワーを開く。build green。
+- [x] バックログ8件(純フロント6件+バックエンド読み取り専用2件)全完了。
+      `bash .loop/ux_verify.sh`がexit 0、loop-engine.shが`VERIFY PASSED`→正常終了。
 - [x] タスク7完了: `ChatPanel.tsx`に`FOLLOW_UP_PROMPTS`(Emotion別の相槌+深掘り質問)と`buildFollowUps(messages)`を追加。直前のassistant発話のemotionに応じてフォローアップチップを表示し、ログが空でない・busy/voiceモード中でない時のみ表示(`voiceMode`をApp.tsx経由でChatPanelに新規propとして渡すよう変更)。タスク1の空状態starterとは別物。`global.css`に`.chat-follow-ups`(既存chipスタイル流用)を追加。純フロントタスクのためreviewer省略。build green。
 - [x] タスク8完了: `ChatPanel.tsx`マウント時に既存`fetchDiary()`を呼び最新の日記エントリを取得し、チャットログが空の時だけ「{日付}の日記にこう書いたよ」+本文プレビュー(36文字、プレーンテキストのみ、`dangerouslySetInnerHTML`不使用)を`.chat-diary-callback`ボタンとして表示。タップで`App.tsx`から渡した`onOpenDiary`(`setDiaryOpen(true)`)経由で日記ドロワーを開く。`global.css`に`.chat-diary-callback`系スタイルを追加。純フロントタスクのためreviewer省略。`bash .loop/ux_verify.sh`でbacklog remaining 0を確認、純フロント6件+バックエンド2件の全8タスク完了、DoD達成。

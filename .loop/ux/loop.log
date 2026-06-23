@@ -88,3 +88,4 @@ worker tsc: OK
 backlog remaining: 0
 All backlog tasks complete/skipped and build green. Definition of Done met.
 [loop-engine 20:59:51] VERIFY PASSED on iteration 2.
+[loop-engine 20:59:51] Definition of Done proxy (green gate) reached. Exiting 0.
