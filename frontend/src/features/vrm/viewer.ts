@@ -104,6 +104,8 @@ export class CompanionViewer {
   private idleClipUrls = [...new Set(Object.values(MOTIONS))];
   private currentIdleClipUrl: string = MOTIONS.neutral;
   private nextIdleSwitch = rand(14, 26);
+  /** setEmotion()がクリップを強制した直後、idleローテーションが横取りしないようにする猶予。 */
+  private emotionLockUntil = 0;
   /** リップシンク中の口の開き(0..1)を毎フレーム取得する関数 */
   getMouthLevel: (() => number) | null = null;
 
@@ -214,8 +216,9 @@ export class CompanionViewer {
     this.targetWeights = EXPRESSIONS[emotion] ?? {};
     this.playMotion(MOTIONS[emotion] ?? MOTIONS.neutral);
     this.notice('speaking', 3.2);
-    // setEmotionが直接クリップを切り替えるので、直後にidleローテーションが二重に
-    // クロスフェードして落ち着きなく見えないよう、タイマーをここで張り直す。
+    // setEmotionが直接クリップを切り替えるので、直後しばらくはidleローテーションが
+    // 横取りして二重クロスフェードしないようロックする。
+    this.emotionLockUntil = this.elapsed + 4.5;
     this.nextIdleSwitch = rand(14, 26);
   }
 
@@ -256,6 +259,7 @@ export class CompanionViewer {
   private updateIdleMotion(delta: number): void {
     const isIdleEmotion = this.currentEmotion === 'neutral' || this.currentEmotion === 'relaxed';
     if (this.attentionMode !== 'idle' || !isIdleEmotion) return;
+    if (this.elapsed < this.emotionLockUntil) return;
 
     this.nextIdleSwitch -= delta;
     if (this.nextIdleSwitch > 0) return;

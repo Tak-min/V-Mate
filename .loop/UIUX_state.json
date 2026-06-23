@@ -1,9 +1,9 @@
 {
-  "iteration": 1,
+  "iteration": 2,
   "status": "working",
   "task_backlog": [1, 2, 3, 4, 5, 6, 7, 8, 9],
-  "completed_tasks": [1],
-  "last_task": 1,
-  "last_action": "idleClipUrls/chooseNextIdleClip/updateIdleMotionをviewer.tsに追加し、idle+neutral/relaxed時に既存5クリップをローテーション。setEmotion()でnextIdleSwitchをリセットしてレビュー指摘(二重クロスフェード)を解消。typescript-reviewerでHIGH1件修正済み、build green。",
+  "completed_tasks": [1, 2],
+  "last_task": 2,
+  "last_action": "viewer.tsに emotionLockUntil フィールドを追加。setEmotion()でelapsed+4.5秒をセットし、updateIdleMotion()はロック中bailするガードを追加(従来のnextIdleSwitchリセットのみの応急対応をより明示的なロックに強化)。typescript-reviewerでCRITICAL/HIGH無し確認済み、tsc+vite build green。",
   "no_progress_hint": "task_backlog/completed_tasks length must change each iteration that makes progress; if a task is genuinely blocked, skip it and try the next one rather than retrying identically"
 }

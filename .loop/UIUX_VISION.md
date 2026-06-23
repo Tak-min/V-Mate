@@ -103,3 +103,8 @@
       既存5クリップを14-26s(warmthで延長)毎にneutral寄り重み付きでクロスフェード。
       typescript-reviewerのHIGH指摘(setEmotion直後の二重クロスフェード)を`setEmotion()`内で
       `nextIdleSwitch`リセットして解消。tsc+vite build green。
+- [x] iter2: タスク2「emotion lockでスケジューラと`setEmotion()`の競合防止」実装。`viewer.ts`に
+      `emotionLockUntil`フィールドを追加し、`setEmotion()`で`this.elapsed + 4.5`をセット。
+      `updateIdleMotion()`は`this.elapsed < this.emotionLockUntil`の間bailするガードを追加し、
+      iter1の暫定対応(nextIdleSwitchリセットのみ)をより明示的なロックに強化。
+      typescript-reviewerでCRITICAL/HIGH無し確認。tsc+vite build green。
