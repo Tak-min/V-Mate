@@ -32,3 +32,6 @@
 [loop-engine 10:01:17] === iteration 12 / 20 ===
 [loop-engine 10:01:19] claude -p returned non-zero on iteration 12 (continuing to verify).
 [loop-engine 10:01:23] VERIFY failing (rc=1). Identical-failure streak: 1/3.
+[loop-engine 10:01:23] === iteration 13 / 20 ===
+[loop-engine 10:01:25] claude -p returned non-zero on iteration 13 (continuing to verify).
+[loop-engine 10:01:29] VERIFY failing (rc=1). Identical-failure streak: 1/3.
