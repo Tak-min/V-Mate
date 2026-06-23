@@ -20,3 +20,10 @@ worker tsc: OK
 backlog remaining: 5
 Backlog not yet complete (5 remaining) — continue looping.
 [loop-engine 13:36:16] VERIFY failing (rc=1). Identical-failure streak: 1/3.
+[loop-engine 13:36:16] === iteration 4 / 15 ===
+タスク6(音声モード初回オンボーディング)を実装し、ビルドはgreenを確認、state/VISIONログを更新しました。次の反復はタスク7か8(両方独立・純フロント)に進める想定です。
+frontend build: OK
+worker tsc: OK
+backlog remaining: 4
+Backlog not yet complete (4 remaining) — continue looping.
+[loop-engine 13:38:26] VERIFY failing (rc=1). Identical-failure streak: 1/3.

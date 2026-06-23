@@ -1,10 +1,10 @@
 {
-  "iteration": 3,
+  "iteration": 4,
   "status": "working",
   "task_backlog": [1, 2, 3, 4, 5, 6, 7, 8],
-  "completed_tasks": [1, 2, 3],
+  "completed_tasks": [1, 2, 3, 6],
   "skipped_tasks": [],
-  "last_task": 3,
-  "last_action": "task3: StatusBar.tsx に段階アップの一度きりの祝福を実装。useRef(previousStageRef)でstate.stageの変化を検知し、初回マウント時は発火しない。変化時のみ2.4秒間 isStageUp=true にし、.affinity-fill に .affinity-fill-stage-up(box-shadowパルスのkeyframes)を付与、.affinity-next の位置に「『{stage}』になったよ」という一言テキストを表示(通常時は次段階ラベルに戻る)。.affinity-fill-stage-up を既存の prefers-reduced-motion ブロックに追加しアニメーション無効化を尊重。純フロントタスクのためreviewer省略。build green (frontend tsc+vite, worker tsc)。",
+  "last_task": 6,
+  "last_action": "task6: VoiceControl.tsx に音声モードの初回オンボーディングを実装。localStorageキー'vmate.voiceOnboardingSeen'で初回起動時のみ説明文(「話し終えたら少し待つと、シロが応えるよ。『とめて話す』で割り込めるよ」)をvoice-hud内に表示。useRefでコンポーネントのライフタイム中は表示状態を固定し、2回目以降のtoggleでは表示しない。global.cssに.voice-onboardingスタイル追加。純フロントタスクのためreviewer省略。build green (frontend tsc+vite, worker tsc)。",
   "no_progress_hint": "task_backlog/completed_tasks/skipped_tasks length must change each iteration that makes progress; if a task is genuinely blocked (e.g. backend task too risky), move it to skipped_tasks with a reason in last_action rather than retrying identically"
 }

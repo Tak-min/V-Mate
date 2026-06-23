@@ -96,3 +96,4 @@ no-opになった場合は3反復で正しく停止するようにする。
 - [x] タスク1完了: `ChatPanel.tsx`の`STARTER_PROMPTS`を`buildStarters(state, now)`に置き換え。時間帯(朝/日中/夕方/夜)とstage(はじめまして=新規 / それ以降=既知)で呼びかけ文を切り替え。`App.tsx`から`state`をPropsで渡すよう変更。build green。
 - [x] タスク2完了: `StatusBar.tsx`の親密度バー進捗バグを修正。`worker/src/persona.ts`の`AFFINITY_STAGES`をミラーした`STAGE_FLOORS`/`STAGE_NAMES`を追加し、絶対比率(affinity/next_stage_at)ではなく現在ステージ内での進捗に直した。「あと20で『友達』」的な次段階ラベルも追加。react-reviewer(sonnet)でCRITICAL/HIGH無しを確認。build green。
 - [x] タスク3完了: `state.stage`の変化を`useRef`で検知し、初回マウント時は発火しないようにした上で、段階アップ時のみ2.4秒間`.affinity-fill`にbox-shadowパルスアニメーション(`.affinity-fill-stage-up`)+「『{stage}』になったよ」の一言テキストを表示。`prefers-reduced-motion`ブロックに追加済み。build green。
+- [x] タスク6完了: `VoiceControl.tsx`の`voice-hud`に、初回起動時のみ`localStorage`フラグ(`vmate.voiceOnboardingSeen`)を見て説明文(「話し終えたら少し待つと、シロが応えるよ。『とめて話す』で割り込めるよ」)を表示。2回目以降は出さない。`global.css`に`.voice-onboarding`スタイル追加。build green。
