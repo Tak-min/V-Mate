@@ -235,6 +235,28 @@ body {
   opacity: 0.85;
 }
 
+.affinity-stage-up-text {
+  color: var(--color-accent-deep);
+  font-weight: 600;
+  opacity: 1;
+}
+
+.affinity-fill-stage-up {
+  animation: affinity-stage-up-pulse 2.4s ease-out;
+}
+
+@keyframes affinity-stage-up-pulse {
+  0% {
+    box-shadow: 0 0 0 0 oklch(75% 0.16 350 / 0.6);
+  }
+  60% {
+    box-shadow: 0 0 0 8px oklch(75% 0.16 350 / 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 oklch(75% 0.16 350 / 0);
+  }
+}
+
 .name-form {
   display: flex;
   gap: 8px;
@@ -1169,6 +1191,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .bubble,
   .affinity-fill,
+  .affinity-fill-stage-up,
   .diary-drawer,
   .icon-button,
   .chat-suggestion-chip,

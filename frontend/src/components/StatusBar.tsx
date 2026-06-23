@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import type { CompanionState } from '../features/chat/types';
 
 interface Props {
@@ -24,9 +24,25 @@ function nextStageName(nextStageAt: number | null): string | null {
   return index >= 0 ? STAGE_NAMES[index] : null;
 }
 
+const STAGE_UP_DURATION_MS = 2400;
+
 export function StatusBar({ state, onSaveName }: Props) {
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
+  const [isStageUp, setIsStageUp] = useState(false);
+  const previousStageRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!state) return;
+    const previousStage = previousStageRef.current;
+    if (previousStage !== null && previousStage !== state.stage) {
+      setIsStageUp(true);
+      const timer = setTimeout(() => setIsStageUp(false), STAGE_UP_DURATION_MS);
+      previousStageRef.current = state.stage;
+      return () => clearTimeout(timer);
+    }
+    previousStageRef.current = state.stage;
+  }, [state?.stage]);
 
   const progress = state ? stageProgress(state.affinity, state.next_stage_at) : 1;
   const remainingToNext =
@@ -54,11 +70,19 @@ export function StatusBar({ state, onSaveName }: Props) {
         <div className="affinity" title={`親密度 ${state.affinity}`}>
           <span className="affinity-stage">{state.stage}</span>
           <span className="affinity-track" role="progressbar" aria-valuenow={state.affinity}>
-            <span className="affinity-fill" style={{ width: `${progress * 100}%` }} />
+            <span
+              className={isStageUp ? 'affinity-fill affinity-fill-stage-up' : 'affinity-fill'}
+              style={{ width: `${progress * 100}%` }}
+            />
           </span>
           <span className="affinity-score">♡ {state.affinity}</span>
-          {remainingToNext != null && upcomingStageName && (
-            <span className="affinity-next">あと{remainingToNext}で『{upcomingStageName}』</span>
+          {isStageUp ? (
+            <span className="affinity-next affinity-stage-up-text">『{state.stage}』になったよ</span>
+          ) : (
+            remainingToNext != null &&
+            upcomingStageName && (
+              <span className="affinity-next">あと{remainingToNext}で『{upcomingStageName}』</span>
+            )
           )}
         </div>
       )}
