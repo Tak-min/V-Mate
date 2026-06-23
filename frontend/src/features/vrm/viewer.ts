@@ -96,6 +96,10 @@ export class CompanionViewer {
   private pointer = new THREE.Vector2();
   private pointerActive = false;
   private lastPointerAt = -Infinity;
+  /** ユーザー操作(発話/入力/応答)が最後にあった時刻。45秒超の無操作で「まどろみ」瞬きに移行する。 */
+  private lastInteractionAt = this.elapsed;
+  /** ワイドグランス(視線を大きく外す)直後に強制二重瞬きを行うためのフラグ。 */
+  private pendingBlinkCluster = false;
   private modelBaseY = 0;
   private modelBaseRotationX = 0;
   private modelBaseRotationY = 0;
@@ -237,6 +241,7 @@ export class CompanionViewer {
     this.attentionMode = mode;
     this.attentionUntil = Math.max(this.attentionUntil, this.elapsed + seconds);
     this.nextGazeShift = Math.min(this.nextGazeShift, 0.12);
+    this.lastInteractionAt = this.elapsed;
   }
 
   private playMotion(url: string): void {
@@ -331,6 +336,14 @@ export class CompanionViewer {
       if (this.doubleBlinkDelay <= 0) this.startBlink(false);
     }
 
+    // ワイドグランス直後は、まばたきの自然タイマーを待たずに強制的に二重瞬きを差し込み、
+    // 「視線を外した拍子に瞬きが出る」人間の癖を再現する。
+    if (this.pendingBlinkCluster && this.blinkDuration <= 0 && this.doubleBlinkDelay <= 0) {
+      this.pendingBlinkCluster = false;
+      this.startBlink(true);
+      this.queueDoubleBlink = true;
+    }
+
     if (this.blinkDuration <= 0 && this.doubleBlinkDelay <= 0) {
       this.nextBlink -= delta;
       if (this.nextBlink <= 0) this.startBlink(true);
@@ -362,8 +375,10 @@ export class CompanionViewer {
   }
 
   private startBlink(allowDouble: boolean): void {
+    // 45秒超ユーザー操作が無いと、瞬きがわずかに長く・ゆっくりになる「まどろみ」を表現する。
+    const isDrowsy = this.elapsed - this.lastInteractionAt > 45;
     this.blinkElapsed = 0;
-    this.blinkDuration = rand(0.105, 0.19);
+    this.blinkDuration = rand(0.105, 0.19) * (isDrowsy ? rand(1.1, 1.3) : 1);
     this.blinkCloseRatio = rand(0.24, 0.38);
     this.blinkStrength = rand(0.84, 1);
 
@@ -389,20 +404,22 @@ export class CompanionViewer {
       this.currentEmotion === 'neutral' || this.currentEmotion === 'relaxed'
         ? 1 + this.relationshipWarmth * 0.12
         : 1;
+    // 長時間ユーザー操作が無いと、まばたきの間隔を伸ばして「まどろみ」始めた印象にする。
+    const drowsyScale = this.elapsed - this.lastInteractionAt > 45 ? rand(1.4, 1.9) : 1;
     switch (this.currentEmotion) {
       case 'happy':
-        return rand(1.6, 4.2) * attentionScale * warmthScale;
+        return rand(1.6, 4.2) * attentionScale * warmthScale * drowsyScale;
       case 'sad':
-        return rand(3.2, 6.8) * attentionScale * warmthScale;
+        return rand(3.2, 6.8) * attentionScale * warmthScale * drowsyScale;
       case 'angry':
-        return rand(1.4, 3.1) * attentionScale * warmthScale;
+        return rand(1.4, 3.1) * attentionScale * warmthScale * drowsyScale;
       case 'relaxed':
-        return rand(2.6, 5.8) * attentionScale * warmthScale;
+        return rand(2.6, 5.8) * attentionScale * warmthScale * drowsyScale;
       case 'shy':
-        return rand(1.1, 3.0) * attentionScale * warmthScale;
+        return rand(1.1, 3.0) * attentionScale * warmthScale * drowsyScale;
       case 'neutral':
       default:
-        return rand(2.0, 5.2) * attentionScale * warmthScale;
+        return rand(2.0, 5.2) * attentionScale * warmthScale * drowsyScale;
     }
   }
 
@@ -438,6 +455,8 @@ export class CompanionViewer {
                 : 0.1;
       const isWideGlance = Math.random() < wideGlanceChance;
       const wideScale = isWideGlance ? rand(1.8, 3.0) : 1;
+      // ワイドグランス(視線を大きく外す)に合わせて、次のまばたきタイミングで強制二重瞬きを誘発する。
+      if (isWideGlance) this.pendingBlinkCluster = true;
 
       this.gazeOffset.set(
         clampGaze(rand(-0.34, 0.34) * focus * settled * wideScale, 0.58),

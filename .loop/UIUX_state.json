@@ -1,9 +1,9 @@
 {
-  "iteration": 2,
+  "iteration": 3,
   "status": "working",
   "task_backlog": [1, 2, 3, 4, 5, 6, 7, 8, 9],
-  "completed_tasks": [1, 2],
-  "last_task": 2,
-  "last_action": "viewer.tsに emotionLockUntil フィールドを追加。setEmotion()でelapsed+4.5秒をセットし、updateIdleMotion()はロック中bailするガードを追加(従来のnextIdleSwitchリセットのみの応急対応をより明示的なロックに強化)。typescript-reviewerでCRITICAL/HIGH無し確認済み、tsc+vite build green。",
+  "completed_tasks": [1, 2, 3],
+  "last_task": 3,
+  "last_action": "viewer.tsに lastInteractionAt/pendingBlinkCluster フィールドを追加。notice()でlastInteractionAtを更新(task1段階では未追加だったフィールドを今回新規追加)。updateGaze()のisWideGlance発火時にpendingBlinkClusterをセット→updateBlink()内でblink空き時に即startBlink(true)+queueDoubleBlink強制で瞬きクラスタを誘発。lastInteractionAtから45秒超でstartBlink()のblinkDurationを1.1-1.3倍、randomBlinkInterval()の全emotion分岐を1.4-1.9倍にしてまどろみ瞬きを表現。typescript-reviewerでCRITICAL/HIGH無し確認済み(軽微な指摘1件のみ、ブロッキングなしと明記)。tsc+vite build green。",
   "no_progress_hint": "task_backlog/completed_tasks length must change each iteration that makes progress; if a task is genuinely blocked, skip it and try the next one rather than retrying identically"
 }

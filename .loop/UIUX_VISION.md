@@ -108,3 +108,11 @@
       `updateIdleMotion()`は`this.elapsed < this.emotionLockUntil`の間bailするガードを追加し、
       iter1の暫定対応(nextIdleSwitchリセットのみ)をより明示的なロックに強化。
       typescript-reviewerでCRITICAL/HIGH無し確認。tsc+vite build green。
+- [x] iter3: タスク3「ワイドグランス後の瞬きクラスタ + 長時間アイドルのまどろみ瞬き」実装。
+      `viewer.ts`に`lastInteractionAt`/`pendingBlinkCluster`フィールドを新規追加(タスク1段階では
+      未追加だったため)。`notice()`で`lastInteractionAt`を更新。`updateGaze()`の`isWideGlance`
+      発火時に`pendingBlinkCluster`をセットし、`updateBlink()`で空きタイミングに`startBlink(true)`
+      +`queueDoubleBlink`強制で二重瞬きを誘発。`lastInteractionAt`から45秒超で`startBlink()`の
+      `blinkDuration`を1.1-1.3倍、`randomBlinkInterval()`の全emotion分岐を1.4-1.9倍にし、
+      まどろみ瞬きを表現。typescript-reviewerでCRITICAL/HIGH無し確認(軽微な指摘1件のみ、
+      ブロッキングなしと明記)。tsc+vite build green。
