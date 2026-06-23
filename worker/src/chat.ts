@@ -15,6 +15,7 @@ import {
 } from "./persona";
 import {
   EMOTION_TAG_RE,
+  couldStillBeTagPrefix,
   stripEmotion,
   stripTags,
   sanitizeFourthWall,
@@ -131,13 +132,18 @@ export function handleChat(
       for await (const chunk of streamChat(env, system, history, CHAT_MAX_TOKENS)) {
         buffer += chunk;
         if (emotion === null) {
-          // 感情タグが確定するまでバッファし、確定後にまとめて流す
+          // 感情タグはペルソナ指示で応答冒頭に来る前提だが、確定まで全部待つとタグが
+          // 無い/遅いケースで不要なレイテンシが乗る。「まだタグの途中かもしれない」間だけ
+          // バッファし、タグが来ない/タグが終わった時点で即座に流す。
           const m = buffer.match(EMOTION_TAG_RE);
           if (m) {
             emotion = m[1];
             await write({ type: "emotion", emotion });
-            buffer = stripTags(buffer).replace(/^\s+/, "");
-          } else if (buffer.length > 24) {
+            // タグ自身だけを除去し、タグより前のテキスト(本来は無い想定だがモデルが
+            // 守らない場合もある)は保持する。index以降の切り出しは前テキストを失うため使わない。
+            const start = m.index ?? 0;
+            buffer = (buffer.slice(0, start) + buffer.slice(start + m[0].length)).replace(/^\s+/, "");
+          } else if (buffer.length > 24 || !couldStillBeTagPrefix(buffer)) {
             emotion = "neutral";
             await write({ type: "emotion", emotion });
           } else {

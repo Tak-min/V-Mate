@@ -36,6 +36,9 @@ export async function synthesize(
     model_uuid: modelUuid,
     text,
     output_format: "mp3",
+    // Aivisは既定で先頭に0.1秒の無音を付ける(leading_silence_seconds=0.1)。会話の即応性
+    // (没入感)を上げるため、発話冒頭の無音をゼロにして体感レイテンシを削る。
+    leading_silence_seconds: 0.0,
     ...voiceSettings,
   };
   if (env.AIVIS_SPEAKER_UUID) payload.speaker_uuid = env.AIVIS_SPEAKER_UUID;

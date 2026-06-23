@@ -53,6 +53,20 @@ export function timeContext(): string {
 
 export const EMOTION_TAG_RE = /\[(neutral|happy|sad|angry|relaxed|shy)\]/;
 const EMOTION_TAG_RE_G = /\[(neutral|happy|sad|angry|relaxed|shy)\]/g;
+const EMOTIONS = ["neutral", "happy", "sad", "angry", "relaxed", "shy"] as const;
+const EMOTION_TAG_LITERALS = EMOTIONS.map((e) => `[${e}]`);
+
+/**
+ * buffer が冒頭の感情タグ([happy]等)の途中である可能性が残っているかを判定する。
+ * 応答冒頭のトークンを「感情タグが確定するまで」待たせると、タグが無い/遅いケースで
+ * 不要なレイテンシが乗る。タグの途中である可能性が無くなった時点(先頭が`[`でない、
+ * または6種いずれの接頭辞でもない)で即座にバッファ保持をやめられるようにするための判定。
+ */
+export function couldStillBeTagPrefix(buffer: string): boolean {
+  const candidate = buffer.replace(/^\s+/, "");
+  if (candidate === "") return true;
+  return EMOTION_TAG_LITERALS.some((literal) => literal.startsWith(candidate));
+}
 
 /** 先頭の感情タグを抽出し、本文からすべてのタグを除去する。[emotion, cleaned] を返す。 */
 export function stripEmotion(text: string): [string, string] {
