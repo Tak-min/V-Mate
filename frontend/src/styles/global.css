@@ -759,6 +759,10 @@ body {
   padding: 6px 13px;
 }
 
+.chat-follow-ups {
+  padding: 0 16px 10px;
+}
+
 .chat-welcome-back {
   margin: 0 0 6px;
   padding: 6px 14px;

@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
+import type { VoiceMode } from '../features/chat/useCompanion';
 import type { ChatMessage, CompanionState, Emotion } from '../features/chat/types';
 
 const EMOTION_EMOJI: Record<Emotion, string> = {
@@ -23,6 +24,21 @@ const NEW_VISITOR_PROMPTS = ['好きな食べ物は?', 'はじめまして、よ
 
 const FAMILIAR_PROMPTS = ['少し元気がないの聞いてほしいな', '前に話してたこと、また聞きたいな'];
 
+const FOLLOW_UP_PROMPTS: Record<Emotion, string[]> = {
+  neutral: ['もう少し詳しく聞かせて', '他にはどんなことがあった?'],
+  happy: ['それいいね、もっと聞きたいな', 'どんなところが楽しかった?'],
+  sad: ['つらかったね、もう少し話してもいいよ', 'いま気分はどう?'],
+  angry: ['それは大変だったね、何があったの?', 'もう少し聞かせてくれる?'],
+  relaxed: ['いい感じだね、他には何かあった?', 'のんびりできてよかったね'],
+  shy: ['恥ずかしがらなくて大丈夫だよ', 'ゆっくり話してくれていいよ'],
+};
+
+function buildFollowUps(messages: ChatMessage[]): string[] {
+  const lastAssistant = [...messages].reverse().find((message) => message.role === 'assistant' && message.content);
+  if (!lastAssistant) return [];
+  return FOLLOW_UP_PROMPTS[lastAssistant.emotion ?? 'neutral'];
+}
+
 function timeBucketFor(now: Date): keyof typeof TIME_OF_DAY_PROMPTS {
   const hour = now.getHours();
   if (hour >= 5 && hour < 10) return 'morning';
@@ -43,14 +59,17 @@ interface Props {
   busy: boolean;
   state: CompanionState | null;
   daysAway: number | null;
+  voiceMode: VoiceMode;
   onInputActivity: () => void;
   onSend: (text: string) => void;
 }
 
-export function ChatPanel({ messages, busy, state, daysAway, onInputActivity, onSend }: Props) {
+export function ChatPanel({ messages, busy, state, daysAway, voiceMode, onInputActivity, onSend }: Props) {
   const [draft, setDraft] = useState('');
   const logRef = useRef<HTMLDivElement | null>(null);
   const starterPrompts = buildStarters(state, new Date());
+  const showFollowUps = messages.length > 0 && !busy && voiceMode === 'off';
+  const followUpPrompts = showFollowUps ? buildFollowUps(messages) : [];
 
   useEffect(() => {
     logRef.current?.scrollTo({
@@ -131,6 +150,23 @@ export function ChatPanel({ messages, busy, state, daysAway, onInputActivity, on
           </div>
         ))}
       </div>
+      {followUpPrompts.length > 0 && (
+        <div className="chat-suggestions chat-follow-ups">
+          {followUpPrompts.map((prompt) => (
+            <button
+              key={prompt}
+              type="button"
+              className="chat-suggestion-chip"
+              onClick={() => {
+                onInputActivity();
+                onSend(prompt);
+              }}
+            >
+              {prompt}
+            </button>
+          ))}
+        </div>
+      )}
       <form className="chat-input" onSubmit={submit}>
         <input
           type="text"

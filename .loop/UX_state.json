@@ -1,10 +1,10 @@
 {
-  "iteration": 6,
+  "iteration": 7,
   "status": "working",
   "task_backlog": [1, 2, 3, 4, 5, 6, 7, 8],
-  "completed_tasks": [1, 2, 3, 4, 6, 5],
+  "completed_tasks": [1, 2, 3, 4, 6, 5, 7],
   "skipped_tasks": [],
-  "last_task": 5,
-  "last_action": "task5: 再訪時の「おかえり」コンテキストを実装。worker/src/index.tsのpostNudgeで既に計算していたdaysSince(lastSeen)を`daysAway: number | null`としてjson()の3つのreturnすべてに`days_away`フィールドとして追加(新規DB/エンドポイント無し、既存クライアントは未知フィールドを無視するため後方互換)。greeting時にlastSeenがありdays>=2の場合のみ値をセット、それ以外はnull。frontend/src/features/chat/api.tsのrequestNudge戻り値型に`days_away?: number | null`を追加。useCompanion.tsに`daysAway`state追加、greeting応答受信時にセット(2日未満/無しならnullにリセットしstale表示を防止)、hookの戻り値に追加。App.tsx経由でChatPanelに`daysAway`propとして渡し、`daysAway!==null`の時だけplain textの「おかえり。{daysAway}日ぶりだね。」をchat-welcome-back要素で表示(dangerouslySetInnerHTML不使用)。global.cssに.chat-welcome-backスタイル追加。バックエンド変更タスクのためtypescript-reviewer(sonnet)をディスパッチしCRITICAL/HIGH無しを確認(MEDIUM1件: stale banner→対応済み)。build green (frontend tsc+vite, worker tsc)。残りは純フロントのタスク7,8。",
+  "last_task": 7,
+  "last_action": "task7: 会話継続のフォローアップ提案を実装。ChatPanel.tsxにFOLLOW_UP_PROMPTS(Emotion別の控えめな相槌+深掘り質問)とbuildFollowUps(messages)を追加し、直前のassistant発話(contentがある最後のもの)のemotionに応じて1〜2件のチップを表示。表示条件はmessages.length>0 && !busy && voiceMode==='off'(busy中/音声モード中は出さない)。voiceModeをuseCompanionの戻り値からApp.tsx経由でChatPanelにpropとして新規追加(型はuseCompanion.tsのVoiceMode)。タスク1の空状態starterとは別物として、chat-logとchat-inputの間にchat-follow-ups divとして配置。global.cssに.chat-follow-ups(padding)を追加(既存.chat-suggestion-chipスタイルを再利用)。純フロントタスクのためreviewerディスパッチは省略(VISIONの規定通り)。build green (frontend tsc+vite, worker tsc)。残りは純フロントのタスク8のみ。",
   "no_progress_hint": "task_backlog/completed_tasks/skipped_tasks length must change each iteration that makes progress; if a task is genuinely blocked (e.g. backend task too risky), move it to skipped_tasks with a reason in last_action rather than retrying identically"
 }

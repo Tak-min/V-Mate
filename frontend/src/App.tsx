@@ -88,6 +88,7 @@ export default function App() {
         busy={busy}
         state={state}
         daysAway={daysAway}
+        voiceMode={voiceMode}
         onInputActivity={noticeInputActivity}
         onSend={send}
       />
