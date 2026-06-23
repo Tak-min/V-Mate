@@ -21,6 +21,12 @@ struct VADConfig {
     var maxCaptureMs: Double = 15_000
     /// ノイズフロアの初期値。iOSの実測無音レベル(~0.0003)に合わせる。
     var initialNoiseFloor: Float = 0.0003
+    /// ノイズフロアが上昇する方向(環境ノイズが増えた)のEMA係数。突発音1フレームで
+    /// しきい値が跳ね上がらないよう遅め(WebRTC等のVADが採用する非対称追従と同じ考え方)。
+    var floorAttack: Float = 0.05
+    /// ノイズフロアが下降する方向(環境が静かになった)のEMA係数。attackより速くすることで、
+    /// 騒音が収まった直後にしきい値が高止まりせず、小声をより早く拾えるようにする。
+    var floorDecay: Float = 0.2
     /// マイクを開いた直後のウォームアップ期間(ms)。この間は発話開始を起こさない。
     /// 直前のTTS(MP3)末尾やスピーカー残響がマイクに回り込んでも誤検出しないための保険。
     /// 主対策は CompanionViewModel 側の resume遅延(残響の物理減衰待ち)で、これはその二段目。
@@ -62,7 +68,7 @@ final class VoiceActivityDetector {
         if let started = startedMs, nowMs - started < config.warmupMs {
             aboveFrames = 0
             if rms <= threshold {
-                noiseFloor = noiseFloor * 0.95 + rms * 0.05
+                adaptNoiseFloor(toward: rms)
             }
             return .silence
         }
@@ -78,7 +84,7 @@ final class VoiceActivityDetector {
         } else {
             aboveFrames = 0
             if !capturing {
-                noiseFloor = noiseFloor * 0.95 + rms * 0.05
+                adaptNoiseFloor(toward: rms)
             }
             if capturing && nowMs - lastVoiceMs > config.hangoverMs {
                 capturing = false
@@ -92,6 +98,12 @@ final class VoiceActivityDetector {
         }
 
         return .silence
+    }
+
+    /// rmsが現在のノイズフロアより高ければattack(遅め)、低ければdecay(速め)で追従する。
+    private func adaptNoiseFloor(toward rms: Float) {
+        let alpha = rms < noiseFloor ? config.floorDecay : config.floorAttack
+        noiseFloor = noiseFloor * (1 - alpha) + rms * alpha
     }
 
     func reset() {

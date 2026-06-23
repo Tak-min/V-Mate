@@ -1,9 +1,144 @@
 import AVFoundation
 import Speech
+import os
+
+/// 発話確定前の直近バッファを保持するリングバッファ。VADのonset確認(onsetFrames連続)に
+/// かかる間に届くバッファは「まだ発話と確定していない」ため認識リクエストへ送られないが、
+/// 確定した瞬間にこのリングバッファの内容を先頭に流し込むことで、発話冒頭の取りこぼしを防ぐ。
+/// AVAudioEngineのtapはコールバックごとに新しいAVAudioPCMBufferを渡すため(既存コードの
+/// `request.append(buffer)` も同様にtapスコープ外で保持する前提)、ここでも参照をそのまま
+/// 保持してよく、ディープコピーは不要。
+struct PreRollBuffer {
+    private var buffers: [AVAudioPCMBuffer] = []
+    private let capacity: Int
+
+    init(capacityFrames: Int) {
+        capacity = max(0, capacityFrames)
+    }
+
+    mutating func push(_ buffer: AVAudioPCMBuffer) {
+        guard capacity > 0 else { return }
+        buffers.append(buffer)
+        if buffers.count > capacity {
+            buffers.removeFirst(buffers.count - capacity)
+        }
+    }
+
+    mutating func drainAndClear() -> [AVAudioPCMBuffer] {
+        let drained = buffers
+        buffers = []
+        return drained
+    }
+}
+
+/// 単純なBoolフラグをオーディオスレッドとMainActorの双方から安全に読み書きするためのロック付きラッパー。
+/// このフラグ単体の同期だけが目的で、actorにすると同期APIを公開できずtapの同期スコープから
+/// 呼べなくなるため、軽量な`OSAllocatedUnfairLock`を使う。
+final class LockedFlag: @unchecked Sendable {
+    private let lock: OSAllocatedUnfairLock<Bool>
+
+    init(_ initial: Bool) {
+        lock = OSAllocatedUnfairLock(initialState: initial)
+    }
+
+    var value: Bool {
+        get { lock.withLock { $0 } }
+        set { lock.withLock { $0 = newValue } }
+    }
+}
+
+/// AVAudioEngineのtapコールバック(オーディオレンダースレッド、直列実行が保証される)から
+/// 同期的に呼ばれる音声キャプチャパイプライン。VADの発話確定と同じ呼び出しの中で
+/// `SFSpeechAudioBufferRecognitionRequest` の生成・`recognitionTask`の起動まで完了させることで、
+/// 「確定後にMainActorへの非同期Task hopを待つ間に後続バッファがrequest=nilのまま捨てられる」
+/// というレースを構造的に無くしている(旧実装はbeginCapture()自体がTask{@MainActor}越しだった)。
+/// vad/preRoll/request/task はこのクラスのインスタンスメソッドからのみ、かつtapスレッドからのみ
+/// 触るため、複数スレッド間でのデータ競合は発生しない。`useOnDeviceRecognition`だけは
+/// MainActor側(認識結果ハンドリング)からも書かれるため`LockedFlag`で保護する。
+final class AudioCapturePipeline {
+    struct Callbacks {
+        /// 発話開始の通知。MainActorへのホップ・finalText等のリセットは呼び出し側(SpeechRecognizer)が行う。
+        var onSpeechOnset: () -> Void
+        /// 認識結果(またはエラー)の通知。usedOnDeviceは次回以降のオンデバイス継続判定に使う。
+        var onRecognitionEvent: (SFSpeechRecognitionResult?, Error?, Bool) -> Void
+    }
+
+    private let recognizer: SFSpeechRecognizer
+    private let vad: VoiceActivityDetector
+    private let callbacks: Callbacks
+    let useOnDeviceRecognition = LockedFlag(true)
+
+    private var preRoll: PreRollBuffer
+    private var request: SFSpeechAudioBufferRecognitionRequest?
+    private var task: SFSpeechRecognitionTask?
+
+    init(recognizer: SFSpeechRecognizer, vad: VoiceActivityDetector, preRollCapacityFrames: Int, callbacks: Callbacks) {
+        self.recognizer = recognizer
+        self.vad = vad
+        self.callbacks = callbacks
+        preRoll = PreRollBuffer(capacityFrames: preRollCapacityFrames)
+    }
+
+    /// tapスレッドから直接(同期)呼ばれる。呼び出し元が`audioEngine.inputNode.removeTap`済みの
+    /// 場合にのみ`stop()`等から呼ぶことで、tapスレッドとの並行呼び出しを避ける。
+    func handleTap(buffer: AVAudioPCMBuffer) {
+        let rms = VoiceActivityDetector.rms(from: buffer)
+        let nowMs = Date().timeIntervalSince1970 * 1000
+        let event = vad.process(rms: rms, nowMs: nowMs)
+
+        switch event {
+        case .speechStarted:
+            beginCapture()
+            for preRollBuffer in preRoll.drainAndClear() {
+                request?.append(preRollBuffer)
+            }
+            request?.append(buffer)
+        case .speechEnded, .maxDurationReached:
+            endCapture()
+        case .silence:
+            if vad.capturing {
+                request?.append(buffer)
+            } else {
+                preRoll.push(buffer)
+            }
+        }
+    }
+
+    /// マイクを開く前(tapインストール前)に呼ぶ。tapと並行して呼ばないこと。
+    func reset() {
+        vad.reset()
+        _ = preRoll.drainAndClear()
+        task?.cancel()
+        task = nil
+        request = nil
+    }
+
+    private func beginCapture() {
+        let req = SFSpeechAudioBufferRecognitionRequest()
+        req.shouldReportPartialResults = true
+        let usedOnDevice = recognizer.supportsOnDeviceRecognition && useOnDeviceRecognition.value
+        req.requiresOnDeviceRecognition = usedOnDevice
+        request = req
+        callbacks.onSpeechOnset()
+
+        task = recognizer.recognitionTask(with: req) { [weak self] result, error in
+            self?.callbacks.onRecognitionEvent(result, error, usedOnDevice)
+        }
+    }
+
+    private func endCapture() {
+        request?.endAudio()
+        request = nil
+        task = nil
+    }
+}
 
 /// Web版 frontend/src/features/voice/recognition.ts の SpeechRecognizer クラスのSwift移植。
 /// AVAudioEngine の入力タップで VoiceActivityDetector を回し、発話区間だけ
 /// SFSpeechRecognizer に音声を渡す。沈黙時は認識を起動しない(マイクの監視だけ)。
+/// 実際のタップ処理・リクエスト生成は`AudioCapturePipeline`(tapスレッド専有)に委譲し、
+/// このクラスは公開API・コールバック保持・認識結果の解釈(finalText組み立て、
+/// オンデバイスフォールバック判定)というMainActor上のロジックだけを担う薄いファサード。
 @MainActor
 final class SpeechRecognizer {
     enum ErrorKind {
@@ -22,21 +157,22 @@ final class SpeechRecognizer {
     }
 
     private static let minUtteranceLength = 2
+    /// VADのonset確認に必要なフレーム数+1フレームの余裕。確定までに届いた分を
+    /// 取りこぼさず流し込めるよう、pre-rollの容量をonsetFramesに合わせて確保する。
+    private static let preRollMargin = 1
 
     private let recognizer: SFSpeechRecognizer?
     private let audioEngine = AVAudioEngine()
-    private let vad = VoiceActivityDetector()
+    private let vadConfig = VADConfig()
+    private var pipeline: AudioCapturePipeline?
 
     private var callbacks: Callbacks?
-    private var request: SFSpeechAudioBufferRecognitionRequest?
-    private var task: SFSpeechRecognitionTask?
     private var running = false
     private var finalText = ""
     /// オンデバイス認識を試すかどうか。端末にその言語のオンデバイスモデルが
     /// 未ダウンロードだと requiresOnDeviceRecognition=true は1件も結果を返さず
     /// 即時失敗する(既知のSFSpeechRecognizerの挙動)。最初の発話で検出したら
     /// 以後はサーバー認識にフォールバックする。
-    private var useOnDeviceRecognition = true
     private var onDeviceFailureNotified = false
     private var receivedAnyResult = false
 
@@ -71,14 +207,32 @@ final class SpeechRecognizer {
             return
         }
         self.callbacks = callbacks
-        vad.reset()
         finalText = ""
+        receivedAnyResult = false
+
+        let vad = VoiceActivityDetector(config: vadConfig)
+        let newPipeline = AudioCapturePipeline(
+            recognizer: recognizer,
+            vad: vad,
+            preRollCapacityFrames: vadConfig.onsetFrames + Self.preRollMargin,
+            callbacks: AudioCapturePipeline.Callbacks(
+                onSpeechOnset: { [weak self] in
+                    Task { @MainActor [weak self] in self?.handleSpeechOnset() }
+                },
+                onRecognitionEvent: { [weak self] result, error, usedOnDevice in
+                    Task { @MainActor [weak self] in
+                        self?.handleRecognitionResult(result: result, error: error, usedOnDevice: usedOnDevice)
+                    }
+                }
+            )
+        )
+        pipeline = newPipeline
 
         let input = audioEngine.inputNode
         let format = input.outputFormat(forBus: 0)
         input.removeTap(onBus: 0)
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
-            self?.handleTap(buffer: buffer)
+        input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+            newPipeline.handleTap(buffer: buffer)
         }
 
         do {
@@ -94,57 +248,20 @@ final class SpeechRecognizer {
     /// 聞き取り停止(発話中のエコー防止・会話モード終了の双方で使う。マイクも解放)。
     func stop() {
         running = false
+        // removeTapは同期的にtapコールバックの完了を保証するため、これ以降は
+        // pipelineをMainActorから安全に触れる(tapスレッドとの並行アクセスが無くなる)。
         audioEngine.inputNode.removeTap(onBus: 0)
         if audioEngine.isRunning { audioEngine.stop() }
-        task?.cancel()
-        task = nil
-        request = nil
-        vad.reset()
+        pipeline?.reset()
+        pipeline = nil
         finalText = ""
     }
 
-    /// tapはオーディオスレッドから呼ばれる。VADの判定はそのスレッドで行い(状態はVAD内部のみ)、
-    /// SFSpeechAudioBufferRecognitionRequest.append はスレッドセーフなのでここで直接呼ぶ。
-    /// コールバック経由でのUI/ViewModelへの通知だけ MainActor へホップする。
-    private func handleTap(buffer: AVAudioPCMBuffer) {
-        let rms = VoiceActivityDetector.rms(from: buffer)
-        let nowMs = Date().timeIntervalSince1970 * 1000
-        let event = vad.process(rms: rms, nowMs: nowMs)
-
-        switch event {
-        case .speechStarted:
-            Task { @MainActor [weak self] in self?.beginCapture() }
-        case .speechEnded, .maxDurationReached:
-            Task { @MainActor [weak self] in self?.endCapture() }
-        case .silence:
-            break
-        }
-
-        if let request, vad.capturing {
-            request.append(buffer)
-        }
-    }
-
-    private func beginCapture() {
-        guard let recognizer else { return }
-        let req = SFSpeechAudioBufferRecognitionRequest()
-        req.shouldReportPartialResults = true
-        let usedOnDevice = recognizer.supportsOnDeviceRecognition && useOnDeviceRecognition
-        req.requiresOnDeviceRecognition = usedOnDevice
-        request = req
+    /// AudioCapturePipelineからのonSpeechOnset通知(MainActor上)。発話単位の状態をリセットしてからUIへ伝える。
+    private func handleSpeechOnset() {
         finalText = ""
         receivedAnyResult = false
         callbacks?.onSpeechOnset()
-
-        task = recognizer.recognitionTask(with: req) { [weak self] result, error in
-            Task { @MainActor [weak self] in
-                self?.handleRecognitionResult(result: result, error: error, usedOnDevice: usedOnDevice)
-            }
-        }
-    }
-
-    private func endCapture() {
-        request?.endAudio()
     }
 
     private func handleRecognitionResult(result: SFSpeechRecognitionResult?, error: Error?, usedOnDevice: Bool) {
@@ -160,7 +277,7 @@ final class SpeechRecognizer {
             // オンデバイスモデル未ダウンロード等で1件も結果が来ずに失敗した場合、
             // 以後はオンデバイスを諦めてサーバー認識に切り替える(無音のまま固まるのを防ぐ)。
             if usedOnDevice, !receivedAnyResult {
-                useOnDeviceRecognition = false
+                pipeline?.useOnDeviceRecognition.value = false
                 if !onDeviceFailureNotified {
                     onDeviceFailureNotified = true
                     callbacks?.onError(.transient, "音声認識をサーバー方式に切り替えたよ。もう一度話してみてね。")
@@ -173,8 +290,6 @@ final class SpeechRecognizer {
     private func commit() {
         let text = finalText.trimmingCharacters(in: .whitespacesAndNewlines)
         finalText = ""
-        request = nil
-        task = nil
         if text.count >= Self.minUtteranceLength {
             callbacks?.onUtterance(text)
         }
