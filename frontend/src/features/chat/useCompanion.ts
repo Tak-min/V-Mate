@@ -204,6 +204,8 @@ export function useCompanion() {
               appendToLast(text);
               for (const sentence of splitter.feed(text)) {
                 speech.enqueue(sentence, emotion);
+                // 文末で瞬きを近づけ、話し手が句点ごとに瞬きする癖を再現する。
+                viewerRef.current?.blinkSoon();
               }
             },
             onDone: (nextState: CompanionState) => {

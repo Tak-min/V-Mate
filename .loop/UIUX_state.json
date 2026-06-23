@@ -1,9 +1,9 @@
 {
-  "iteration": 3,
-  "status": "working",
+  "iteration": 4,
+  "status": "done",
   "task_backlog": [1, 2, 3, 4, 5, 6, 7, 8, 9],
-  "completed_tasks": [1, 2, 3],
-  "last_task": 3,
-  "last_action": "viewer.tsに lastInteractionAt/pendingBlinkCluster フィールドを追加。notice()でlastInteractionAtを更新(task1段階では未追加だったフィールドを今回新規追加)。updateGaze()のisWideGlance発火時にpendingBlinkClusterをセット→updateBlink()内でblink空き時に即startBlink(true)+queueDoubleBlink強制で瞬きクラスタを誘発。lastInteractionAtから45秒超でstartBlink()のblinkDurationを1.1-1.3倍、randomBlinkInterval()の全emotion分岐を1.4-1.9倍にしてまどろみ瞬きを表現。typescript-reviewerでCRITICAL/HIGH無し確認済み(軽微な指摘1件のみ、ブロッキングなしと明記)。tsc+vite build green。",
+  "completed_tasks": [1, 2, 3, 4, 5, 6, 7, 8],
+  "last_task": 8,
+  "last_action": "ヘッドレスloop-engine.shはタスク1-3完了後、Claude Codeのセッション利用上限(resets 12pm Asia/Tokyo)に達してiteration4-20が全てno-opになり20反復で停止(.loop/uiux/report.md)。ユーザー指示で本体(対話セッション)が直接タスク4-8を実装して再開: (4)blinkSoon()追加+useCompanion.tsの文末で呼ぶ、(5)updateSettle()でアイドル中8-16秒毎の極小佇まい変化、(6)breathDepth()で呼吸振幅を超低周波変調しupdatePresence/updateGaze両方に適用、(7)global.cssにicon-button/chip/送信buttonの:active{scale(0.96)}+チップhoverのaccent border、(8)bubble-assistantにaccent左ボーダー。typescript-reviewerでHIGH懸念(damp()のdelta spike時オーバーシュート)が出たが、damp()は指数減衰式(1-exp(-lambda*delta))で係数が[0,1]に自己収束するため実害なしと判断・対応不要。tsc+vite build green。タスク9(affinityシマー+brand-mark呼吸)はバックログ上optional/最低優先のため未実施(DoDはUI温かみ系1件で満たされるため7で充足)。",
   "no_progress_hint": "task_backlog/completed_tasks length must change each iteration that makes progress; if a task is genuinely blocked, skip it and try the next one rather than retrying identically"
 }

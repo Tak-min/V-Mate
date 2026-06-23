@@ -104,6 +104,10 @@ export class CompanionViewer {
   private modelBaseRotationX = 0;
   private modelBaseRotationY = 0;
   private modelBaseRotationZ = 0;
+  /** アイドル中、時々体重を片側へゆっくり預け直す「佇まいの変化」用のオフセットと予定時刻。 */
+  private settleOffset = { z: 0, y: 0 };
+  private settleTargetOffset = { z: 0, y: 0 };
+  private nextSettle = rand(8, 16);
   /** アイドル時にローテーションさせる待機クリップの候補(既存5クリップ、重複除去)。 */
   private idleClipUrls = [...new Set(Object.values(MOTIONS))];
   private currentIdleClipUrl: string = MOTIONS.neutral;
@@ -242,6 +246,15 @@ export class CompanionViewer {
     this.attentionUntil = Math.max(this.attentionUntil, this.elapsed + seconds);
     this.nextGazeShift = Math.min(this.nextGazeShift, 0.12);
     this.lastInteractionAt = this.elapsed;
+  }
+
+  /**
+   * 発話の文末(句点など)で呼ぶと、近いうちに瞬きが来るように予定を早める。
+   * 実際の話し手は文の切れ目で瞬きしがちなので、その癖を再現する。進行中の瞬きは妨げない。
+   */
+  blinkSoon(maxDelay = 0.5): void {
+    if (this.blinkDuration > 0) return;
+    this.nextBlink = Math.min(this.nextBlink, rand(0.1, maxDelay));
   }
 
   private playMotion(url: string): void {
@@ -487,7 +500,7 @@ export class CompanionViewer {
     const pointerAge = this.elapsed - this.lastPointerAt;
     const pointerWeight =
       this.pointerActive || pointerAge < 3.2 ? Math.max(0, 1 - Math.max(pointerAge, 0) / 3.2) : 0;
-    const breath = Math.sin(this.elapsed * 1.15) * 0.009;
+    const breath = Math.sin(this.elapsed * 1.15) * 0.009 * this.breathDepth();
     const microX = Math.sin(this.elapsed * 0.73 + 1.7) * 0.03 + Math.sin(this.elapsed * 1.9) * 0.01;
     const microY = Math.sin(this.elapsed * 0.61 + 0.4) * 0.02;
     const baseDirectness =
@@ -537,6 +550,32 @@ export class CompanionViewer {
     this.lookTarget.position.copy(this.gazeCurrent);
   }
 
+  /** 呼吸の深さをゆっくり波で変える係数(0.7〜1.0)。一定振幅だと機械的に見えるため。 */
+  private breathDepth(): number {
+    return 0.7 + 0.3 * Math.sin(this.elapsed * 0.18);
+  }
+
+  /**
+   * アイドル中だけ、8〜16秒おきに体重を預け直すような極小の佇まい変化を起こす。
+   * 会話中(typing/listening/speaking/thinking)は割り込まない。
+   */
+  private updateSettle(delta: number): void {
+    if (this.attentionMode !== 'idle') {
+      this.settleTargetOffset = { z: 0, y: 0 };
+    } else {
+      this.nextSettle -= delta;
+      if (this.nextSettle <= 0) {
+        this.settleTargetOffset = {
+          z: rand(-0.012, 0.012),
+          y: rand(-0.004, 0.004),
+        };
+        this.nextSettle = rand(8, 16);
+      }
+    }
+    this.settleOffset.z = damp(this.settleOffset.z, this.settleTargetOffset.z, 1.6, delta);
+    this.settleOffset.y = damp(this.settleOffset.y, this.settleTargetOffset.y, 1.6, delta);
+  }
+
   private updatePresence(delta: number): void {
     if (!this.vrm) return;
     const scene = this.vrm.scene;
@@ -546,11 +585,15 @@ export class CompanionViewer {
         : this.attentionMode === 'thinking'
           ? 0.006
           : 0;
-    scene.position.y = this.modelBaseY + Math.sin(this.elapsed * 1.05) * 0.004;
+    this.updateSettle(delta);
+    const breathDepth = this.breathDepth();
+    scene.position.y =
+      this.modelBaseY + Math.sin(this.elapsed * 1.05) * 0.004 * breathDepth + this.settleOffset.y;
     scene.rotation.x = damp(scene.rotation.x, this.modelBaseRotationX + lean, 3.2, delta);
     scene.rotation.y =
       this.modelBaseRotationY + Math.sin(this.elapsed * 0.42 + 0.5) * 0.012 + this.gazeCurrent.x * 0.01;
-    scene.rotation.z = this.modelBaseRotationZ + Math.sin(this.elapsed * 0.37) * 0.004;
+    scene.rotation.z =
+      this.modelBaseRotationZ + Math.sin(this.elapsed * 0.37) * 0.004 + this.settleOffset.z;
   }
 
   private updateRelationship(delta: number): void {

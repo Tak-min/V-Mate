@@ -103,6 +103,36 @@
       既存5クリップを14-26s(warmthで延長)毎にneutral寄り重み付きでクロスフェード。
       typescript-reviewerのHIGH指摘(setEmotion直後の二重クロスフェード)を`setEmotion()`内で
       `nextIdleSwitch`リセットして解消。tsc+vite build green。
+- [x] iter2: タスク2「emotion lock」実装。`emotionLockUntil`を`setEmotion()`でセットし、
+      `updateIdleMotion()`はロック中bail。tsc+vite build green。
+- [x] iter3: タスク3「ワイドグランス後の瞬きクラスタ+まどろみ瞬き」実装。
+      `lastInteractionAt`/`pendingBlinkCluster`追加、`updateGaze()`の`isWideGlance`発火時に
+      フラグセット→`updateBlink()`で強制二重瞬き、45秒超アイドルで`blinkDuration`/
+      `randomBlinkInterval()`を伸ばしてまどろみ表現。typescript-reviewerでCRITICAL/HIGH無し。
+      tsc+vite build green。
+- [!] ヘッドレスloop-engine.sh、iteration4でClaude Codeのセッション利用上限に到達
+      ("You've hit your session limit · resets 12pm Asia/Tokyo")。iteration4-20は
+      `claude -p`が即終了するno-opで、20反復消化して`HALT (1): max iterations`停止
+      (`.loop/uiux/report.md`)。**学び**: loop-engine.shはno-opでも空費に気づかずmax_iterまで
+      回り続ける(claude -pの非ゼロ終了をログするだけで利用上限を検知しない)。次回ヘッドレス
+      実行時は`.loop/uiux/loop.log`に "session limit" 文字列が出た時点で早期停止するガードを
+      loop-engine.sh側かラッパーに追加するのが望ましい。
+- [x] iter4(本体が直接実装、ユーザー指示で再開): タスク4「文末で瞬き同期」
+      — `blinkSoon(maxDelay=0.5)`を`viewer.ts`に追加、`useCompanion.ts`のonToken文分割ループから
+      文ごとに呼ぶ。タスク5「アイドル中マイクロ重心シフト」— `updateSettle()`で8-16秒毎に
+      `settleOffset.z/y`をdampでイン/アウト、`attentionMode==='idle'`時のみ。
+      タスク6「呼吸の深さ変調」— `breathDepth()`(超低周波sin, 0.7-1.0)を
+      `updatePresence`/`updateGaze`の呼吸sin項に適用。typescript-reviewerでHIGH懸念
+      (damp()のdelta spike時オーバーシュート)が出たが、damp()は指数減衰式で係数が[0,1]に
+      自己収束するため実害なしと判断。tsc+vite build green。
+- [x] iter5(本体): タスク7「UI温かみ: 押下フィードバック+チップのリフト」
+      — `.icon-button`/`.chat-suggestion-chip`/`.chat-input button`に`:active{scale(0.96)}`、
+      チップのhoverをtranslateY(-2px)+accent borderに強化、`prefers-reduced-motion`ブロックに
+      新規セレクタを追加。タスク8「assistantバブルのアクセント」—
+      `.bubble-assistant`に`--color-accent`の左ボーダー追加(既存`bubble-in`keyframeで
+      translateY+scaleの入場は確認済み、変更なしで足りた)。tsc+vite build green。
+      タスク9(affinityシマー等)はoptional/最低優先のため未実施 — DoDのUI温かみ要件は
+      タスク7で充足。
 - [x] iter2: タスク2「emotion lockでスケジューラと`setEmotion()`の競合防止」実装。`viewer.ts`に
       `emotionLockUntil`フィールドを追加し、`setEmotion()`で`this.elapsed + 4.5`をセット。
       `updateIdleMotion()`は`this.elapsed < this.emotionLockUntil`の間bailするガードを追加し、

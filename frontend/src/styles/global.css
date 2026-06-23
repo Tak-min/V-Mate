@@ -460,6 +460,10 @@ body {
   transform: translateY(-2px);
 }
 
+.icon-button:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
 .icon-button:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
@@ -683,8 +687,13 @@ body {
 }
 
 .chat-suggestion-chip:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px);
   background: oklch(99% 0.01 80 / 0.85);
+  border-color: var(--color-accent);
+}
+
+.chat-suggestion-chip:active {
+  transform: scale(0.96);
 }
 
 .bubble {
@@ -720,6 +729,7 @@ body {
   align-self: flex-start;
   background: oklch(99% 0.012 85 / 0.92);
   border: 1px solid oklch(94% 0.03 60);
+  border-left: 3px solid var(--color-accent);
   border-bottom-left-radius: 6px;
 }
 
@@ -813,6 +823,10 @@ body {
 
 .chat-input button:hover:not(:disabled) {
   transform: translateY(-1px) scale(1.03);
+}
+
+.chat-input button:active:not(:disabled) {
+  transform: scale(0.96);
 }
 
 .chat-input button:disabled {
@@ -1147,8 +1161,20 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .bubble,
   .affinity-fill,
-  .diary-drawer {
+  .diary-drawer,
+  .icon-button,
+  .chat-suggestion-chip,
+  .chat-input button {
     animation: none;
     transition: none;
+  }
+
+  .icon-button:hover,
+  .icon-button:active,
+  .chat-suggestion-chip:hover,
+  .chat-suggestion-chip:active,
+  .chat-input button:hover,
+  .chat-input button:active {
+    transform: none;
   }
 }
