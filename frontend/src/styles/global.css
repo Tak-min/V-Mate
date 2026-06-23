@@ -190,6 +190,7 @@ body {
 .affinity {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   background: var(--color-glass);
   border: 1px solid var(--color-glass-border);
@@ -225,6 +226,13 @@ body {
 .affinity-score {
   font-size: 0.82rem;
   color: var(--color-ink-soft);
+}
+
+.affinity-next {
+  flex-basis: 100%;
+  font-size: 0.74rem;
+  color: var(--color-ink-soft);
+  opacity: 0.85;
 }
 
 .name-form {

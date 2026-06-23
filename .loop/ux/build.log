@@ -6,6 +6,6 @@ transforming...
 rendering chunks...
 computing gzip size...
 ../backend/static/index.html                   0.82 kB │ gzip:   0.47 kB
-../backend/static/assets/index-lQw3T5LP.css   18.18 kB │ gzip:   4.17 kB
-../backend/static/assets/index-CDBprVzK.js   960.09 kB │ gzip: 255.70 kB
-✓ built in 1.13s
+../backend/static/assets/index-DKDcF0l_.css   18.28 kB │ gzip:   4.19 kB
+../backend/static/assets/index-CfBHh_zl.js   960.56 kB │ gzip: 255.89 kB
+✓ built in 1.43s

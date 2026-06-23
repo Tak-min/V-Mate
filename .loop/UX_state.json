@@ -1,10 +1,10 @@
 {
-  "iteration": 1,
+  "iteration": 2,
   "status": "working",
   "task_backlog": [1, 2, 3, 4, 5, 6, 7, 8],
-  "completed_tasks": [1],
+  "completed_tasks": [1, 2],
   "skipped_tasks": [],
-  "last_task": 1,
-  "last_action": "task1: ChatPanel.tsx STARTER_PROMPTS を buildStarters(state, now) に置き換え。時間帯(morning/daytime/evening/night)+ stage(はじめまして=新規 vs それ以降=既知)で呼びかけを切り替え。Props に state: CompanionState | null を追加し App.tsx から渡した。build green (frontend tsc+vite, worker tsc)。",
+  "last_task": 2,
+  "last_action": "task2: StatusBar.tsx の親密度バー進捗バグを修正。STAGE_FLOORS/STAGE_NAMES(worker/src/persona.ts AFFINITY_STAGES をミラー)を追加し、affinity/next_stage_at の絶対比率ではなく現在ステージ内での進捗 (affinity-floor)/(next_stage_at-floor) を表示するよう stageProgress() を実装。「あと{remaining}で『{次段階名}』」ラベルも追加(.affinity-next, .affinity に flex-wrap: wrap)。react-reviewer(sonnet)レビュー実施: CRITICAL/HIGH無し(MEDIUM2件は将来的な保守性の注意点のみ、ブロッキングではない)。build green (frontend tsc+vite, worker tsc)。",
   "no_progress_hint": "task_backlog/completed_tasks/skipped_tasks length must change each iteration that makes progress; if a task is genuinely blocked (e.g. backend task too risky), move it to skipped_tasks with a reason in last_action rather than retrying identically"
 }
