@@ -117,6 +117,7 @@ export class CompanionViewer {
   /** リップシンク中の口の開き(0..1)を毎フレーム取得する関数 */
   getMouthLevel: (() => number) | null = null;
 
+  private contactShadow: THREE.Mesh | null = null;
   private disposed = false;
 
   constructor(
@@ -137,6 +138,11 @@ export class CompanionViewer {
     });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    // ACESフィルミックトーンマッピングで、トーンマッピング無し(NoToneMapping)の「のっぺり・
+    // 白飛び」を解消し、ハイライトを自然にロールオフ・階調を豊かにして実写寄りの立体感を出す。
+    // ACESは中間調を暗めにするため、露出を少し上げて補正する(MToonの白飛び/黒潰れはスクショで確認済み)。
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.15;
 
     this.camera = new THREE.PerspectiveCamera(24, 1, 0.1, 20);
     const camPos = this.options.cameraPosition ?? { x: 0, y: 1.32, z: 2.2 };
@@ -144,12 +150,17 @@ export class CompanionViewer {
     this.camera.position.set(camPos.x, camPos.y, camPos.z);
     this.camera.lookAt(camLookAt.x, camLookAt.y, camLookAt.z);
 
-    const key = new THREE.DirectionalLight(0xfff2e3, 1.6);
+    const key = new THREE.DirectionalLight(0xfff2e3, 1.5);
     key.position.set(1.2, 1.8, 1.5);
-    const fill = new THREE.DirectionalLight(0xdde8ff, 0.7);
+    const fill = new THREE.DirectionalLight(0xdde8ff, 0.65);
     fill.position.set(-1.5, 1.2, 0.8);
-    const ambient = new THREE.HemisphereLight(0xfff6ec, 0xd9c8c0, 0.9);
-    this.scene.add(key, fill, ambient);
+    // リムライト(バックライト): キャラ後方やや上の寒色光で髪・肩の輪郭を起こし、背景から
+    // 浮かび上がらせる(以前は輪郭が背景に溶けて立体感・存在感が弱かった)。カメラは+z側に
+    // あるので、-z(背後)から当てて縁取りを作る。
+    const rim = new THREE.DirectionalLight(0xbcd2ff, 1.1);
+    rim.position.set(-0.9, 2.3, -2.0);
+    const ambient = new THREE.HemisphereLight(0xfff6ec, 0xd9c8c0, 0.85);
+    this.scene.add(key, fill, rim, ambient);
     this.lookTarget.position.copy(this.gazeCurrent);
     this.scene.add(this.lookTarget);
 
@@ -192,6 +203,7 @@ export class CompanionViewer {
 
     this.scene.add(vrm.scene);
     this.vrm = vrm;
+    this.addContactShadow(vrm.scene);
     this.mixer = new THREE.AnimationMixer(vrm.scene);
     this.modelBaseY = vrm.scene.position.y;
     this.modelBaseRotationX = vrm.scene.rotation.x;
@@ -217,6 +229,45 @@ export class CompanionViewer {
     );
     this.playMotion(MOTIONS.neutral);
     this.renderLoop();
+  }
+
+  /**
+   * 足元に柔らかいコンタクトシャドウ(疑似接地影)を1枚敷く。影が無いとキャラが床から
+   * 浮いて見え非現実感の一因になるため。背景は透過でアプリ側に合成されるので、全面の床は
+   * 置かず「足元の楕円の影」だけを置く。放射状グラデのキャンバステクスチャを地面に寝かせる。
+   */
+  private addContactShadow(modelScene: THREE.Object3D): void {
+    const box = new THREE.Box3().setFromObject(modelScene);
+    const footY = Number.isFinite(box.min.y) ? box.min.y : 0;
+    const width = Math.max(box.max.x - box.min.x, 0.3);
+
+    const size = 256;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    grad.addColorStop(0, 'rgba(0,0,0,0.55)');
+    grad.addColorStop(0.55, 'rgba(0,0,0,0.28)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const geometry = new THREE.PlaneGeometry(width * 1.7, width * 1.0);
+    const material = new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    const shadow = new THREE.Mesh(geometry, material);
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.position.set(0, footY + 0.005, 0);
+    shadow.renderOrder = -1;
+    this.scene.add(shadow);
+    this.contactShadow = shadow;
   }
 
   setEmotion(emotion: Emotion): void {
@@ -679,6 +730,14 @@ export class CompanionViewer {
     if (this.vrm) {
       this.scene.remove(this.vrm.scene);
       VRMUtils.deepDispose(this.vrm.scene);
+    }
+    if (this.contactShadow) {
+      this.scene.remove(this.contactShadow);
+      this.contactShadow.geometry.dispose();
+      const mat = this.contactShadow.material as THREE.MeshBasicMaterial;
+      mat.map?.dispose(); // Material.dispose() はテクスチャを破棄しないので明示的に
+      mat.dispose();
+      this.contactShadow = null;
     }
     this.renderer.dispose();
   }
