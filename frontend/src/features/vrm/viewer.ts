@@ -1,6 +1,17 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { VRM, VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+import {
+  VRM,
+  VRMLoaderPlugin,
+  VRMUtils,
+  VRMSpringBoneCollider,
+  VRMSpringBoneColliderShapeCapsule,
+} from '@pixiv/three-vrm';
+import type {
+  VRMHumanBoneName,
+  VRMSpringBoneColliderGroup,
+  VRMSpringBoneJoint,
+} from '@pixiv/three-vrm';
 import {
   VRMAnimationLoaderPlugin,
   VRMLookAtQuaternionProxy,
@@ -33,6 +44,31 @@ const EXPRESSION_NAMES = ['happy', 'sad', 'angry', 'relaxed'] as const;
 const EXPRESSION_FADE = 8; // 表情の補間速度(1秒あたり)
 const CROSSFADE_SECONDS = 0.6;
 const LOOK_TARGET_BASE = new THREE.Vector3(0, 1.28, 2.15);
+
+// トラックC: 髪・スカートの胴体貫通対策。shiro.vrm はスプリングボーンに胴体コライダーを十分
+// 持たないため、実行時に胴体ボーンへカプセルコライダーを生成して髪/スカート関節に割り当てる。
+// 値は shiro.vrm 専用の採寸(ボーンの local 空間。検証ハーネス frontend/src/harness/ で
+// コライダー可視化しながら調整)。radius=半径, offset=カプセル始点, tail=カプセル終点(共にlocal)。
+interface TorsoColliderSpec {
+  bone: VRMHumanBoneName;
+  radius: number;
+  offset: [number, number, number];
+  tail: [number, number, number];
+}
+// shiro.vrm の胴体ボーン実測(world Y): hips 0.90 / spine 0.95 / chest 1.07 / upperChest 1.18 /
+// 肩 1.29。各カプセルで1区間を橋渡しして hips〜肩(髪が最も貫通する範囲)を連続被覆する。
+const TORSO_COLLIDER_SPECS: TorsoColliderSpec[] = [
+  { bone: 'hips', radius: 0.11, offset: [0, 0, 0.01], tail: [0, 0.07, 0.01] },
+  { bone: 'spine', radius: 0.11, offset: [0, 0, 0.015], tail: [0, 0.12, 0.015] },
+  { bone: 'chest', radius: 0.105, offset: [0, 0, 0.02], tail: [0, 0.11, 0.015] },
+  { bone: 'upperChest', radius: 0.1, offset: [0, 0, 0.015], tail: [0, 0.11, -0.01] },
+];
+// 髪/服(フード等)関節の剛性・ドラッグを底上げして、貫通が目立つ大揺れ自体を抑える(根治ではないが軽減)。
+const HAIR_MIN_STIFFNESS = 1.1;
+const HAIR_MIN_DRAG = 0.45;
+// 胴体を貫通しうる「垂れ下がる」スプリングボーンだけを対象にする(VRoid命名 J_Sec_Hair* / J_Sec_*Hood*)。
+// Bust(胸)は胴体コライダーで押し出されるのを避けるため除外。CatEar/FoxTail(J_Opt_*・頭/尻尾)も対象外。
+const SPRING_BONE_NAME_RE = /hair|髪|hood|skirt|スカート/i;
 
 type AttentionMode = 'idle' | 'typing' | 'listening' | 'thinking' | 'speaking';
 
@@ -120,6 +156,14 @@ export class CompanionViewer {
   private contactShadow: THREE.Mesh | null = null;
   private disposed = false;
 
+  // トラックC(髪貫通対策)で割り当てた髪/スカート関節と、実行時生成した胴体コライダー。
+  // 検証ハーネスが getDebugHandles() 経由でヘルパー可視化に使う。
+  private hairJoints: VRMSpringBoneJoint[] = [];
+  private torsoColliders: VRMSpringBoneCollider[] = [];
+  /** デバッグ検証ハーネス用: true のとき updateRelationship がカメラを上書きせず、外部の
+   *  OrbitControls がカメラを所有できるようにする(多角度から貫通/コライダー配置を確認するため)。 */
+  private debugFreeCamera: boolean;
+
   constructor(
     private canvas: HTMLCanvasElement,
     private options: {
@@ -129,12 +173,18 @@ export class CompanionViewer {
       // 見せる近め framing を指定するために追加。未指定なら従来のWeb版の値のまま。
       cameraPosition?: { x: number; y: number; z: number };
       cameraLookAt?: { x: number; y: number; z: number };
+      // 検証ハーネス専用: カメラを外部(OrbitControls)に委ねる。本番では未指定=false。
+      debugFreeCamera?: boolean;
     } = {},
   ) {
+    this.debugFreeCamera = options.debugFreeCamera ?? false;
     this.renderer = new THREE.WebGLRenderer({
       canvas,
       alpha: true,
       antialias: true,
+      // 検証ハーネスでは canvas.toDataURL() で確実にフレームを取り出せるよう描画バッファを保持する
+      // (本番では未指定=既定でクリアされ、わずかに高速)。
+      preserveDrawingBuffer: this.debugFreeCamera,
     });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -203,6 +253,7 @@ export class CompanionViewer {
 
     this.scene.add(vrm.scene);
     this.vrm = vrm;
+    this.setupHairPhysics(vrm);
     this.addContactShadow(vrm.scene);
     this.mixer = new THREE.AnimationMixer(vrm.scene);
     this.modelBaseY = vrm.scene.position.y;
@@ -268,6 +319,99 @@ export class CompanionViewer {
     shadow.renderOrder = -1;
     this.scene.add(shadow);
     this.contactShadow = shadow;
+  }
+
+  /**
+   * トラックC: 髪・スカートのスプリングボーンが胴体を貫通する問題への対処。
+   * shiro.vrm は胴体コライダーを十分に持たないため、(1)髪/スカート関節の剛性・ドラッグを底上げして
+   * 大揺れを抑え、(2)胸/腰に実行時カプセルコライダーを生成して各関節の colliderGroups に割り当て、
+   * 貫通を物理的に防ぐ。値は shiro.vrm 専用採寸(検証ハーネスでコライダー可視化しながら調整)。
+   * realistic.vrm 等を復活させる場合は別採寸が必要。
+   */
+  private setupHairPhysics(vrm: VRM): void {
+    const manager = vrm.springBoneManager;
+    if (!manager) return;
+
+    const targetJoints = [...manager.joints].filter((joint) =>
+      this.boneChainMatches(joint.bone, SPRING_BONE_NAME_RE),
+    );
+    if (targetJoints.length === 0) return;
+
+    // (1) 剛性・ドラッグの底上げ。settings は immutable に作り直して反映する(gravityDir は据え置き)。
+    for (const joint of targetJoints) {
+      const s = joint.settings;
+      joint.settings = {
+        ...s,
+        stiffness: Math.max(s.stiffness, HAIR_MIN_STIFFNESS),
+        dragForce: Math.max(s.dragForce, HAIR_MIN_DRAG),
+      };
+    }
+
+    // (2) 胴体カプセルコライダーを生成し、対象関節の colliderGroups に追加する。
+    const torsoColliders = this.buildTorsoColliders(vrm);
+    if (torsoColliders.length > 0) {
+      const group: VRMSpringBoneColliderGroup = { name: 'vmate-torso', colliders: torsoColliders };
+      for (const joint of targetJoints) {
+        joint.colliderGroups = [...joint.colliderGroups, group];
+      }
+    }
+
+    this.hairJoints = targetJoints;
+    this.torsoColliders = torsoColliders;
+  }
+
+  /** ボーン自身から祖先を辿り、いずれかの名前が正規表現にマッチするか(VRoidの髪/スカート命名対策)。 */
+  private boneChainMatches(bone: THREE.Object3D, re: RegExp): boolean {
+    let node: THREE.Object3D | null = bone;
+    for (let depth = 0; node && depth < 16; depth += 1) {
+      if (re.test(node.name)) return true;
+      node = node.parent;
+    }
+    return false;
+  }
+
+  /** 胴体ボーンに追従するカプセルコライダーを生成する(bone node の子に add してワールド追従させる)。 */
+  private buildTorsoColliders(vrm: VRM): VRMSpringBoneCollider[] {
+    const humanoid = vrm.humanoid;
+    if (!humanoid) return [];
+    const colliders: VRMSpringBoneCollider[] = [];
+    for (const spec of TORSO_COLLIDER_SPECS) {
+      const node =
+        humanoid.getRawBoneNode(spec.bone) ?? humanoid.getNormalizedBoneNode(spec.bone);
+      if (!node) continue;
+      const shape = new VRMSpringBoneColliderShapeCapsule({
+        radius: spec.radius,
+        offset: new THREE.Vector3(...spec.offset),
+        tail: new THREE.Vector3(...spec.tail),
+      });
+      const collider = new VRMSpringBoneCollider(shape);
+      collider.name = `vmate-torso-${spec.bone}`;
+      node.add(collider);
+      colliders.push(collider);
+    }
+    return colliders;
+  }
+
+  /**
+   * 検証ハーネス専用: シーン/カメラ/レンダラ/VRMと、トラックCで割り当てた関節・コライダーを返す。
+   * ハーネス側が OrbitControls とスプリングボーンHelperを取り付けて多角度確認するために使う。
+   */
+  getDebugHandles(): {
+    scene: THREE.Scene;
+    camera: THREE.PerspectiveCamera;
+    renderer: THREE.WebGLRenderer;
+    vrm: VRM | null;
+    hairJoints: VRMSpringBoneJoint[];
+    torsoColliders: VRMSpringBoneCollider[];
+  } {
+    return {
+      scene: this.scene,
+      camera: this.camera,
+      renderer: this.renderer,
+      vrm: this.vrm,
+      hairJoints: this.hairJoints,
+      torsoColliders: this.torsoColliders,
+    };
   }
 
   setEmotion(emotion: Emotion): void {
@@ -662,12 +806,15 @@ export class CompanionViewer {
     const lookTargetY = this.compactViewport ? 1.26 : 1.28;
     const lookTargetZ = this.compactViewport ? 2.98 : 2.3;
 
-    this.camera.position.set(
-      0,
-      cameraY - this.relationshipWarmth * 0.025,
-      baseZ - this.relationshipWarmth * closeOffset,
-    );
-    this.camera.lookAt(0, lookY + this.relationshipWarmth * 0.025, 0);
+    // 検証ハーネスでは外部のOrbitControlsがカメラを所有するため、ここでは上書きしない。
+    if (!this.debugFreeCamera) {
+      this.camera.position.set(
+        0,
+        cameraY - this.relationshipWarmth * 0.025,
+        baseZ - this.relationshipWarmth * closeOffset,
+      );
+      this.camera.lookAt(0, lookY + this.relationshipWarmth * 0.025, 0);
+    }
     this.lookTargetBase.set(
       0,
       lookTargetY + this.relationshipWarmth * 0.02,

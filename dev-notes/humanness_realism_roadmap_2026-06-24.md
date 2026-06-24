@@ -172,6 +172,58 @@
   `ENABLE_TTS=true`同様、iOSアプリは次回起動時に新描画を読み込む(WKWebViewが`/ios-avatar/`を取得)。
 - **Track C(髪貫通)は本ループ見送り**: 検証困難(多角度/実機目視必須)かつ高リスクのため、
   ロードマップ§4の設計のまま次回へ。「検証可能なものから出す」原則に従いA/Bを先行リリースした。
+  → **【2026-06-24 後続セッションで実装済み。§7.6 参照】**(上記「見送り」は当時の判断記録として残す)
+
+## 7.6 実装ログ(2026-06-24 後続セッション・Track C 髪/服の胴体貫通対策 実装/デプロイ済み)
+
+### やったこと(コードベースのみ。.vrm 編集=C-3 は未実施)
+- **検証ハーネスを新設**(§7 の宿題): `frontend/src/harness/spring-debug.ts` +
+  `frontend/public/harness/spring-debug.html`。`CompanionViewer` を新オプション `debugFreeCamera:true`
+  で起動し、OrbitControls(`three/examples`)でカメラを外部所有 → 多角度回転。`VRMSpringBoneColliderHelper`
+  (緑・depthTest無効で前面描画)/`VRMSpringBoneJointHelper`(赤)でコライダー/関節を可視化。
+  `npm run build:harness`(esbuild iife)→ `cd frontend/public && python3 -m http.server 8099` →
+  `http://localhost:8099/harness/spring-debug.html`。`window.__harness.{setAzimuth,playEmotion,toggleHelpers,
+  measure,snapshot}` で操作可能。**ハーネスは本番に出さない**: 生成バンドルは .gitignore、`frontend`の
+  `build`で `rm -rf ../backend/static/harness` を追加(realistic.vrm退避と同じ思想)。
+- **C-1+C-2 を `viewer.ts` `setupHairPhysics()` に実装**(`load()` 内で常時実行=本番有効):
+  - 対象関節を `SPRING_BONE_NAME_RE=/hair|髪|hood|skirt|スカート/i` で抽出(剛性`stiffness≥1.1`/
+    ドラッグ`dragForce≥0.45`を底上げ=C-1、settingsはimmutableに作り直し)。
+  - 胴体カプセルコライダーを実行時生成(C-2): `TORSO_COLLIDER_SPECS`(hips/spine/chest/upperChest の4本)を
+    `humanoid.getRawBoneNode()` に `add` し、`VRMSpringBoneColliderGroup` を各対象関節の `colliderGroups` に
+    immutable push。
+  - `getDebugHandles()` でハーネスへ scene/camera/renderer/vrm/関節/コライダーを公開。
+  - `updateRelationship()` は `debugFreeCamera` 時にカメラ上書きをスキップ(§7.5でデッドと判明した
+    camera引数問題を、検証用途では回避)。`preserveDrawingBuffer` も debug 時のみ true(toDataURLで確実取得)。
+
+### ハーネスで判明した実データ(shiro.vrm 固有・重要)
+- スプリングボーン関節は計**73本**。内訳: `J_Sec_Hair*`×53 / `J_Sec_*Hood*`(フード+紐)×6 /
+  `J_Sec_*Bust*`×4 / `J_Opt_*CatEar*`×4 / `J_Opt_C_FoxTail*`×6。**shiroはスカートではなくパーカー**
+  (ユーザーの言う"スカート"=フード/紐に相当)。
+- **正規表現の落とし穴**: 初版で `sec_` を入れたら **Bust(胸)まで巻き込んだ**。胸に胴体コライダーを
+  当てると押し出され不自然になるため除外必須。CatEar/FoxTail(`J_Opt_*`)は頭/尻尾で対象外=現regexで自然に除外。
+  → 対象は Hair+Hood+HoodString=**59本**。
+- 胴体ボーンの実測 world Y: hips 0.90 / spine 0.95 / chest 1.07 / upperChest 1.18 / 肩 1.29 / 頭 1.38。
+  モデル身長~1.71。**初版3本(hips/spine/chest)は上端~1.19止まりで肩〜上背の髪ドレープ域が無被覆**
+  だったため `upperChest` を追加して肩(1.29)まで連続被覆。bone local≈world スケール(≈1m単位)。
+
+### 検証(この環境で完結した分)
+- コライダー配置: 正面/真横/背面スクショで、4本カプセルが**胴体(緩いパーカーではなく身体)**の幅・
+  深さ・高さ(腰〜肩)を連続被覆することを確認。左右対称・中心。
+- **コライダー→髪 衝突パイプラインが生きている証明**: 全コライダー半径を 0.4 に一時拡大 →
+  髪が胸/正面から明確に外側へ押し出された(本番半径0.10〜0.11では効果は控えめ=表面に留める程度で自然)。
+  → 機構が no-op でないことを実証。スクショ: `/tmp/trackc_{front,side_v2,back_v2,inflate,final_side}.png`。
+
+### 残課題(次セッション/ユーザー)
+- **動的な貫通"低減"の最終判定は実機目視が必須**(§4/§7.5の予言どおり)。静止スクショでは
+  各モーション中の貫通可否は判別困難。各 .vrma を再生しながら多角度で見るのがハーネスの本来用途。
+  本番デプロイ済みなので、ユーザーに実機で「髪/フード紐が胴体に刺さらなくなったか」確認を依頼する。
+- 本番半径(0.10〜0.11)が実機で不足/過剰なら `TORSO_COLLIDER_SPECS` の radius/offset/tail を調整(ハーネスで反復)。
+- FoxTail(尻尾)の脚/尻貫通は今回対象外(`J_Opt_*`)。気になるなら hips コライダーを尻尾関節にも割当 or 専用カプセル。
+- C-3(Blender で .vrm 自体にコライダーをオーサリング)は C-1/C-2 で不足な場合のみ。ヘッドレス不可=人手。
+
+### デプロイ
+- `frontend`本番ビルド緑(tsc/vite, ios-avatar bundle 786.5kb に新physics内包)。worker `npm run deploy`
+  (build:frontend → backend/static、realistic.vrm退避+harness除去は自動)→ wrangler deploy。
 
 ## 8. 既知の環境制約(再掲)
 - SourceKit(IDE)はiOSターゲットを誤検知(偽陽性)。真判定は`xcodebuild`のみ。

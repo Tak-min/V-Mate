@@ -8,6 +8,8 @@ backend/scripts/research_analysis/dummy_research_events.csv
 # Workers静的アセット1ファイル25MiB上限超のためR2配信に移行(worker/src/index.ts)。
 # ローカルdev用にここに置くが、git管理・本番ビルド出力には含めない。
 frontend/public/models/realistic.vrm
+# dev専用の検証ハーネス(トラックC髪貫通)の生成バンドル。ソースは src/harness/ を管理。
+frontend/public/harness/*.bundle.js
 dist/
 .DS_Store
 

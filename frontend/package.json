@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build:ios-avatar": "esbuild src/ios-avatar/entry.ts --bundle --format=iife --target=es2019 --minify --outfile=public/ios-avatar/avatar.bundle.js",
-    "build": "npm run build:ios-avatar && tsc -b && vite build && rm -f ../backend/static/models/realistic.vrm",
+    "build:harness": "esbuild src/harness/spring-debug.ts --bundle --format=iife --target=es2019 --outfile=public/harness/spring-debug.bundle.js",
+    "build": "npm run build:ios-avatar && tsc -b && vite build && rm -f ../backend/static/models/realistic.vrm && rm -rf ../backend/static/harness",
     "preview": "vite preview"
   },
   "dependencies": {
