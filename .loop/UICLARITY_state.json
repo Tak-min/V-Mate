@@ -1,0 +1,14 @@
+{
+  "task": "UIボタンの視認性・機能の分かりやすさ改善ループ(iOS)",
+  "iteration": 3,
+  "max_iterations": 8,
+  "no_progress_count": 0,
+  "phase": "DONE",
+  "definition_of_done": "ヘッダー3ボタンがアイコン+ラベル+チップ背景+状態色で機能が一目で分かる/送信ボタンの有効無効が明確/シミュレータ実機で目視確認/build+test緑/レビューCRITICAL,HIGHゼロ/実機書き込み+commit",
+  "last_action": "layoutPriority/Spacer(minLength)で狭幅対策、副題1行固定、送信ボタンcanSendアクセント塗り。",
+  "last_result": "Approve(swift-reviewer)/test17緑/スクショ3点で目視確認/狭幅防御。実機書き込みは要ロック解除。",
+  "verify_artifacts": [
+    "/tmp/ui_iter1.png",
+    "/tmp/ui_iter2.png"
+  ]
+}

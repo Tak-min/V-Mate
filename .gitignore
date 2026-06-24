@@ -17,3 +17,4 @@ ios/**/*.xcuserstate
 ios/DerivedData/
 ios/.build/
 ios/build_device/
+ios/build_sim/

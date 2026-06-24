@@ -14,6 +14,10 @@ struct ConversationOverlay: View {
         Array(viewModel.messages.suffix(2))
     }
 
+    private var canSend: Bool {
+        !draft.trimmingCharacters(in: .whitespaces).isEmpty && !viewModel.busy
+    }
+
     var body: some View {
         VStack(spacing: 10) {
             if !latestMessages.isEmpty {
@@ -47,11 +51,14 @@ struct ConversationOverlay: View {
                     .onSubmit(send)
                 Button(action: send) {
                     Image(systemName: "paperplane.fill")
+                        .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(.white)
                         .padding(12)
-                        .background(Color.white.opacity(0.22), in: Circle())
+                        .background(canSend ? Color.accentColor : Color.white.opacity(0.18), in: Circle())
+                        .shadow(color: canSend ? Color.accentColor.opacity(0.5) : .clear, radius: 6, y: 2)
                 }
-                .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty || viewModel.busy)
+                .disabled(!canSend)
+                .accessibilityLabel("メッセージを送信")
             }
         }
         .padding(.horizontal, 16)
