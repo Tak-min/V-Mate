@@ -149,6 +149,30 @@
   `frontend/`にdev専用ページとして用意。髪貫通/描画/接地を回しながら見られる。これが無いと
   トラックCは検証コストが高すぎる。
 
+## 7.5 実装ログ(2026-06-24 同日・Track A+B 実装/デプロイ済み)
+- **Track A 実装済み**(`viewer.ts`): `renderer.toneMapping = ACESFilmicToneMapping` + `exposure 1.15`、
+  寒色リムライト(`0xbcd2ff`, intensity 1.1, pos(-0.9,2.3,-2.0))追加、key/fill/ambientを微調整。
+  **検証**: ios-avatar standaloneをローカル静的配信(`python3 -m http.server`)+ヘッドレスブラウザ
+  (Playwright)でbefore/afterスクショ比較 → 髪のツヤ/輪郭分離・顔の階調が明確に向上(`/Users/taku8/
+  avatar_baseline.png` vs `avatar_trackA.png`)。露出1.15で白飛び無し。
+- **Track B 実装済み**(`viewer.ts` `addContactShadow`): bounding box最下端基準の放射状グラデ
+  CanvasTextureプレーンを足元に敷設(`toneMapped:false`/`depthWrite:false`/`renderOrder:-1`)、
+  dispose時にgeometry/material/**texture**を解放。
+- **検証の落とし穴(重要発見)**: `cameraPosition`/`cameraLookAt`のコンストラクタ引数は
+  **`updateRelationship()`が毎フレーム上書き**するため事実上デッド。standaloneの構図は
+  compactViewport判定(=ビューポート幅)で決まり、近め(上半身)構図に固定される。よって
+  **足元のコンタクトシャドウはこの検証ビューポート(840×873≒正方形)では枠外**で見えない。
+  実機の縦長フル構図(iPhone ~390×844)では足が映る(過去のUIスクショで確認済)ため、**Bの影は
+  実機目視で最終確認が必要**。影は上半身構図では枠外=無害(回帰なし=スクショで確認)。
+  → 次回: フル構図検証には`updateRelationship()`のbaseZ/lookYを一時的に変える or ブラウザ
+  ビューポートを縦長にする必要がある。`cameraPosition`引数を活かしたいなら
+  updateRelationshipが引数を尊重するよう要改修(別タスク)。
+- **デプロイ済み**: commit `215f116` → push → `worker`へ`npm run deploy`(realistic.vrm退避手順)。
+  本番bundleに`ACESFilmic`/`toneMapping`が含まれることをcurlで確認(=live)。本番
+  `ENABLE_TTS=true`同様、iOSアプリは次回起動時に新描画を読み込む(WKWebViewが`/ios-avatar/`を取得)。
+- **Track C(髪貫通)は本ループ見送り**: 検証困難(多角度/実機目視必須)かつ高リスクのため、
+  ロードマップ§4の設計のまま次回へ。「検証可能なものから出す」原則に従いA/Bを先行リリースした。
+
 ## 8. 既知の環境制約(再掲)
 - SourceKit(IDE)はiOSターゲットを誤検知(偽陽性)。真判定は`xcodebuild`のみ。
 - SE級シミュレータ無し(iPhone 17系/iPad miniのみ)。狭幅UIは`layoutPriority`等で防御済み。
