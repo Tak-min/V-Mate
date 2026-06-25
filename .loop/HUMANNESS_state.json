@@ -1,0 +1,26 @@
+{
+  "project": "aikata-humanness",
+  "loop": "HUMANNESS (人間性の細部)",
+  "iteration": 1,
+  "current_phase": "DONE (text-side verified; voice deferred to user-ears)",
+  "branch": "master",
+  "phases": {
+    "0_research_2agents": "done (実在アプリ調査 + 設計記事の批判的調査)",
+    "1_critical_synthesis_VISION": "done (.loop/HUMANNESS_VISION.md)",
+    "IT_A_B_persona_tone_vulnerability": "done (commit af45905; deployed Version f648b846; curl検証パス)",
+    "IT_C_voice_breath_prosody": "deferred (研究#1レバーだが音質はヘッドレス検証不能=ユーザー耳必須)",
+    "rejected_anti_patterns": "人為的タイピング遅延(cargo-cult/逆効果) / プロアクティブ頻度増(FTC/well-being) / テキストのフィラー・タイポ(根拠薄)"
+  },
+  "last_action": "IT-A+B: persona に トーン反応性 + 節度ある脆弱性(well-being歯止め付き)を additive 追加。本番curlで3トーン検証。",
+  "last_verify": "curl 3トーン: 高揚→happy一緒に弾む / 落込→sad静かに寄り添う / 疲れ→relaxed柔らかく受け止め。全て短文・感情タグ適切・「ユーザー」非呼称・過剰演出なし(回帰なし)。typecheck緑。",
+  "no_progress_count": 0,
+  "stop_reason": "テキスト側の人間性レバーは実装/検証完了。残Track C(音声)は研究上は最重要だが音質の主観的向上がヘッドレスで検証不能=ブラインド投入は不適切。dev-noteに実装可能な仕様として申し送り。",
+  "definition_of_done": "エビデンスの強い人間性の細部を最小・低リスク・検証可能に組み込む(A トーン反応性 / B 節度ある脆弱性 / C 音声)。倫理(well-being)と不気味の谷を歯止めに。",
+  "guardrails": { "max_iter": 20, "iters_used": 1, "no_progress_limit": 3, "deploy_policy": "shippable単位でcommit->push->worker deploy" },
+  "deliverables": {
+    "research": "英語一次ソース2系統を批判的統合(dev-note参照)",
+    "commits": ["af45905 persona トーン反応性+脆弱性"],
+    "deploy": "https://aikata.taku810616.workers.dev Version f648b846 (live)",
+    "dev_note": "dev-notes/humanness_microtechniques_2026-06-25.md"
+  }
+}
