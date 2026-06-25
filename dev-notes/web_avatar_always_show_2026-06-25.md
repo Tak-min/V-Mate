@@ -38,7 +38,20 @@
 - **iOSは元から正しい**: `ios-avatar/entry.ts` は条件ゲート無しで常に `shiro.vrm` をロード。
   つまり「web+iOSを同じ形に」の収束は、**webをiOS側(常時表示)に寄せる**のが正解で IT1 で達成。
 
-## 残(次イテレーション・要ユーザー判断あり)
+## IT2/IT3 完了追記(2026-06-25 同ループ)
+
+- **IT2(Web研究撤去・完了)**: ユーザー判断「製品から完全撤去」に従い、`ResearchSurvey`(2メッセージ後の
+  アンケート割込=オンボーディング阻害)・`condition`/`startResearchSession`/`logResearchEvent`/
+  `submitSurvey`、`streamChat`の`condition`引数、研究系typesを撤去。**worker側は`condition`を
+  "stylized"既定にしておりLLM応答に非影響**=client撤去でchat非破壊。本番で`condition`無し
+  `/api/chat`が200+`emotion/token/done`正常ストリーム実証。commit `8dd81b1`/deploy `ec964bd1`。
+- **IT3(iOS収束・完了)**: iOSも同じ研究スキャフォールドを持っていた(`CompanionViewModel`/`APIClient`/
+  `Models`)。Web版と同一の撤去を実施。**`send()`の`let condition else { return }`という
+  Web版と同じ潜在バグ(条件未取得で送信不能)も解消**。`xcodebuild`(iPhone 17 Pro sim)BUILD SUCCEEDED。
+  iOSアバターは元から`condition`非依存で常時表示=収束完了。native変更のためCloudflareデプロイ不要。commit `01bd760`。
+- **収束の結論**: Web/iOS とも「常時shiroアバター + 研究機能なし + chatはcondition無し送信」で一致。
+
+## 残(任意・次イテレーション・要ユーザー判断あり)
 
 - **研究スキャフォールドの製品からの除去**: `ResearchSurvey`(userTurns>=2でポップ)・`condition` 割付・
   `logResearchEvent`・`submitResearchSurvey` は製品UXを阻害(コンパニオンアプリにアンケート割込)。

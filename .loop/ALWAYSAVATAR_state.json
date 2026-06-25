@@ -1,19 +1,20 @@
 {
   "task": "Web/iOSで必ずshiro.vrm表示+UX/オンボーディング収束改善ループ",
-  "iteration": 1,
+  "iteration": 3,
   "max_iterations": 20,
   "no_progress_count": 0,
-  "phase": "IT1_DONE",
+  "phase": "IT3_DONE",
   "definition_of_done": "全研究条件でshiro.vrm描画/無言ブランク根絶/オンボーディング改善/iOS収束/build緑+review",
-  "last_action": "IT1: アバターを研究条件から切り離し常時shiro.vrmロード+ロード失敗フォールバックUI。build緑→デプロイ(Version 30a4d0a4)→commit a5cb3d5→push。",
-  "last_result": "PASS: 本番 ?condition=text(従来ブランク)で canvas描画を実証(中央帯 opaque 2630/dark1586 px・shiro.vrm 200)。DoD#1+#2達成。iOSは元から条件ゲート無し=既に常時表示(DoD#4の収束は実質達成)。",
-  "findings": {
-    "root_cause": "本番v-mateに残存した研究A/B条件(text/stylized/realistic)のtext割当でApp.tsx/useCompanion.tsがアバターを非表示にしていた。研究は別リポv-mate-studyの責務。",
-    "ios_already_correct": "ios-avatar/entry.tsは条件ゲート無しで常にshiro.vrmロード=元から正しい。webがアウトライアだった。",
-    "screenshot_tool": "MCP browser_take_screenshotは本番WebGL連続描画下で5秒タイムアウト多発。gl.readPixelsでの非ブランク検証が確実な代替。"
+  "iterations": {
+    "IT1": "Webアバターを研究条件から切り離し常時shiro.vrmロード+ロード失敗フォールバックUI。本番?condition=textでgl.readPixels非ブランク実証(opaque2630/dark1586)。commit a5cb3d5/deploy 30a4d0a4。DoD#1+#2達成。",
+    "IT2": "研究スキャフォールド完全撤去(ResearchSurvey/condition/logResearchEvent/submitSurvey)。本番でcondition無し/api/chat=200+正常ストリーム実証(chat非破壊)。commit 8dd81b1/deploy ec964bd1。",
+    "IT3": "iOSも研究撤去でWeb版と収束(条件ゲート/研究イベント/condition送信)。xcodebuild(iPhone17Pro sim)BUILD SUCCEEDED。iOSアバターは元から常時表示。commit 01bd760。worker非破壊でデプロイ不要。"
   },
-  "remaining": [
-    "IT3: オンボーディング批判分析→改善(研究アンケートResearchSurveyの製品からの除去要否=ユーザー判断。新規ユーザー初見導線。dead text-only CSS掃除)",
-    "IT4: iOS版のオンボーディング/UIをWebと同等に収束(差分確認)"
-  ]
+  "done_summary": "最重要(必ずshiro表示)+Web/iOS収束+研究撤去(オンボーディング阻害除去)+ロード失敗堅牢化を達成・全検証済み。",
+  "remaining_optional": [
+    "IT4: Webオンボーディング深掘り(初見導線/名前入力/最初の一言)— ユーザーが優先度下げ(iOS先行)。",
+    "dead CSS掃除(.stage-text-only/.text-only-presence/.condition-* 等。無害だが製品クリーンのため)。",
+    "iOS実機/シミュレータでの視覚確認(過去セッションで表示確認済・今回はビルド緑で代替)。"
+  ],
+  "budget_note": "セッションコスト critical(~$130+)。最重要DoD達成済のため、残オプションは要ユーザー判断で停止・サーフェス。"
 }
