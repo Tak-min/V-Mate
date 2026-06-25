@@ -15,6 +15,7 @@ export default function App() {
     busy,
     ready,
     loadProgress,
+    loadError,
     voiceEnabled,
     condition,
     userTurns,
@@ -32,21 +33,24 @@ export default function App() {
     submitSurvey,
   } = useCompanion();
   const [diaryOpen, setDiaryOpen] = useState(false);
-  const visualBodyEnabled = condition !== 'text';
 
   return (
     <div className={`app condition-${condition ?? 'loading'}`}>
-      <div className={`stage${visualBodyEnabled ? '' : ' stage-text-only'}`}>
-        {visualBodyEnabled && <canvas ref={canvasRef} className="vrm-canvas" />}
-        {condition && !visualBodyEnabled && (
-          <div className="text-only-presence" aria-hidden="true">
-            <span className="text-only-pulse" />
-          </div>
-        )}
-        {condition && !ready && (
+      <div className="stage">
+        {/* 本番では研究条件に関わらず常にシロを表示する(canvasは常設)。 */}
+        <canvas ref={canvasRef} className="vrm-canvas" />
+        {!ready && !loadError && (
           <div className="loading" role="status">
             <div className="loading-ring" />
             <p>シロを起こしてる… {Math.round(loadProgress * 100)}%</p>
+          </div>
+        )}
+        {loadError && (
+          <div className="loading load-error" role="alert">
+            <p>シロの読み込みに失敗しました。</p>
+            <button type="button" className="retry-button" onClick={() => window.location.reload()}>
+              再読み込み
+            </button>
           </div>
         )}
       </div>

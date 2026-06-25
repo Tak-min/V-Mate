@@ -158,6 +158,28 @@ body {
   }
 }
 
+/* モデル読み込み失敗時のフォールバック(無言ブランクを出さない)。 */
+.load-error {
+  text-align: center;
+  padding: 0 24px;
+}
+
+.retry-button {
+  margin-top: 4px;
+  padding: 8px 20px;
+  border: none;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 0.9rem;
+  cursor: pointer;
+  box-shadow: 0 6px 16px oklch(70% 0.12 30 / 0.35);
+}
+
+.retry-button:hover {
+  filter: brightness(1.05);
+}
+
 /* --- ステータスバー --- */
 .status-bar {
   position: absolute;

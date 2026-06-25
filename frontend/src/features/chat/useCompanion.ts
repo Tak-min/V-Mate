@@ -73,6 +73,7 @@ export function useCompanion() {
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0);
+  const [loadError, setLoadError] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [condition, setCondition] = useState<PresentationCondition | null>(null);
   const [userTurns, setUserTurns] = useState(0);
@@ -344,35 +345,37 @@ export function useCompanion() {
     };
   }, []);
 
-  // 3D ビューア初期化。text 条件では身体提示だけを消し、会話・記憶・音声は維持する。
+  // 3D ビューア初期化。**本番製品では研究条件に関わらず必ずシロ(shiro.vrm)を表示する。**
+  // 旧実装は研究A/B条件 'text' のユーザー(uidハッシュで約1/3)に身体提示を一切出さず、
+  // 「キャラが何も表示されない」という本番不具合の正体だった(研究は別リポ v-mate-study の責務)。
+  // アバターのロードを condition の取得から切り離し、canvas が出たら即ロードする(表示を最優先・高速化)。
   useEffect(() => {
-    if (!condition || viewerRef.current) return;
-    if (condition === 'text') {
-      setLoadProgress(1);
-      setReady(true);
-      return;
-    }
-    if (!canvasRef.current) return;
+    if (viewerRef.current || !canvasRef.current) return;
     const viewer = new CompanionViewer(canvasRef.current, {
-      // 一時対応: realistic.vrm(53MB)はCloudflare資産上限超過のため本番デプロイ時に
-      // 毎回除外されており、condition==='realistic'のユーザーはモデル404で読み込み失敗していた。
-      // 復旧するまでconditionに関わらずshiro.vrmを読み込む(関連: dev-notes 落とし穴1)。
+      // realistic.vrm(51MB)はCloudflare資産上限25MB超でデプロイ除外のため、全ユーザー shiro.vrm 固定。
       modelUrl: '/models/shiro.vrm',
       fallbackModelUrl: '/models/shiro.vrm',
     });
     viewer.getMouthLevel = speech.mouthLevel;
     viewerRef.current = viewer;
-    // 読み込み失敗(モデル欠損・パース失敗等)でもローディング画面で固まらせない。
+    // 読み込み失敗(モデル欠損・パース失敗・WebGL不可等)でもローディングで固まらせない。
+    // 失敗は loadError を立ててフォールバックUIを出す(無言ブランク根絶: VISION DoD#2)。
     void viewer
       .load(setLoadProgress)
-      .then(() => setReady(true))
-      .catch(() => setReady(true));
+      .then(() => {
+        setReady(true);
+        setLoadError(false);
+      })
+      .catch(() => {
+        setReady(true);
+        setLoadError(true);
+      });
     return () => {
       viewer.dispose();
       viewerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [condition]);
+  }, []);
 
   // 初期状態・履歴の取得
   useEffect(() => {
@@ -453,6 +456,7 @@ export function useCompanion() {
     busy,
     ready,
     loadProgress,
+    loadError,
     voiceEnabled,
     condition,
     userTurns,
