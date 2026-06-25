@@ -223,41 +223,11 @@ export class Store {
 
   /** 匿名Cookieユーザーのデータをログイン後アカウントへ引き継ぐ。 */
   async reassignUserData(fromUserId: string, toUserId: string): Promise<void> {
-    const tables = ["messages", "facts", "diary", "kv", "research_events"];
+    const tables = ["messages", "facts", "diary", "kv"];
     const stmts = tables.map((t) =>
       this.db.prepare(`UPDATE ${t} SET user_id = ? WHERE user_id = ?`).bind(toUserId, fromUserId),
     );
     await this.db.batch(stmts);
   }
 
-  // --- research events ---
-
-  async addResearchEvent(
-    userId: string,
-    condition: string,
-    eventType: string,
-    payload: string,
-  ): Promise<void> {
-    await this.db
-      .prepare(
-        "INSERT INTO research_events (user_id, condition, event_type, payload, created_at) " +
-          "VALUES (?, ?, ?, ?, ?)",
-      )
-      .bind(userId, condition, eventType, payload, jstIso())
-      .run();
-  }
-
-  async listResearchEvents(
-    userId: string,
-    limit = 200,
-  ): Promise<{ id: number; condition: string; event_type: string; payload: string; created_at: string }[]> {
-    const { results } = await this.db
-      .prepare(
-        "SELECT id, condition, event_type, payload, created_at FROM research_events " +
-          "WHERE user_id = ? ORDER BY id DESC LIMIT ?",
-      )
-      .bind(userId, limit)
-      .all<{ id: number; condition: string; event_type: string; payload: string; created_at: string }>();
-    return results.reverse();
-  }
 }

@@ -26,9 +26,6 @@ const COOKIE_MAX_AGE = 60 * 60 * 24 * 365 * 2; // 2年
 // AIが干渉しすぎる(リロードのたびに挨拶し直す等)との指摘を受けて追加。
 // 直前の活動(last_seen)からこの秒数未満なら「戻ってきた」とみなさず挨拶を省略する。
 const GREETING_MIN_GAP_SECONDS = 180;
-const RESEARCH_CONDITIONS = ["text", "stylized", "realistic"] as const;
-const RESEARCH_METRICS_VERSION = "2026-06-18-v1";
-type ResearchCondition = (typeof RESEARCH_CONDITIONS)[number];
 
 interface Ctx {
   env: Env;
@@ -57,45 +54,6 @@ function clientIp(request: Request): string {
 function envInt(value: string | undefined, fallback: number): number {
   const n = parseInt(value ?? "", 10);
   return Number.isFinite(n) ? n : fallback;
-}
-
-function envBool(value: string | undefined, fallback: boolean): boolean {
-  if (value == null || value === "") return fallback;
-  return ["1", "true", "yes", "on"].includes(value.toLowerCase());
-}
-
-function isResearchCondition(value: unknown): value is ResearchCondition {
-  return typeof value === "string" && (RESEARCH_CONDITIONS as readonly string[]).includes(value);
-}
-
-function defaultResearchCondition(uid: string): ResearchCondition {
-  const n = parseInt(uid.slice(0, 2), 16);
-  return RESEARCH_CONDITIONS[(Number.isFinite(n) ? n : uid.length) % RESEARCH_CONDITIONS.length];
-}
-
-async function researchCondition(c: Ctx, uid: string, requested?: unknown): Promise<ResearchCondition> {
-  const allowOverride = envBool(c.env.RESEARCH_ALLOW_CONDITION_OVERRIDE, true);
-  if (isResearchCondition(requested) && allowOverride) {
-    await c.store.setKv(uid, "research_condition", requested);
-    return requested;
-  }
-  const stored = await c.store.getKv(uid, "research_condition");
-  if (isResearchCondition(stored)) return stored;
-  const condition = defaultResearchCondition(uid);
-  await c.store.setKv(uid, "research_condition", condition);
-  return condition;
-}
-
-async function logResearchEvent(
-  c: Ctx,
-  uid: string,
-  condition: string,
-  eventType: string,
-  payload: Record<string, unknown> = {},
-): Promise<void> {
-  const safeCondition = isResearchCondition(condition) ? condition : await researchCondition(c, uid);
-  const body = { metrics_version: RESEARCH_METRICS_VERSION, ...payload };
-  await c.store.addResearchEvent(uid, safeCondition, eventType, JSON.stringify(body));
 }
 
 // --- レート制限(チャット)---
@@ -190,7 +148,7 @@ async function getHistory(c: Ctx): Promise<Response> {
   return json(rows);
 }
 
-async function postChat(c: Ctx, body: { message?: unknown; condition?: unknown }): Promise<Response> {
+async function postChat(c: Ctx, body: { message?: unknown }): Promise<Response> {
   const message = body.message;
   if (typeof message !== "string" || message.length < 1 || message.length > 2000) {
     return errorDetail("メッセージは1〜2000文字で入力してください", 400);
@@ -198,47 +156,7 @@ async function postChat(c: Ctx, body: { message?: unknown; condition?: unknown }
   const uid = await resolveUid(c);
   const limited = await enforceRateLimit(c, uid);
   if (limited) return limited;
-  const condition = await researchCondition(c, uid, body.condition);
-  return handleChat(c.env, c.store, c.execCtx, uid, message, condition);
-}
-
-async function researchSession(c: Ctx, body: { condition?: unknown; source?: unknown }): Promise<Response> {
-  const uid = await resolveUid(c);
-  const condition = await researchCondition(c, uid, body.condition);
-  await logResearchEvent(c, uid, condition, "session_start", {
-    source: typeof body.source === "string" ? body.source.slice(0, 64) : "app",
-    override_requested: isResearchCondition(body.condition) ? body.condition : null,
-    override_allowed: envBool(c.env.RESEARCH_ALLOW_CONDITION_OVERRIDE, true),
-  });
-  return json({
-    condition,
-    conditions: RESEARCH_CONDITIONS,
-    metrics_version: RESEARCH_METRICS_VERSION,
-  });
-}
-
-async function researchEvent(
-  c: Ctx,
-  body: { condition?: unknown; event_type?: unknown; payload?: unknown },
-): Promise<Response> {
-  const uid = await resolveUid(c);
-  const condition = await researchCondition(c, uid, body.condition);
-  const eventType =
-    typeof body.event_type === "string" && body.event_type.length <= 64
-      ? body.event_type
-      : "client_event";
-  const payload = body.payload && typeof body.payload === "object" ? (body.payload as Record<string, unknown>) : {};
-  await logResearchEvent(c, uid, condition, eventType, payload);
-  return json({ ok: true });
-}
-
-async function researchExport(c: Ctx): Promise<Response> {
-  const token = c.request.headers.get("X-Research-Export-Token") ?? "";
-  if (!c.env.RESEARCH_EXPORT_TOKEN || token !== c.env.RESEARCH_EXPORT_TOKEN) {
-    return errorDetail("research export disabled", 403);
-  }
-  const limit = Math.min(Math.max(envInt(new URL(c.request.url).searchParams.get("limit") ?? "500", 500), 1), 5000);
-  return json(await c.store.listResearchEvents(await resolveUid(c), limit));
+  return handleChat(c.env, c.store, c.execCtx, uid, message);
 }
 
 async function postNudge(c: Ctx, body: { reason?: unknown; first_visit?: unknown }): Promise<Response> {
@@ -350,7 +268,6 @@ async function route(c: Ctx): Promise<Response> {
     if (path === "/api/history") return getHistory(c);
     if (path === "/api/diary") return getDiary(c);
     if (path === "/api/tts") return getTts(c);
-    if (path === "/api/research/export") return researchExport(c);
     return errorDetail("Not Found", 404);
   }
 
@@ -361,8 +278,6 @@ async function route(c: Ctx): Promise<Response> {
     if (path === "/api/auth/login") return authLogin(c, body);
     if (path === "/api/profile") return setProfile(c, body);
     if (path === "/api/chat") return postChat(c, body);
-    if (path === "/api/research/session") return researchSession(c, body);
-    if (path === "/api/research/event") return researchEvent(c, body);
     if (path === "/api/nudge") return postNudge(c, body);
     if (path === "/api/diary/generate") return generateDiary(c);
     return errorDetail("Not Found", 404);

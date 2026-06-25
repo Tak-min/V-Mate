@@ -55,17 +55,3 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   created_at    TEXT NOT NULL
 );
-
--- 研究用イベントログ。condition は text/stylized/realistic の提示条件。
--- payload は質問紙回答・発話メトリクス等をJSON文字列として保存する。
-CREATE TABLE IF NOT EXISTS research_events (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id    TEXT NOT NULL,
-  condition  TEXT NOT NULL,
-  event_type TEXT NOT NULL,
-  payload    TEXT NOT NULL,
-  created_at TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS ix_research_events_user ON research_events (user_id);
-CREATE INDEX IF NOT EXISTS ix_research_events_condition ON research_events (condition);
-CREATE INDEX IF NOT EXISTS ix_research_events_type ON research_events (event_type);

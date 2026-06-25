@@ -12,12 +12,10 @@ export interface Env {
   RATE_PER_USER_PER_DAY: string;
   RATE_GLOBAL_PER_DAY: string;
   RATE_LOGIN_PER_IP_PER_DAY: string;
-  RESEARCH_ALLOW_CONDITION_OVERRIDE?: string;
 
   // secrets(wrangler secret put)。未設定なら undefined。
   LLM_API_KEY?: string;
   JWT_SECRET?: string;
-  RESEARCH_EXPORT_TOKEN?: string;
   AIVIS_API_KEY?: string;
   AIVIS_MODEL_UUID?: string;
   AIVIS_SPEAKER_UUID?: string;
