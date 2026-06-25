@@ -133,12 +133,14 @@ export const setProfile = (userName: string): Promise<CompanionState> =>
 
 export const requestNudge = (
   reason: 'idle' | 'greeting',
+  opts: { firstVisit?: boolean } = {},
 ): Promise<{ text: string; emotion: Emotion; days_away?: number | null }> => {
   const fallback = { text: '', emotion: 'neutral' as Emotion, days_away: null };
+  // first_visit は greeting のときだけ意味を持つ(サーバは idle 要求では無視する)。
   return apiFetch('/api/nudge', {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify({ reason }),
+    body: JSON.stringify({ reason, first_visit: opts.firstVisit === true }),
   }).then(async (r) => {
     if (!r.ok) return fallback;
     const data = await r.json().catch(() => fallback);

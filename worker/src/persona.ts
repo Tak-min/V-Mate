@@ -94,8 +94,24 @@ ${timeContext}
 `;
 }
 
-export function nudgePrompt(context: string): string {
+export function nudgePrompt(context: string, opts: { intro?: boolean } = {}): string {
   const emotions = EMOTIONS.join("|");
+  if (opts.intro) {
+    // 初見ユーザーへの最初の挨拶。アプリの目的と操作を、シロ自身の言葉で自然に伝える。
+    return `ユーザーがこのアプリを初めて開いた。シロとして、初対面の挨拶をする。
+
+状況: ${context}
+
+ルール:
+- 冒頭に感情タグ [${emotions}] を1つ付ける
+- 2〜3文。次の3つを、説明口調や箇条書きにせず自然な話し言葉に溶け込ませる:
+  ① 自分が「シロ」だと名乗って、ここにいることを伝える
+  ② 「気軽に話しかけてね」と、話しかけてよいことを誘う
+  ③ 「マイクのボタンを押せば声でも話せるよ」と、声で会話できることを一言添える
+- やわらかく親しみやすいトーン。まだ相手を何も知らないので、馴れ馴れしくしすぎない
+- 全文を日本語の話し言葉で書く
+`;
+  }
   return `ユーザーがしばらく操作していない。シロとして自然な一言を発する。
 
 状況: ${context}

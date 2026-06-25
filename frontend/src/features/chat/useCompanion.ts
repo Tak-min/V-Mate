@@ -9,6 +9,7 @@ import {
   setProfile,
   streamChat,
 } from './api';
+import { isFirstVisit, markOnboarded } from './onboarding';
 import type {
   ChatMessage,
   CompanionState,
@@ -381,17 +382,20 @@ export function useCompanion() {
     if (state) viewerRef.current?.setAffinity(state.affinity);
   }, [state]);
 
-  // モデル読み込み完了後にシロから挨拶(Replika 的プロアクティブ性)
+  // モデル読み込み完了後にシロから挨拶(Replika 的プロアクティブ性)。
+  // 初見(この端末で未オンボーディング)なら自己紹介+「話しかけてね」+声の案内に寄せる。
   useEffect(() => {
     if (!ready || greeted.current) return;
     greeted.current = true;
-    requestNudge('greeting')
+    const firstVisit = isFirstVisit();
+    requestNudge('greeting', { firstVisit })
       .then(({ text, emotion, days_away }) => {
         if (text) pushAssistant(text, emotion);
         setDaysAway(typeof days_away === 'number' && days_away >= 2 ? days_away : null);
         resetIdleTimer();
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => markOnboarded());
   }, [ready, pushAssistant, resetIdleTimer]);
 
   // タイマー・認識エンジンの後始末

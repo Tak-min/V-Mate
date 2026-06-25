@@ -241,8 +241,9 @@ async function researchExport(c: Ctx): Promise<Response> {
   return json(await c.store.listResearchEvents(await resolveUid(c), limit));
 }
 
-async function postNudge(c: Ctx, body: { reason?: unknown }): Promise<Response> {
+async function postNudge(c: Ctx, body: { reason?: unknown; first_visit?: unknown }): Promise<Response> {
   const reason = body.reason === "greeting" ? "greeting" : "idle";
+  const firstVisit = body.first_visit === true;
   const uid = await resolveUid(c);
   const lastSeen = await c.store.getKv(uid, "last_seen");
   const userName = await c.store.getKv(uid, "user_name");
@@ -252,12 +253,20 @@ async function postNudge(c: Ctx, body: { reason?: unknown }): Promise<Response> 
 
   let context: string;
   let daysAway: number | null = null;
+  // 初見挨拶(intro)にするのは、端末(firstVisit)とサーバ活動履歴(!lastSeen)の両方が
+  // 「初見」を示すときだけ(AND)。片方でも「既知」を示せば通常挨拶へフォールバックする安全側設計
+  // ―― localStorage だけ消した復帰ユーザーに「はじめまして」を誤爆させないための二重ガード。
+  // 注: 初見ユーザーが2タブ同時オープン等の同時リクエストを投げると intro が2回出る理論上の
+  // レースは残るが、フロントの greeted.current ガードで通常経路では起きず、最悪でも挨拶重複=
+  // 無害のため KV ロックは入れない(コスト対効果で見送り)。
+  let isIntro = false;
   if (reason === "greeting") {
     if (lastSeen && secondsSince(lastSeen) < GREETING_MIN_GAP_SECONDS) {
       // ついさっき(リロード等)開いただけ。毎回挨拶し直すと干渉しすぎになるので省略する。
       await c.store.touchLastSeen(uid);
       return json({ text: "", emotion: "neutral", days_away: null });
     }
+    isIntro = firstVisit && !lastSeen;
     let gap = "";
     if (lastSeen) {
       const days = daysSince(lastSeen);
@@ -266,7 +275,9 @@ async function postNudge(c: Ctx, body: { reason?: unknown }): Promise<Response> 
         daysAway = days;
       }
     }
-    context = `${timeContext()}${nameNote}${gap}ユーザーがアプリを開いて現れたところ。挨拶する。`;
+    context = isIntro
+      ? `${timeContext()}${nameNote}ユーザーがこのアプリを初めて開いて現れたところ。`
+      : `${timeContext()}${nameNote}${gap}ユーザーがアプリを開いて現れたところ。挨拶する。`;
   } else {
     context = `${timeContext()}${nameNote}会話が途切れて少し時間が経った。`;
   }
@@ -275,7 +286,7 @@ async function postNudge(c: Ctx, body: { reason?: unknown }): Promise<Response> 
 
   let raw: string;
   try {
-    raw = await complete(c.env, nudgePrompt(context));
+    raw = await complete(c.env, nudgePrompt(context, { intro: isIntro }));
   } catch {
     return json({ text: "", emotion: "neutral", days_away: null });
   }

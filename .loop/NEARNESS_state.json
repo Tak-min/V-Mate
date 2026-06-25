@@ -1,27 +1,27 @@
 {
   "project": "aikata-nearness",
   "loop": "NEARNESS (親近感を抱く構造)",
-  "iteration": 0,
-  "current_phase": "RECON",
+  "iteration": 2,
+  "current_phase": "IT2_deploy",
   "branch": "master",
   "phases": {
     "0_anchors": "done",
-    "1_recon": "in_progress",
-    "IT1_dead_css": "pending",
-    "IT2_first_run_welcome": "pending",
+    "1_recon": "done",
+    "IT1_dead_css": "done (committed e675642)",
+    "IT2_first_run_welcome": "implemented; review gate running",
     "IT3_microcopy_voice_login_name": "pending",
     "IT4_worker_conversation_nearness": "pending",
     "IT5_ios_convergence": "pending"
   },
-  "last_action": "Phase0 anchors written; baseline frontend build GREEN; recon agent dispatched",
-  "last_verify": "frontend `npm run build` GREEN (esbuild 786.5kb + tsc + vite 963kb)",
+  "last_action": "IT2: 初回オンボーディング挨拶を実装(frontend onboarding.ts/api.ts/useCompanion.ts + worker persona.ts/index.ts)。初見=端末localStorage+サーバ活動履歴の二重ガードでintro挨拶に分岐。",
+  "last_verify": "worker typecheck 0; frontend build 0 (45 modules)。typescript-reviewer=ブロッカー無し(CRITICAL/HIGH該当の実害ある欠陥なし、MEDIUMコメント精度提案は反映済)。",
   "no_progress_count": 0,
-  "definition_of_done": "初見ユーザーが迷わずシロと関係を築き始められる: A dead CSS掃除 / B 初回オンボーディング(自己紹介+音声発見+ログイン価値) / D 会話の親近感整形1つ / C iOS収束。各々 build緑+reviewゲート+本番gl.readPixels/DOM確認。",
+  "definition_of_done": "初見ユーザーが迷わずシロと関係を築き始められる: A dead CSS掃除 / B 初回オンボーディング / D 会話の親近感整形1つ / C iOS収束。各々 build緑+reviewゲート+本番gl.readPixels/DOM確認。",
   "guardrails": {
     "max_iter": 20,
     "no_progress_limit": 3,
     "deploy_policy": "shippable単位でcommit->push->worker deploy",
-    "verify": "frontend build green + react/ts-reviewer CRITICAL/HIGH zero + 本番 gl.readPixels/DOM"
+    "verify": "frontend build green + worker typecheck + react/ts-reviewer CRITICAL/HIGH zero + 本番 gl.readPixels/DOM"
   },
-  "notes": "本番=worker(TS), backend(Python)非反映。既存: VoiceControl音声オンボーディング/ChatPanel復帰ウェルカムは温存し差分のみ。"
+  "notes": "IT1+IT2 を1デプロイに束ねる予定(dead CSS は単独で非ユーザー可視のため)。review CRITICAL/HIGH ゼロ確認後に commit->push->worker deploy。"
 }
