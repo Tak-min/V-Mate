@@ -56,15 +56,6 @@ struct NudgeResponse: Codable {
     var emotion: Emotion
 }
 
-/// 研究用の身体提示条件(Web版と同じ)。iOSアプリは既定で stylized(シロの見た目)を使う。
-enum PresentationCondition: String, Codable {
-    case text, stylized, realistic
-}
-
-struct ResearchSession: Codable {
-    var condition: PresentationCondition
-}
-
 enum APIError: Error, LocalizedError {
     case server(String, Int)
     case decoding

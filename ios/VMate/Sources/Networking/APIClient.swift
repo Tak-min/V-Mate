@@ -91,25 +91,6 @@ final class APIClient {
         try await post("/api/nudge", body: ["reason": reason])
     }
 
-    // --- 研究セッション(身体提示条件の割付。Web版と同じ仕組みを踏襲) ---
-
-    func startResearchSession(condition: PresentationCondition? = nil) async throws -> ResearchSession {
-        var body: [String: Any] = ["source": "ios"]
-        if let condition { body["condition"] = condition.rawValue }
-        return try await post("/api/research/session", body: body)
-    }
-
-    func logResearchEvent(condition: PresentationCondition, eventType: String, payload: [String: Any] = [:]) {
-        Task {
-            _ = try? await self.post(
-                "/api/research/event",
-                body: ["condition": condition.rawValue, "event_type": eventType, "payload": payload]
-            ) as EmptyResponse
-        }
-    }
-
-    struct EmptyResponse: Codable {}
-
     // --- TTS ---
 
     /// emotion を渡すと声の抑揚(stability/style)が変わる。204 は「合成不可・無音で続行」を意味する。
@@ -134,7 +115,7 @@ final class APIClient {
 
     /// /api/chat を SSE で受信し、行ごとに events へ AsyncStream で流す。
     /// Web版 frontend/src/features/chat/api.ts の streamChat と同じワイヤ形式(`data: {json}\n\n`)を読む。
-    func streamChat(message: String, condition: PresentationCondition) -> AsyncThrowingStream<ChatEvent, Error> {
+    func streamChat(message: String) -> AsyncThrowingStream<ChatEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
@@ -143,7 +124,6 @@ final class APIClient {
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     request.httpBody = try JSONSerialization.data(withJSONObject: [
                         "message": message,
-                        "condition": condition.rawValue,
                     ])
 
                     let (bytes, response) = try await self.session.bytes(for: request)

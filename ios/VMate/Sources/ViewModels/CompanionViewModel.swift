@@ -20,7 +20,6 @@ final class CompanionViewModel: ObservableObject {
     @Published var busy = false
     @Published var ready = false
     @Published var voiceEnabled = true
-    @Published var condition: PresentationCondition?
     @Published var avatarMouthLevel: Double = 0
     @Published var currentEmotion: Emotion = .neutral
 
@@ -63,13 +62,7 @@ final class CompanionViewModel: ObservableObject {
     }
 
     func bootstrap() async {
-        do {
-            let session = try await APIClient.shared.startResearchSession()
-            condition = session.condition
-            APIClient.shared.logResearchEvent(condition: session.condition, eventType: "condition_loaded")
-        } catch {
-            condition = .stylized
-        }
+        // 研究条件の取得は廃止(製品では研究スキャフォールドを撤去。Web版と同形)。
         try? AudioSessionManager.shared.configureForPlaybackOnly()
         ready = true
 
@@ -87,7 +80,7 @@ final class CompanionViewModel: ObservableObject {
 
     func send(_ raw: String) {
         let message = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !message.isEmpty, !busy, let condition else { return }
+        guard !message.isEmpty, !busy else { return }
         busy = true
         messages.append(ChatMessage(role: "user", content: message))
         let placeholderIndex = messages.count
@@ -99,7 +92,7 @@ final class CompanionViewModel: ObservableObject {
 
         streamTask = Task {
             do {
-                for try await event in APIClient.shared.streamChat(message: message, condition: condition) {
+                for try await event in APIClient.shared.streamChat(message: message) {
                     try Task.checkCancellation()
                     switch event {
                     case .emotion(let e):
@@ -158,9 +151,6 @@ final class CompanionViewModel: ObservableObject {
         try? AudioSessionManager.shared.configureForConversation()
         if !voiceEnabled { toggleVoice() } // 会話なので相手の声も聞こえるように
         beginVoiceSession()
-        if let condition {
-            APIClient.shared.logResearchEvent(condition: condition, eventType: "voice_mode", payload: ["active": true])
-        }
     }
 
     /// 会話モードに入る時に1回だけ呼ぶ。マイク/AVAudioEngineを開いたまま会話を通して
@@ -186,9 +176,6 @@ final class CompanionViewModel: ObservableObject {
         partialTranscript = ""
         voiceMode = .off
         try? AudioSessionManager.shared.configureForPlaybackOnly()
-        if let condition {
-            APIClient.shared.logResearchEvent(condition: condition, eventType: "voice_mode", payload: ["active": false])
-        }
     }
 
     /// マイクが1ターン分の発話を確定 → 送信。エコー防止に聞き取りは一旦休止する
@@ -237,9 +224,6 @@ final class CompanionViewModel: ObservableObject {
     func toggleVoice() {
         voiceEnabled.toggle()
         speech.setEnabled(voiceEnabled)
-        if let condition {
-            APIClient.shared.logResearchEvent(condition: condition, eventType: "voice_toggled", payload: ["enabled": voiceEnabled])
-        }
     }
 
     func noticeInputActivity() {
