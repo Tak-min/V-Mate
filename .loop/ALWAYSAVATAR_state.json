@@ -1,0 +1,19 @@
+{
+  "task": "Web/iOSで必ずshiro.vrm表示+UX/オンボーディング収束改善ループ",
+  "iteration": 1,
+  "max_iterations": 20,
+  "no_progress_count": 0,
+  "phase": "IT1_DONE",
+  "definition_of_done": "全研究条件でshiro.vrm描画/無言ブランク根絶/オンボーディング改善/iOS収束/build緑+review",
+  "last_action": "IT1: アバターを研究条件から切り離し常時shiro.vrmロード+ロード失敗フォールバックUI。build緑→デプロイ(Version 30a4d0a4)→commit a5cb3d5→push。",
+  "last_result": "PASS: 本番 ?condition=text(従来ブランク)で canvas描画を実証(中央帯 opaque 2630/dark1586 px・shiro.vrm 200)。DoD#1+#2達成。iOSは元から条件ゲート無し=既に常時表示(DoD#4の収束は実質達成)。",
+  "findings": {
+    "root_cause": "本番v-mateに残存した研究A/B条件(text/stylized/realistic)のtext割当でApp.tsx/useCompanion.tsがアバターを非表示にしていた。研究は別リポv-mate-studyの責務。",
+    "ios_already_correct": "ios-avatar/entry.tsは条件ゲート無しで常にshiro.vrmロード=元から正しい。webがアウトライアだった。",
+    "screenshot_tool": "MCP browser_take_screenshotは本番WebGL連続描画下で5秒タイムアウト多発。gl.readPixelsでの非ブランク検証が確実な代替。"
+  },
+  "remaining": [
+    "IT3: オンボーディング批判分析→改善(研究アンケートResearchSurveyの製品からの除去要否=ユーザー判断。新規ユーザー初見導線。dead text-only CSS掃除)",
+    "IT4: iOS版のオンボーディング/UIをWebと同等に収束(差分確認)"
+  ]
+}

@@ -5,20 +5,14 @@ import { isSpeechRecognitionSupported, SpeechRecognizer } from '../voice/recogni
 import {
   fetchHistory,
   fetchState,
-  logResearchEvent,
-  requestedConditionFromUrl,
   requestNudge,
   setProfile,
-  startResearchSession,
   streamChat,
-  submitResearchSurvey,
 } from './api';
 import type {
   ChatMessage,
   CompanionState,
   Emotion,
-  PresentationCondition,
-  ResearchSurveyScores,
 } from './types';
 
 // AIが干渉しすぎる(短い間隔で自発的に話しかける)との指摘を受けて 120s → 240s に緩和。
@@ -75,7 +69,6 @@ export function useCompanion() {
   const [loadProgress, setLoadProgress] = useState(0);
   const [loadError, setLoadError] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
-  const [condition, setCondition] = useState<PresentationCondition | null>(null);
   const [userTurns, setUserTurns] = useState(0);
   const [daysAway, setDaysAway] = useState<number | null>(null);
 
@@ -163,7 +156,7 @@ export function useCompanion() {
   const send = useCallback(
     async (raw: string) => {
       const message = raw.trim();
-      if (!message || busy || !condition) return;
+      if (!message || busy) return;
       setBusy(true);
       viewerRef.current?.notice('thinking', 4.8);
       setMessages((prev) => [...prev, { role: 'user', content: message }]);
@@ -193,7 +186,6 @@ export function useCompanion() {
       try {
         await streamChat(
           message,
-          condition,
           {
             onEmotion: (e) => {
               emotion = e;
@@ -237,7 +229,7 @@ export function useCompanion() {
         }
       }
     },
-    [busy, condition, showEmotion, speech, resetIdleTimer, maybeResumeListening, setVoiceModeBoth],
+    [busy, showEmotion, speech, resetIdleTimer, maybeResumeListening, setVoiceModeBoth],
   );
 
   // マイクが1ターン分の発話を確定 → 送信。エコー防止に聞き取りは一旦止める。
@@ -266,10 +258,9 @@ export function useCompanion() {
   const toggleVoice = useCallback(() => {
     setVoiceEnabled((prev) => {
       speech.setEnabled(!prev);
-      if (condition) void logResearchEvent(condition, 'voice_toggled', { enabled: !prev });
       return !prev;
     });
-  }, [condition, speech]);
+  }, [speech]);
 
   // ハンズフリー会話モードの ON/OFF。
   const toggleVoiceMode = useCallback(() => {
@@ -280,7 +271,6 @@ export function useCompanion() {
       setVoiceModeBoth('off');
       viewerRef.current?.relax();
       resetIdleTimer();
-      if (condition) void logResearchEvent(condition, 'voice_mode', { active: false });
       return;
     }
     if (!voiceSupported) {
@@ -314,8 +304,7 @@ export function useCompanion() {
     setVoiceModeBoth('listening');
     viewerRef.current?.notice('listening', LISTENING_NOTICE_S);
     recognizerRef.current.start();
-    if (condition) void logResearchEvent(condition, 'voice_mode', { active: true });
-  }, [voiceSupported, voiceEnabled, condition, speech, toggleVoice, resetIdleTimer, setVoiceModeBoth]);
+  }, [voiceSupported, voiceEnabled, speech, toggleVoice, resetIdleTimer, setVoiceModeBoth]);
 
   // バージイン: 発話/応答待ちの最中にユーザーが割り込んで止める → すぐ聞き取りへ。
   const interrupt = useCallback(() => {
@@ -325,25 +314,6 @@ export function useCompanion() {
     responseDoneRef.current = true;
     resumeListening();
   }, [speech, resumeListening]);
-
-  // 研究条件の取得。URL指定が無ければサーバが参加者ごとに安定割付する。
-  useEffect(() => {
-    let cancelled = false;
-    startResearchSession(requestedConditionFromUrl())
-      .then((session) => {
-        if (cancelled) return;
-        setCondition(session.condition);
-        void logResearchEvent(session.condition, 'condition_loaded', {
-          viewport: { width: window.innerWidth, height: window.innerHeight },
-        });
-      })
-      .catch(() => {
-        if (!cancelled) setCondition('stylized');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // 3D ビューア初期化。**本番製品では研究条件に関わらず必ずシロ(shiro.vrm)を表示する。**
   // 旧実装は研究A/B条件 'text' のユーザー(uidハッシュで約1/3)に身体提示を一切出さず、
@@ -424,18 +394,6 @@ export function useCompanion() {
       .catch(() => {});
   }, [ready, pushAssistant, resetIdleTimer]);
 
-  const submitSurvey = useCallback(
-    async (scores: ResearchSurveyScores) => {
-      if (!condition) return;
-      await submitResearchSurvey(condition, scores, {
-        user_turns: userTurns,
-        message_count: messages.length,
-        voice_enabled: voiceEnabled,
-      });
-    },
-    [condition, messages.length, userTurns, voiceEnabled],
-  );
-
   // タイマー・認識エンジンの後始末
   useEffect(
     () => () => {
@@ -458,7 +416,6 @@ export function useCompanion() {
     loadProgress,
     loadError,
     voiceEnabled,
-    condition,
     userTurns,
     daysAway,
     voiceMode,
@@ -471,6 +428,5 @@ export function useCompanion() {
     toggleVoice,
     toggleVoiceMode,
     interrupt,
-    submitSurvey,
   };
 }

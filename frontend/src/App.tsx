@@ -3,7 +3,6 @@ import { useCompanion } from './features/chat/useCompanion';
 import { AuthBar } from './components/AuthBar';
 import { ChatPanel } from './components/ChatPanel';
 import { DiaryDrawer } from './components/DiaryDrawer';
-import { ResearchSurvey } from './components/ResearchSurvey';
 import { StatusBar } from './components/StatusBar';
 import { VoiceControl } from './components/VoiceControl';
 
@@ -17,8 +16,6 @@ export default function App() {
     loadProgress,
     loadError,
     voiceEnabled,
-    condition,
-    userTurns,
     daysAway,
     voiceMode,
     partialTranscript,
@@ -30,12 +27,11 @@ export default function App() {
     toggleVoice,
     toggleVoiceMode,
     interrupt,
-    submitSurvey,
   } = useCompanion();
   const [diaryOpen, setDiaryOpen] = useState(false);
 
   return (
-    <div className={`app condition-${condition ?? 'loading'}`}>
+    <div className="app">
       <div className="stage">
         {/* 本番では研究条件に関わらず常にシロを表示する(canvasは常設)。 */}
         <canvas ref={canvasRef} className="vrm-canvas" />
@@ -97,7 +93,6 @@ export default function App() {
         onSend={send}
         onOpenDiary={() => setDiaryOpen(true)}
       />
-      <ResearchSurvey visible={userTurns >= 2} onSubmit={submitSurvey} />
       <DiaryDrawer open={diaryOpen} onClose={() => setDiaryOpen(false)} />
     </div>
   );
