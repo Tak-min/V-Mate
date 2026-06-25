@@ -1,0 +1,25 @@
+{
+  "project": "aikata-segregate",
+  "loop": "SEGREGATE (研究コードの棲み分け+同期)",
+  "current_phase": "DONE (both repos done; deploy/frontend-condition handoff)",
+  "user_decisions": {
+    "prod_research_collection": "終了してよい→撤去",
+    "study_scope": "現行TS構成へ刷新(大規模)"
+  },
+  "critical_findings": [
+    "研究コードは本番で能動稼働(全チャットで research_events 記録)=死蔵ではない",
+    "v-mate-study は worker無しの死蔵Pythonフォーク(2026-06-17移行で置き去り)→『同期』の前提が破綻していた",
+    "研究データは実際には本番production D1で収集されていた(studyではなく)"
+  ],
+  "done": {
+    "prod_v-mate": "研究撤去 commit 69e7321 / Version 08219618。/api/research/* 全404・チャット正常・typecheck緑で検証済",
+    "v-mate-study": "現行TSツリーへ刷新 commit 6eeeafa(git archive同期)+ 研究層保持 + 専用wrangler識別子 + STUDY.md"
+  },
+  "handoff": [
+    "研究版 Cloudflare 実プロビジョニング(wrangler d1 create aikata-study → deploy)=要オーナー操作",
+    "研究版 frontend の身体様式条件分岐(text/stylized/realistic 出し分け)再付与",
+    "(任意)研究層を worker/src/research.ts 等へモジュール化し同期を単純コピー化",
+    "(任意)本番production D1の未使用 research_events テーブル drop"
+  ],
+  "dev_note": "dev-notes/research_code_segregation_2026-06-25.md"
+}
