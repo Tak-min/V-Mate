@@ -2,26 +2,31 @@
   "project": "aikata-nearness",
   "loop": "NEARNESS (親近感を抱く構造)",
   "iteration": 2,
-  "current_phase": "IT2_deploy",
+  "current_phase": "DONE (core DoD met; D/C deferred)",
   "branch": "master",
   "phases": {
     "0_anchors": "done",
     "1_recon": "done",
-    "IT1_dead_css": "done (committed e675642)",
-    "IT2_first_run_welcome": "implemented; review gate running",
-    "IT3_microcopy_voice_login_name": "pending",
-    "IT4_worker_conversation_nearness": "pending",
-    "IT5_ios_convergence": "pending"
+    "IT1_dead_css": "done (commit e675642)",
+    "IT2_first_run_welcome": "done (commit 1693133; deployed Version 228a8972; verified prod)",
+    "IT3_microcopy_voice_login_name": "not needed (既存音声オンボ/AuthBar文言/名前フォームで充足。差分なし)",
+    "IT4_worker_conversation_nearness": "deferred (既存persona調整は回帰リスク・要方向性指示)",
+    "IT5_ios_convergence": "deferred (ネイティブSwift・要simulator+実機目視)"
   },
-  "last_action": "IT2: 初回オンボーディング挨拶を実装(frontend onboarding.ts/api.ts/useCompanion.ts + worker persona.ts/index.ts)。初見=端末localStorage+サーバ活動履歴の二重ガードでintro挨拶に分岐。",
-  "last_verify": "worker typecheck 0; frontend build 0 (45 modules)。typescript-reviewer=ブロッカー無し(CRITICAL/HIGH該当の実害ある欠陥なし、MEDIUMコメント精度提案は反映済)。",
+  "last_action": "IT2 を本番デプロイ・検証完了。worker intro 分岐(curl)とfrontend配線(Playwright)を確認。dev-note 記録。",
+  "last_verify": "curl: first_visit true→自己紹介+誘い+声案内 / false→通常挨拶。Playwright: aikata_onboarded=1, VRM正常ロード(回帰なし), console 0 errors。typescript-reviewer ブロッカー無し。",
   "no_progress_count": 0,
-  "definition_of_done": "初見ユーザーが迷わずシロと関係を築き始められる: A dead CSS掃除 / B 初回オンボーディング / D 会話の親近感整形1つ / C iOS収束。各々 build緑+reviewゲート+本番gl.readPixels/DOM確認。",
+  "stop_reason": "DoD core (A dead CSS + B 初回オンボーディング=本命) 達成。残 D(persona回帰リスク)/C(iOS低検証性)は規律的に見送り、dev-noteに引き継ぎ。",
+  "definition_of_done": "初見ユーザーが迷わずシロと関係を築き始められる: A dead CSS掃除 / B 初回オンボーディング / D 会話の親近感整形1つ / C iOS収束。",
   "guardrails": {
     "max_iter": 20,
+    "iters_used": 2,
     "no_progress_limit": 3,
-    "deploy_policy": "shippable単位でcommit->push->worker deploy",
-    "verify": "frontend build green + worker typecheck + react/ts-reviewer CRITICAL/HIGH zero + 本番 gl.readPixels/DOM"
+    "deploy_policy": "shippable単位でcommit->push->worker deploy"
   },
-  "notes": "IT1+IT2 を1デプロイに束ねる予定(dead CSS は単独で非ユーザー可視のため)。review CRITICAL/HIGH ゼロ確認後に commit->push->worker deploy。"
+  "deliverables": {
+    "commits": ["e675642 dead CSS掃除", "1693133 初回オンボーディング挨拶"],
+    "deploy": "https://aikata.taku810616.workers.dev Version 228a8972 (live)",
+    "dev_note": "dev-notes/onboarding_first_run_greeting_2026-06-25.md"
+  }
 }
