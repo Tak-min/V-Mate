@@ -25,7 +25,9 @@ final class AudioSessionManager {
     func configureForConversation() throws {
         guard current != .conversation else { return }
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
+        // .allowBluetoothHFPを除外: HFP(SCO)接続時にサンプルレートが8kHzに制限され
+        // STT精度が大幅低下するため。AirPodsなどA2DP対応デバイスは影響なし。
+        try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothA2DP])
         try session.setActive(true)
         current = .conversation
     }
