@@ -162,7 +162,8 @@ export class SentenceSplitter {
     let match: RegExpExecArray | null;
     while ((match = re.exec(this.buffer)) !== null) {
       const sentence = match[0].trim();
-      if (sentence) sentences.push(sentence);
+      // 句読点のみ(本文なし)の文を TTS に送らない(「。」単体等のノイズ防止)。
+      if (sentence && /\p{L}|\p{N}/u.test(sentence)) sentences.push(sentence);
       lastIndex = re.lastIndex;
     }
     this.buffer = this.buffer.slice(lastIndex);
