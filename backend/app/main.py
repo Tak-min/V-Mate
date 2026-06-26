@@ -532,18 +532,20 @@ async def nudge(req: NudgeRequest, request: Request) -> dict:
         if user_name
         else "相手の名前はまだ知らない(「ユーザーさん」のような呼び方はせず、名前を呼ばずに話す)。"
     )
+    days_away: int | None = None
     if req.reason == "greeting":
         if last_seen:
             elapsed = datetime.now() - datetime.fromisoformat(last_seen)
             if elapsed.total_seconds() < GREETING_MIN_GAP_SECONDS:
                 # ついさっき(リロード等)開いただけ。毎回挨拶し直すと干渉しすぎになるので省略する。
                 memory.touch_last_seen(uid)
-                return {"text": "", "emotion": "neutral"}
+                return {"text": "", "emotion": "neutral", "days_away": None}
         gap = ""
         if last_seen:
             days = (datetime.now() - datetime.fromisoformat(last_seen)).days
             if days >= 2:
                 gap = f"ユーザーと会うのは約{days}日ぶり。"
+                days_away = days
         context = f"{_time_context()}{name_note}{gap}ユーザーがアプリを開いて現れたところ。挨拶する。"
     else:
         context = f"{_time_context()}{name_note}会話が途切れて少し時間が経った。"
@@ -560,12 +562,12 @@ async def nudge(req: NudgeRequest, request: Request) -> dict:
     try:
         raw = await llm.complete(prompt)
     except Exception:
-        return {"text": "", "emotion": "neutral"}
+        return {"text": "", "emotion": "neutral", "days_away": None}
     emotion, text = _strip_emotion(raw)
     if text:
         memory.add_message(uid, "assistant", text, emotion)
     memory.touch_last_seen(uid)
-    return {"text": text, "emotion": emotion}
+    return {"text": text, "emotion": emotion, "days_away": days_away}
 
 
 @app.get("/api/diary")
