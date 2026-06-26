@@ -9,11 +9,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import uuid
 from datetime import date, datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from contextlib import asynccontextmanager
 
@@ -379,7 +382,8 @@ async def _extract_facts(user_id: str) -> None:
         result = await llm.complete(
             persona.FACT_EXTRACTION_PROMPT.format(conversation=conversation)
         )
-    except Exception:
+    except Exception as exc:
+        logger.warning("fact extraction failed for user %s: %s", user_id, exc)
         return
     for line in result.splitlines():
         line = line.strip().lstrip("-・*0123456789. ").strip()
@@ -405,7 +409,8 @@ async def _summarize_old_history(user_id: str) -> None:
                 conversation=conversation,
             )
         )
-    except Exception:
+    except Exception as exc:
+        logger.warning("history summarization failed for user %s: %s", user_id, exc)
         return  # 失敗時は through_id を進めないので次回再試行される
     _, new_summary = _strip_emotion(raw)
     new_summary = new_summary.strip()
@@ -498,6 +503,7 @@ async def chat(
                     full_text += rest
                     yield sse({"type": "token", "text": rest})
         except Exception as exc:  # クラウドLLM接続失敗・APIキー未設定など
+            logger.error("chat stream failed for user %s: %s", uid, exc)
             yield sse({
                 "type": "error",
                 "message": f"応答の生成に失敗しました ({type(exc).__name__})。"
