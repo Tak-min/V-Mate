@@ -52,7 +52,10 @@ final class VoiceActivityDetector {
     private var aboveFrames = 0
     private var lastVoiceMs: Double = 0
     private var captureStartMs: Double = 0
-    private var noiseFloor: Float
+    /// 現在のノイズフロア。診断ログ用に読み取り可能(書き込みは内部のみ)。
+    private(set) var noiseFloor: Float
+    /// 直近 process() で算出した実効しきい値。診断ログ用。
+    private(set) var debugLastThreshold: Float = 0
     /// reset後の最初の process() フレームの時刻。ウォームアップ判定の基準。
     private var startedMs: Double?
 
@@ -66,6 +69,7 @@ final class VoiceActivityDetector {
     func process(rms: Float, nowMs: Double) -> VADEvent {
         if startedMs == nil { startedMs = nowMs }
         let threshold = max(config.minThreshold, noiseFloor * config.noiseMargin + config.thresholdOffset)
+        debugLastThreshold = threshold
 
         // ウォームアップ期間: マイクを開いた直後はTTS末尾/残響の回り込みやエンジンの不安定
         // フレームがあり得るため発話開始を抑制する。大きな音でノイズフロアを汚さないよう、

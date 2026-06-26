@@ -1,0 +1,11 @@
+{
+  "loop": "MIC_FIX",
+  "round": 2,
+  "iteration": 1,
+  "status": "in_progress",
+  "strategy": "observability-first (instrument before guessing)",
+  "prime_suspect": "d69c8e4 async rewrite (pendingCapture/generation/main-queue publish) untested on device",
+  "step": "add os.Logger instrumentation across pipeline",
+  "blocked_on": "device logs require human to speak into mic",
+  "no_progress_count": 0
+}
