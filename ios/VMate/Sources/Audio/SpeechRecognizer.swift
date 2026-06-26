@@ -313,24 +313,24 @@ final class SpeechRecognizer {
         )
         pipeline = newPipeline
 
+        // Apple推奨の正しい順序: installTap → prepare() → start()
+        // prepare()後にグラフを変更(installTap)すると内部アサートでクラッシュする。
+        // outputFormat は configureForConversation()でAVAudioSessionが設定済みのため、
+        // prepare前でも .voiceChat の 16kHz フォーマットを正確に返す。
+        let input = audioEngine.inputNode
+        let format = input.outputFormat(forBus: 0)
+        input.removeTap(onBus: 0)
+        input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+            newPipeline.handleTap(buffer: buffer)
+        }
         do {
-            // prepare()をformat取得より前に呼ぶことで、AVAudioEngineがAVAudioSession
-            // (.voiceChat=16kHz)の設定を反映したフォーマットを inputNode から返すようになる。
-            // prepare前に outputFormat を取得すると旧キャッシュ(44.1kHz等)が返る場合があり、
-            // onsetFramesの実時間がVAD設計前提(64ms/frame@16kHz)と合わなくなる。
             audioEngine.prepare()
-            let input = audioEngine.inputNode
-            let format = input.outputFormat(forBus: 0)
-            input.removeTap(onBus: 0)
-            input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
-                newPipeline.handleTap(buffer: buffer)
-            }
             try audioEngine.start()
             running = true
             newPipeline.arm()
         } catch {
             callbacks.onError(.noMic, "マイクが開けなかったみたい。接続を確認してね。")
-            audioEngine.inputNode.removeTap(onBus: 0)
+            input.removeTap(onBus: 0)
         }
     }
 
