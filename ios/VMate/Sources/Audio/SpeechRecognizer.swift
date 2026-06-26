@@ -74,11 +74,11 @@ final class AudioCapturePipeline {
     private let recognizer: SFSpeechRecognizer
     private let vad: VoiceActivityDetector
     private let callbacks: Callbacks
-    /// 既定はサーバー認識(false)。理由: オンデバイスモデル(ja-JP)が未ダウンロードの端末では
-    /// requiresOnDeviceRecognition=true が1件も結果を返さず即失敗し、会話の「初回発話」が
-    /// 必ず失われていた。サーバー認識は初回ロスが無く、遠距離・小声・雑音下の頑健性も高い。
-    /// 本アプリはバックエンド通信が前提のためネットワークは実質保証されている。
-    let useOnDeviceRecognition = LockedFlag(false)
+    /// 既定はオンデバイス認識(true)。iOS 17以降のiPhoneではja-JPモデルが自動DL済みのため
+    /// ネットワーク往復なしで認識が完結し低遅延になる。モデル未DLの端末で失敗した場合は
+    /// handleRecognitionResultのフォールバックがvalueをfalseに切り替え、次回以降サーバーに移行。
+    /// (サーバー認識に固定すると往復遅延が常に発生する — 2026-06-27実機報告で確認)
+    let useOnDeviceRecognition = LockedFlag(true)
     /// ターン単位の聞き取りON/OFF。MainActor(arm/disarm)が書き、tapスレッドが読む橋渡し。
     let enabled = LockedFlag(false)
     /// MainActorからの次ターン再開要求。tapスレッドが消費するタイミングで vad/preRoll をリセット。
