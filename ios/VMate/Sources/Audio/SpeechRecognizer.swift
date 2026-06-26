@@ -74,7 +74,11 @@ final class AudioCapturePipeline {
     private let recognizer: SFSpeechRecognizer
     private let vad: VoiceActivityDetector
     private let callbacks: Callbacks
-    let useOnDeviceRecognition = LockedFlag(true)
+    /// 既定はサーバー認識(false)。理由: オンデバイスモデル(ja-JP)が未ダウンロードの端末では
+    /// requiresOnDeviceRecognition=true が1件も結果を返さず即失敗し、会話の「初回発話」が
+    /// 必ず失われていた。サーバー認識は初回ロスが無く、遠距離・小声・雑音下の頑健性も高い。
+    /// 本アプリはバックエンド通信が前提のためネットワークは実質保証されている。
+    let useOnDeviceRecognition = LockedFlag(false)
     /// ターン単位の聞き取りON/OFF。MainActor(arm/disarm)が書き、tapスレッドが読む橋渡し。
     let enabled = LockedFlag(false)
     /// MainActorからの次ターン再開要求。tapスレッドが消費するタイミングで vad/preRoll をリセット。
@@ -267,9 +271,10 @@ final class SpeechRecognizer {
     }
 
     private static let minUtteranceLength = 2
-    /// VADのonset確認に必要なフレーム数+1フレームの余裕。確定までに届いた分を
-    /// 取りこぼさず流し込めるよう、pre-rollの容量をonsetFramesに合わせて確保する。
-    private static let preRollMargin = 1
+    /// VADのonset確認に必要なフレーム数 + 余裕フレーム。確定までに届いた分に加え、
+    /// 「しきい値直下でじわっと立ち上がる遠距離・小声の発話冒頭」も遡って認識へ送れるよう、
+    /// pre-rollを厚めに確保する(2+6=8フレーム≒512ms@16kHz)。冒頭の語頭子音欠けを防ぐ。
+    private static let preRollMargin = 6
 
     private let recognizer: SFSpeechRecognizer?
     private let audioEngine = AVAudioEngine()

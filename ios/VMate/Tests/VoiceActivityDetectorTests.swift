@@ -14,6 +14,22 @@ struct VoiceActivityDetectorTests {
         #expect(vad.capturing == true)
     }
 
+    @Test("既定設定では遠距離スケールのRMS(旧しきい値では取りこぼした音量)でも発話を検出する")
+    func defaultConfigDetectsFarFieldSpeech() {
+        // 2026-06-26: 近距離は拾えるが少し離れると取れない報告を受け、既定しきい値を下げた。
+        // 旧既定(minThreshold 0.0006 / noiseMargin 1.8 / offset 0.0003 → 実効~0.00084)では
+        // 取りこぼした遠距離RMS(~0.0007)を、新既定(実効~0.00062)では検出できることを固定する。
+        let vad = VoiceActivityDetector(config: VADConfig()) // 全て既定値
+        let farRms: Float = 0.0007
+        // warmup(既定100ms)中は検出しない。
+        #expect(vad.process(rms: farRms, nowMs: 0) == .silence)
+        #expect(vad.process(rms: farRms, nowMs: 64) == .silence)
+        // warmup後、onsetFrames(2)連続で発話開始。
+        #expect(vad.process(rms: farRms, nowMs: 128) == .silence)
+        #expect(vad.process(rms: farRms, nowMs: 192) == .speechStarted)
+        #expect(vad.capturing == true)
+    }
+
     @Test("しきい値超えが1回だけでは発話開始にならない")
     func singleFrameDoesNotTrigger() {
         let vad = VoiceActivityDetector(config: VADConfig(onsetFrames: 3, minThreshold: 0.02, warmupMs: 0))

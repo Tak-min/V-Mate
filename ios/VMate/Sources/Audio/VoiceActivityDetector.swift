@@ -5,19 +5,25 @@ import AVFoundation
 /// ユニットテストできるようにしている。
 struct VADConfig {
     var onsetFrames = 2
-    var hangoverMs: Double = 1100
+    /// 発話途中の小休止(息継ぎ・言い淀み)で発話が分断されないよう長めに取る。
+    /// 1.1s では「えーと」等の間で speechEnded が早発し、文の後半が別発話に分かれて
+    /// 取りこぼれることがあったため 1.4s に延長(2026-06-26 ユーザー報告ベース)。
+    var hangoverMs: Double = 1400
     /// 発話とみなす最小RMS。iOSの AVAudioEngine(.voiceChatの音声処理後)では実機の
     /// 生RMSが「無音 ~0.0003 / 通常発話 ~0.004 / 小声・遠距離 ~0.001-0.0015」という
-    /// 非常に小さいスケールになる(実機ログで計測)。小声やマイクから遠い発話を取りこぼさない
-    /// よう、絶対下限は低めにし、検出は主にノイズフロア相対(noiseMargin)で行う。
-    var minThreshold: Float = 0.0006
+    /// 非常に小さいスケールになる(実機ログで計測)。マイクから離れた発話を取りこぼさない
+    /// よう絶対下限を 0.0006→0.0004 に引き下げ(近距離は拾えるが遠距離で失敗する報告ベース)。
+    /// 検出は主にノイズフロア相対(noiseMargin)で行う。
+    var minThreshold: Float = 0.0004
     /// ノイズフロアに対する倍率。これを下げるほど感度が上がる(小さなSNRの発話も拾う)。
-    /// 遠距離小声(SNR ~2-3倍)でも拾えるよう 1.8。誤検出は onsetFrames(2連続=200ms持続要求)、
-    /// resume遅延、ウォームアップで抑える。
-    var noiseMargin: Float = 1.8
+    /// 遠距離・小声(SNR ~1.5倍程度)でも拾えるよう 1.8→1.4 に低減。誤検出(雑音での誤起動)は
+    /// onsetFrames(2連続=128ms持続要求)で抑え、万一起動してもサーバー認識が無音を文字化せず、
+    /// hangover後に speechEnded で自然終了するため実害が小さい(自己補正)。
+    var noiseMargin: Float = 1.4
     /// しきい値の加算オフセット。ノイズフロアが極小のときに最低限の余裕を持たせる。
     /// 旧実装ではここが 0.01 固定(Webスケール)で発話ピークを上回り検出不能だった。
-    var thresholdOffset: Float = 0.0003
+    /// 遠距離感度向上のため 0.0003→0.0002。
+    var thresholdOffset: Float = 0.0002
     var maxCaptureMs: Double = 15_000
     /// ノイズフロアの初期値。iOSの実測無音レベル(~0.0003)に合わせる。
     var initialNoiseFloor: Float = 0.0003

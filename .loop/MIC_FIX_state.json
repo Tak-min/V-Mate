@@ -1,11 +1,18 @@
 {
   "loop": "MIC_FIX",
   "round": 2,
-  "iteration": 1,
-  "status": "in_progress",
-  "strategy": "observability-first (instrument before guessing)",
-  "prime_suspect": "d69c8e4 async rewrite (pendingCapture/generation/main-queue publish) untested on device",
-  "step": "add os.Logger instrumentation across pipeline",
-  "blocked_on": "device logs require human to speak into mic",
+  "iteration": 2,
+  "status": "awaiting_device_test",
+  "strategy": "observability-first, then symptom-targeted tuning",
+  "changes_this_iter": [
+    "useOnDeviceRecognition default true->false (server STT: no first-utterance loss, better far-field)",
+    "hangoverMs 1100->1400 (no mid-sentence split)",
+    "minThreshold 0.0006->0.0004, noiseMargin 1.8->1.4, thresholdOffset 0.0003->0.0002 (far-field sensitivity)",
+    "preRollMargin 1->6 (preroll 3->8 frames ~512ms, recover soft onsets)",
+    "added far-field detection regression test"
+  ],
+  "verify": "build green, 18 tests pass, deployed to device",
+  "blocked_on": "human-in-the-loop: user must speak (close AND far) to confirm; mic logs optional for fine-tuning",
+  "next_if_far_still_fails": "continuous-feed redesign (VAD endpoints only) with empty-turn restart handling",
   "no_progress_count": 0
 }

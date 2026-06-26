@@ -76,10 +76,88 @@ AirPods 等 A2DP 対応デバイスには影響なし。
   graceful degradation（先頭破棄）。通常は数ms以内で解決するため現状は省略。
 - AVAudioSession Interruption/RouteChange ハンドリング: 電話着信等でエンジンが止まった後の自動復帰。
 
+## 追記: d69c8e4 で導入されたクラッシュの根因と修正 (2026-06-26, commit fddc33d)
+
+### 症状
+d69c8e4 デプロイ後、実機で音声ボタンをタップするとアプリがクラッシュして落ちた。
+
+### 真因
+Bug-4 修正で `audioEngine.prepare()` を `installTap()` より**前に**呼ぶ順序に変えたことが原因。
+Apple の `AVAudioEngine` は内部で「グラフ変更(installTap)→prepare→start」の順を要求しており、
+`prepare()` 後にグラフ変更するとアサートが発火してクラッシュする。
+
+**壊れた順序 (d69c8e4):**
+```
+audioEngine.prepare()          ← Bug: prepare first
+let input = audioEngine.inputNode
+input.installTap(...)          ← graph change AFTER prepare → crash
+audioEngine.start()
+```
+
+**正しい順序 (fddc33d):**
+```
+let input = audioEngine.inputNode
+let format = input.outputFormat(forBus: 0)
+input.removeTap(onBus: 0)
+input.installTap(...)          ← graph change first
+audioEngine.prepare()          ← then prepare
+audioEngine.start()            ← then start
+```
+
+### 教訓
+- `outputFormat` は `configureForConversation()` が先に呼ばれていれば `prepare()` 前でも
+  16kHz を正確に返す。「prepare前のoutputFormatが不正確」という Bug-4 の前提は誤りだった。
+- Apple 公式 WWDC Speech Recognition サンプルも同じ順序（tap→prepare→start）を使っている。
+  AVAudioEngine の初期化順序を変える場合は公式サンプルと照合すること。
+
+## 追記: Round2 感度・取りこぼし改善 (2026-06-26, 観測性導入 + チューニング)
+
+### 経緯
+クラッシュ修正(fddc33d)後、ユーザー実機テストで「音声取得は一部成功。ただし(a)取得できない
+文章がある (b)マイクから少し離れると取れないタイミングがある」と報告。
+
+### 第一手: 観測性の確立 (commit f514898)
+パイプラインに `os.Logger`(subsystem=com.takmin.vmate, category=mic)を全段導入。
+`import os` はあったのに未使用だった。tap format / RMS・しきい値・noiseFloor(8バッファ毎に
+スロットル) / VADイベント / request publish成否 / pending滞留警告 / 認識result・error /
+onUtterance を記録。レンダースレッドのログはスロットルでRT安全性を維持。
+実機ログ取得は root 必須(`sudo log collect --device-udid`)。devicectl にログ取得サブコマンドは
+無い(copy/sysdiagnoseのみ)。zshの`log`は組込みのため`/usr/bin/log`必須。
+
+### 第二手: 症状別の修正
+**(a) 取得できない文章 → 認識方式の既定をサーバーに変更(最重要):**
+`AudioCapturePipeline.useOnDeviceRecognition` 既定を true→**false**。
+真因: on-device優先だと ja-JP オンデバイスモデル未DL端末で初回発話が必ず即失敗し、
+会話の最初の一文が毎回失われていた。サーバー認識は初回ロス無し・遠距離/小声/雑音に強い。
+アプリはバックエンド通信前提でネットワークは実質保証。
+
+**(a') 発話途中の小休止で分断 → hangoverMs 1100→1400ms。** 息継ぎ/言い淀みで
+speechEnded が早発し文の後半が別発話に割れるのを抑止。
+
+**(b) 遠距離で取れない → VAD感度を保守的に増感(行動報告ベース):**
+- minThreshold 0.0006→0.0004 / noiseMargin 1.8→1.4 / thresholdOffset 0.0003→0.0002。
+  静音室の実効しきい値 ~0.00084→~0.00062(約26%低下)。遠距離RMS ~0.0007 が拾えるように。
+- preRollMargin 1→6(pre-roll 3→8フレーム≒512ms)。しきい値直下でじわっと立ち上がる
+  遠距離・小声の語頭を遡って認識へ流し込む。
+- 誤起動は onsetFrames=2(128ms持続要求)で抑え、万一の雑音起動もサーバー認識が無音を
+  文字化せず hangover で自然終了する自己補正設計のため実害小。
+
+### 検証
+- build緑 / test 18件全パス(遠距離RMS検出の回帰テスト1件追加)。
+- 実機デプロイ済み。最終確認は human-in-the-loop(物理マイクへの発話が必要)。
+
+### 申し送り(Round2)
+- しきい値は「行動報告(近=○/遠=×)」を根拠に保守的に下げた。さらに詰めるなら実機の
+  micログ(RMS vs threshold)で遠距離の実値を見て調整する(`/usr/bin/log collect`)。
+- サーバー認識既定化に伴い、完全オフライン時はSTT不可。オフライン対応が必要になったら
+  server→on-device の逆フォールバックを追加する(現状は未実装)。
+- それでも遠距離で取れない場合の次の一手: VADゲートを廃し「armターン中は認識を常時走らせ
+  VADはエンドポインティング/バージインのみ」に再設計(continuous-feed)。空ターンのハング
+  処理(recognizer自前isFinal後の再arm)を設計する必要があるため、今回は見送り。
+
 ## 申し送り
 
 - `OSAllocatedUnfairLock` は iOS 16+ 専用。deployment target が変われば代替が必要。
-- `setupQueue` は `.userInitiated` を維持する事。`.userInteractive` にすると audio render と
-  CPU を奪い合う。
 - VAD しきい値(minThreshold/noiseMargin 等)は実機ログなしで変更しないこと
   (dev-notes/handsfree_voice_conversation_2026-06-22.md 参照)。
+- `AVAudioEngine.prepare()` は必ず全ノードへの tap install 完了後に呼ぶこと。
