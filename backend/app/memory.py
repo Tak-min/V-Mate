@@ -16,7 +16,6 @@ from pathlib import Path
 
 from sqlalchemy import (
     Column,
-    Date,
     DateTime,
     Integer,
     MetaData,
@@ -25,7 +24,6 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     and_,
-    cast,
     create_engine,
     func,
     insert,
@@ -244,10 +242,12 @@ def recent_messages(user_id: str, limit: int = 30) -> list[dict]:
 
 
 def messages_on(user_id: str, day: date) -> list[dict]:
+    # SQLite の CAST(datetime AS DATE) は年整数を返すため func.date() を使う。
+    # PostgreSQL でも date(timestamp) は正しく動作する(両ドライバ共通の安全策)。
     with _get_engine().connect() as c:
         rows = c.execute(
             select(messages.c.role, messages.c.content)
-            .where(and_(messages.c.user_id == user_id, cast(messages.c.created_at, Date) == day))
+            .where(and_(messages.c.user_id == user_id, func.date(messages.c.created_at) == day))
             .order_by(messages.c.id)
         ).mappings().all()
     return [dict(r) for r in rows]
