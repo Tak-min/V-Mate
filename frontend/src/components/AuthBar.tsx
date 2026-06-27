@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { clearToken, fetchMe, login, signup } from '../features/chat/api';
+import { fetchMe, login, logout as apiLogout, signup } from '../features/chat/api';
 
 /**
  * 認証バー(右上)。未ログインなら登録/ログイン、ログイン済みならメール+ログアウト。
@@ -33,8 +33,8 @@ export function AuthBar() {
     }
   };
 
-  const logout = () => {
-    clearToken();
+  const logout = async () => {
+    await apiLogout();
     window.location.reload();
   };
 

@@ -1,11 +1,11 @@
 {
   "project": "vmate-techdebt-loop",
   "definition_of_done": "Critical/High 技術問題の残存ゼロ、または20イテレーション上限",
-"iteration": 2,
-  "current_phase": "loop_c2_research_purge",
-  "last_action": "C2+C3: 研究コード完全撤去(research_events table/APIルート/呼び出し/test_research.py削除、reassign_user_data を Worker整合)",
-  "last_verify": "pytest 59 passed / frontend tsc 0 / worker tsc 0 / /api/research/* = 404 / import OK",
+"iteration": 3,
+  "current_phase": "loop_c4_jwt_cookie",
+  "last_action": "C4: JWT を localStorage から httpOnly Cookie(aikata_token)化、/api/auth/logout 追加、frontend getToken/setToken/clearToken 廃止",
+  "last_verify": "pytest 60 passed / frontend tsc 0 / worker tsc 0",
   "no_progress_count": 0,
-  "resolved": ["C1", "C2", "C3"],
+  "resolved": ["C1", "C2", "C3", "C4"],
   "branch": "master"
 }

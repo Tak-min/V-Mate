@@ -102,6 +102,10 @@ def _enforce_rate_limit(uid: str) -> None:
 
 COOKIE_NAME = "aikata_uid"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 365 * 2  # 2年
+# 認証用JWTクッキー(C4: localStorage → HttpOnly Cookie 化)。
+# JSから読めないため XSS でアカウント乗っ取り不可能になる。
+AUTH_COOKIE_NAME = "aikata_token"
+AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30日(JWT_TTL と整合)
 EMOTION_TAG_RE = re.compile(r"\[(neutral|happy|sad|angry|relaxed|shy)\]")
 _EMOTION_TAG_LITERALS = tuple(f"[{e}]" for e in persona.EMOTIONS)
 
@@ -165,13 +169,44 @@ class AuthRequest(BaseModel):
 
 
 def _resolve_uid(request: Request) -> str:
-    """有効な JWT があればそのアカウントID、無ければ匿名Cookie ID を返す。"""
-    header = request.headers.get("Authorization", "")
-    if header.startswith("Bearer "):
-        sub = auth.decode_token(header[len("Bearer "):])
+    """有効な JWT(httpOnly Cookie) があればそのアカウントID、無ければ匿名Cookie ID を返す。
+
+    C4: 旧実装は Authorization: Bearer ヘッダ(localStorage 由来)を読んでいたが、
+    XSS で JS 経由でトークンが即座に奪われる弱点だったため httpOnly Cookie に移行。
+    """
+    token = request.cookies.get(AUTH_COOKIE_NAME)
+    if token:
+        sub = auth.decode_token(token)
         if sub:
             return sub
     return request.state.uid
+
+
+def _is_https(request: Request) -> bool:
+    """プロキシ背後(Render/Caddy 等)の X-Forwarded-Proto も信頼して https 判定。
+
+    Secure クッキーは https でなければブラウザが保存しない(chrome は SameSite=None には
+    Secure 必須だが、SameSite=Lax でも https 判定に依存しないと AttributeError 系の落とし穴)。
+    """
+    if request.url.scheme == "https":
+        return True
+    return request.headers.get("x-forwarded-proto", "").lower().startswith("https")
+
+
+def _set_auth_cookie(response: Response, token: str, request: Request) -> None:
+    response.set_cookie(
+        AUTH_COOKIE_NAME,
+        token,
+        max_age=AUTH_COOKIE_MAX_AGE,
+        httponly=True,
+        secure=_is_https(request),
+        samesite="lax",
+        path="/",
+    )
+
+
+def _clear_auth_cookie(response: Response) -> None:
+    response.delete_cookie(AUTH_COOKIE_NAME, path="/")
 
 
 def _strip_emotion(text: str) -> tuple[str, str]:
@@ -219,16 +254,17 @@ def _state_payload(user_id: str) -> dict:
 
 
 @app.post("/api/auth/signup")
-async def auth_signup(req: AuthRequest, request: Request) -> dict:
+async def auth_signup(req: AuthRequest, request: Request, response: Response) -> dict:
     try:
         token = auth.signup(req.email, req.password, anon_uid=request.state.uid)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    return {"token": token}
+    _set_auth_cookie(response, token, request)
+    return {"ok": True}
 
 
 @app.post("/api/auth/login")
-async def auth_login(req: AuthRequest, request: Request) -> dict:
+async def auth_login(req: AuthRequest, request: Request, response: Response) -> dict:
     ip = request.client.host if request.client else "unknown"
     if memory.bump_usage(f"login:{ip}", date.today().isoformat()) > RATE_LOGIN_PER_IP_PER_DAY:
         raise HTTPException(status_code=429, detail="ログイン試行が多すぎます。時間をおいて再度お試しください。")
@@ -236,7 +272,15 @@ async def auth_login(req: AuthRequest, request: Request) -> dict:
         token = auth.login(req.email, req.password)
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc))
-    return {"token": token}
+    _set_auth_cookie(response, token, request)
+    return {"ok": True}
+
+
+@app.post("/api/auth/logout")
+async def auth_logout(response: Response) -> dict:
+    """認証JWTクッキーを削除。匿名Cookieは残る(再ログイン前は匿名扱いに戻る)。"""
+    _clear_auth_cookie(response)
+    return {"ok": True}
 
 
 @app.get("/api/auth/me")

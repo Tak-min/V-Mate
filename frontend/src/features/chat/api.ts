@@ -1,23 +1,13 @@
 import type { ChatMessage, CompanionState, DiaryEntry, Emotion } from './types';
 
-// --- 認証トークン(localStorage)---
-const TOKEN_KEY = 'aikata_token';
+// C4: JWT は httpOnly Cookie でサーバ側が保持。localStorage / Authorization ヘッダー廃止。
+// ブラウザは credentials: 'include' だけで送る。XSS で JS 経由のトークン奪取は不可能。
 
-export const getToken = (): string | null => localStorage.getItem(TOKEN_KEY);
-export const setToken = (t: string): void => localStorage.setItem(TOKEN_KEY, t);
-export const clearToken = (): void => localStorage.removeItem(TOKEN_KEY);
-
-function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  const token = getToken();
-  return token ? { ...extra, Authorization: `Bearer ${token}` } : extra;
-}
-
-/** Cookie(匿名ID)も送るため credentials: 'include'。JWT があれば付与。 */
 function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   return fetch(path, {
     ...init,
     credentials: 'include',
-    headers: authHeaders(init.headers as Record<string, string> | undefined),
+    headers: init.headers,
   });
 }
 
@@ -35,9 +25,11 @@ export async function signup(email: string, password: string): Promise<AuthResul
     headers: jsonHeaders,
     body: JSON.stringify({ email, password }),
   });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) return { ok: false, error: data.detail ?? `登録に失敗しました (${r.status})` };
-  setToken(data.token);
+  if (!r.ok) {
+    const data = await r.json().catch(() => ({}));
+    return { ok: false, error: data.detail ?? `登録に失敗しました (${r.status})` };
+  }
+  // ログイン状態は httpOnly Cookie で確立。body には token は無い。
   return { ok: true };
 }
 
@@ -47,10 +39,15 @@ export async function login(email: string, password: string): Promise<AuthResult
     headers: jsonHeaders,
     body: JSON.stringify({ email, password }),
   });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) return { ok: false, error: data.detail ?? `ログインに失敗しました (${r.status})` };
-  setToken(data.token);
+  if (!r.ok) {
+    const data = await r.json().catch(() => ({}));
+    return { ok: false, error: data.detail ?? `ログインに失敗しました (${r.status})` };
+  }
   return { ok: true };
+}
+
+export async function logout(): Promise<void> {
+  await apiFetch('/api/auth/logout', { method: 'POST' });
 }
 
 export const fetchMe = (): Promise<{ authenticated: boolean; email: string | null }> =>

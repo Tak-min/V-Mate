@@ -67,9 +67,29 @@ def test_signup_login_me_flow(db):
     c = _client()
     r = c.post("/api/auth/signup", json={"email": "u@example.com", "password": "secret123"})
     assert r.status_code == 200
-    token = r.json()["token"]
-    me = c.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"}).json()
+    # C4: JWT は httpOnly Cookie で返る。body に token は含まれない。
+    assert "token" not in r.json()
+    # TestClient は cookie jar を自動保持するので、/me を叩けば認証状態。
+    me = c.get("/api/auth/me").json()
     assert me["authenticated"] is True
     assert me["email"] == "u@example.com"
     # 間違いログインは 401
     assert c.post("/api/auth/login", json={"email": "u@example.com", "password": "wrongpass"}).status_code == 401
+    # logout で cookie を削除すると /me は未認証に戻る
+    assert c.post("/api/auth/logout").status_code == 200
+    # 別クライアント相当にするため cookie jar を捨てる
+    c2 = _client()
+    assert c2.get("/api/auth/me").json()["authenticated"] is False
+
+
+def test_signup_token_not_exposed_in_body(db):
+    """C4: signup 応答 body に JWT が含まれないことを検証(XSS 被害面を縮小)。"""
+    c = _client()
+    r = c.post("/api/auth/signup", json={"email": "x@example.com", "password": "secret123"})
+    body = r.json()
+    assert "token" not in body
+    # Set-Cookie ヘッダーには入っている(HttpOnly なので JS からは読めない)
+    set_cookie = r.headers.get("set-cookie", "")
+    assert "aikata_token=" in set_cookie
+    assert "HttpOnly" in set_cookie
+    assert "SameSite=lax" in set_cookie
