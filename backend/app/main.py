@@ -62,12 +62,16 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Aikata", lifespan=_lifespan)
+# H9: 旧実装は allow_methods/allow_headers=["*"] を許可していた。
+# allow_credentials=True と併用すると、strict なブラウザで preflight が
+# 通らないケースを生む他、credentials 付きで使う実表面に対する過剰許可になる。
+# 本API が実際に使うのは GET/POST と Authorization/Content-Type だけなので明示的に限定する。
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins(),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 memory.init_db()
 

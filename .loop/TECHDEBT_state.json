@@ -1,11 +1,11 @@
 {
   "project": "vmate-techdebt-loop",
   "definition_of_done": "Critical/High 技術問題の残存ゼロ、または20イテレーション上限",
-"iteration": 4,
-  "current_phase": "loop_h5_error_sanit",
-  "last_action": "H5: 未 sanit エラーメッセージを worker route と python event_stream で固定化",
-  "last_verify": "pytest 60 passed / frontend tsc 0 / worker tsc 0",
+"iteration": 5,
+  "current_phase": "loop_h9_cors",
+  "last_action": "H9: CORS allow_methods/headers を GET/POST + Authorization/Content-Type に限定、test_cors.py 追加",
+  "last_verify": "pytest 63 passed / frontend tsc 0 / worker tsc 0",
   "no_progress_count": 0,
-  "resolved": ["C1", "C2", "C3", "C4", "H5"],
+  "resolved": ["C1", "C2", "C3", "C4", "H5", "H9"],
   "branch": "master"
 }

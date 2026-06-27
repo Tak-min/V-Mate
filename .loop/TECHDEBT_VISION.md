@@ -45,7 +45,7 @@
 - [ ] **H6. `bump_usage` レース条件 + 同期 I/O がイベントループをブロック** — `memory.py:394-416` — Postgres で INSERT..ON CONFLICT..DO UPDATE..RETURNING 化・非同期化。
 - [ ] **H7. iOS Certificate Pinning なし + Cookie `.always`** — `APIClient.swift:10,14-20` — SPKI pin / `.onlyFromMainDocumentDomain`。
 - [ ] **H8. iOS に signup/login 未実装** — `APIClient.swift:58-105` — 認証経路全欠、Cookie 1端末限り。
-- [ ] **H9. CORS `allow_methods/headers=["*"]` + credentials** — `main.py:66-72` — `["GET","POST"]` / `["Authorization","Content-Type"]` に限定。
+- [x] **H9. CORS `allow_methods/headers=["*"]` + credentials** — `main.py:66-72` — `["GET","POST"]` / `["Authorization","Content-Type"]` に限定。✅ iter5: 明示的限定 + test_cors.py 3本追加(preflight/methods/headers/credentials)。63 passed。
 - [ ] **H10. iOS micLog が RMS/音声情報を release でも info 出力** — `SpeechRecognizer.swift:144,194,224,231,404` — `#if DEBUG` gate。
 - [ ] **H11. `reassign_user_data` の Worker/Backend テーブル非対称** — C2 解消で worker と整合。
 - [ ] **H12. Worker `decodeToken` が `header.alg` 未検証** — `worker/src/auth.ts:99-121` — alg === "HS256" 検査 or `jose` 導入。
