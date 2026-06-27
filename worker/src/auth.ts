@@ -12,7 +12,8 @@ const JWT_TTL = 60 * 60 * 24 * 30; // 30日
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const PBKDF2_ITERATIONS = 50_000; // 10ms CPU 制限に収まる範囲での妥協値
 const PBKDF2_KEYLEN = 32; // bytes
-const FALLBACK_SECRET = "dev-insecure-change-me-please-set-JWT_SECRET-in-prod";
+// 旧実装はハードコードされた FALLBACK_SECRET に静默フォールバックしていた。
+// ソースを知る攻撃者が任意 sub の JWT を偽造できる致命的弱点だったため、fail-fast に変更。
 
 const enc = new TextEncoder();
 
@@ -121,7 +122,15 @@ export async function decodeToken(token: string, secret: string): Promise<string
 }
 
 export function jwtSecret(secret: string | undefined): string {
-  return secret && secret.length > 0 ? secret : FALLBACK_SECRET;
+  // 未設定/32バイト未満では即座に throw する。
+  // Workers は起動時チェックを持たないため、リクエスト時に評価して 500 由来の
+  // error handler で包まれる。error message には直接出さない(H5で別途 sanit)。
+  if (!secret || secret.length < 32) {
+    throw new Error(
+      "JWT_SECRET env var is missing or shorter than 32 bytes. Set a strong secret via `wrangler secret put JWT_SECRET`.",
+    );
+  }
+  return secret;
 }
 
 // --- signup / login ---

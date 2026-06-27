@@ -1,0 +1,12 @@
+{
+  "project": "vmate-techdebt-loop",
+  "definition_of_done": "Critical/High 技術問題の残存ゼロ、または20イテレーション上限",
+  "iteration": 1,
+  "current_phase": "loop_c1_jwt_secret",
+  "last_action": "Phase 1 Recon 完了: 4 CRITICAL + 8 HIGH を VISION.md に記録。次: C1 (JWT_SECRET ハードコードデフォルト) を修正",
+  "last_verify": null,
+  "no_progress_count": 0,
+  "open_todos": [],
+  "resolved": ["C1"],
+  "branch": "master"
+}
