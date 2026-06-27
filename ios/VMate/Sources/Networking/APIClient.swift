@@ -14,7 +14,12 @@ final class APIClient {
     private init() {
         let config = URLSessionConfiguration.default
         config.httpCookieStorage = HTTPCookieStorage.shared
-        config.httpCookieAcceptPolicy = .always
+        // H7(部分): 旧実装は .always で任意のリダイレクト元からの Cookie を受け入れた。
+        // 本API の baseURL は固定 workers.dev 单一オリジンなので、メインドメインからの
+        // Cookie のみ受け入れる(リダイレクトで他ドメインから Cookie を注入されるのを防ぐ)。
+        // SPKI Certificate Pinning は Cloudflare の証明書ローテ問題と ATS 設計判断が絡む
+        // ため本イテレでは対処外。別 dev-note で設計を詰めてから投入する。
+        config.httpCookieAcceptPolicy = .onlyFromMainDocumentDomain
         config.timeoutIntervalForRequest = 30
         session = URLSession(configuration: config)
     }

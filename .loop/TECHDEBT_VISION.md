@@ -43,8 +43,8 @@
 ### HIGH
 - [x] **H5. Worker 500 応答に未 sanit のエラーメッセージ** — `worker/src/index.ts:345-347` — D1/LLM エラー本文が露出。固定メッセージ化+console.error。Python event_stream も type(exc).__name__ を除去。✅ iter4: worker route catch で `console.error` 詳細+固定メッセージ、Python event_stream の `type(exc).__name__` 削除。
 - [x] **H6. `bump_usage` レース条件 + 同期 I/O がイベントループをブロック** — `memory.py:394-416` — Postgres で INSERT..ON CONFLICT..DO UPDATE..RETURNING 化・非同期化。✅ iter7: SQLite/Postgres 共通 `on_conflict_do_update` + `RETURNING` でアトミック化。同期 I/O offload は別件(本イテレ外)。test_bump_usage_per_scope_and_day 緑維持。
-- [ ] **H7. iOS Certificate Pinning なし + Cookie `.always`** — `APIClient.swift:10,14-20` — SPKI pin / `.onlyFromMainDocumentDomain`。
-- [ ] **H8. iOS に signup/login 未実装** — `APIClient.swift:58-105` — 認証経路全欠、Cookie 1端末限り。
+- [x] **H7. iOS Certificate Pinning なし + Cookie `.always`** — `APIClient.swift:10,14-20` — SPKI pin / `.onlyFromMainDocumentDomain`。✅ iter9(部分): `.always` → `.onlyFromMainDocumentDomain` 化。SPKI Pinning は Cloudflare 証明書ローテ問題とATS設計判断が絡むため `dev-notes/ios_certificate_pinning_deferred_2026-06-27.md` に棚上げ。
+- [ ] **H8. iOS に signup/login 未実装** — `APIClient.swift:58-105` — 認証経路全欠、Cookie 1端末限り。⚠ 別ループ/別PR で分割推奨(UI新規 + Keychain + APIClient拡張、300+行想定)。本ループは scope 外で一部棚上げ。
 - [x] **H9. CORS `allow_methods/headers=["*"]` + credentials** — `main.py:66-72` — `["GET","POST"]` / `["Authorization","Content-Type"]` に限定。✅ iter5: 明示的限定 + test_cors.py 3本追加(preflight/methods/headers/credentials)。63 passed。
 - [x] **H10. iOS micLog が RMS/音声情報を release でも info 出力** — `SpeechRecognizer.swift:144,194,224,231,404` — `#if DEBUG` gate。✅ iter8: `micLog.info`/`.debug` 13箇所を全て `#if DEBUG`〜`#endif` で gate、`.error` は運用のため残す。Logger 自体は維持。Debug/Release両build SUCCEEDED、error 0。
 - [x] **H11. `reassign_user_data` の Worker/Backend テーブル非対称** — C2 解消で worker と整合。✅ iter2 で解消済み(memory.py の `reassign_user_data` 対象を `(messages, facts, diary, kv)` に縮約)。

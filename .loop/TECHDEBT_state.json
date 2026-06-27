@@ -1,11 +1,11 @@
 {
   "project": "vmate-techdebt-loop",
   "definition_of_done": "Critical/High 技術問題の残存ゼロ、または20イテレーション上限",
-"iteration": 8,
-  "current_phase": "loop_h10_ios_miclog",
-  "last_action": "H10: SpeechRecognizer の micLog.info/.debug 13箇所を #if DEBUG gate、error は残す",
-  "last_verify": "iOS Debug build SUCCEEDED / Release build SUCCEEDED / error 0",
+"iteration": 9,
+  "current_phase": "loop_h7_ios_cookie_partial",
+  "last_action": "H7(部分): APIClient httpCookieAcceptPolicy を .always → .onlyFromMainDocumentDomain。Pin は dev-note に棚上げ。H8 は別ループ分割推奨で棚上げ。",
+  "last_verify": "iOS Debug build SUCCEEDED / error 0",
   "no_progress_count": 0,
-  "resolved": ["C1", "C2", "C3", "C4", "H5", "H6", "H9", "H10", "H11", "H12"],
+  "resolved": ["C1", "C2", "C3", "C4", "H5", "H6", "H7-partial", "H9", "H10", "H11", "H12"],
   "branch": "master"
 }
