@@ -46,7 +46,7 @@
 - [ ] **H7. iOS Certificate Pinning なし + Cookie `.always`** — `APIClient.swift:10,14-20` — SPKI pin / `.onlyFromMainDocumentDomain`。
 - [ ] **H8. iOS に signup/login 未実装** — `APIClient.swift:58-105` — 認証経路全欠、Cookie 1端末限り。
 - [x] **H9. CORS `allow_methods/headers=["*"]` + credentials** — `main.py:66-72` — `["GET","POST"]` / `["Authorization","Content-Type"]` に限定。✅ iter5: 明示的限定 + test_cors.py 3本追加(preflight/methods/headers/credentials)。63 passed。
-- [ ] **H10. iOS micLog が RMS/音声情報を release でも info 出力** — `SpeechRecognizer.swift:144,194,224,231,404` — `#if DEBUG` gate。
+- [x] **H10. iOS micLog が RMS/音声情報を release でも info 出力** — `SpeechRecognizer.swift:144,194,224,231,404` — `#if DEBUG` gate。✅ iter8: `micLog.info`/`.debug` 13箇所を全て `#if DEBUG`〜`#endif` で gate、`.error` は運用のため残す。Logger 自体は維持。Debug/Release両build SUCCEEDED、error 0。
 - [x] **H11. `reassign_user_data` の Worker/Backend テーブル非対称** — C2 解消で worker と整合。✅ iter2 で解消済み(memory.py の `reassign_user_data` 対象を `(messages, facts, diary, kv)` に縮約)。
 - [x] **H12. Worker `decodeToken` が `header.alg` 未検証** — `worker/src/auth.ts:99-121` — alg === "HS256" 検査 or `jose` 導入。✅ iter6: `decodeToken` で `headerObj.alg === "HS256" && (typ === undefined || typ === "JWT")` を深度防御として追加。Python 側は PyJWT `algorithms=[JWT_ALG]` で元から alg 固定済み。
 

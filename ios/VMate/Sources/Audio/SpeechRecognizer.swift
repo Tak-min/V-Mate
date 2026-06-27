@@ -5,6 +5,11 @@ import os
 /// マイク音声パイプラインの診断ログ。実機での切り分け用。
 /// Console.app や `log` コマンドで subsystem=com.takmin.vmate category=mic を絞り込む。
 /// レンダースレッドからの呼び出しはスロットル(handleTap内)してRT安全性を保つ。
+///
+/// H10: レンダースレッド周辺で高頻度に出す RMS/フレーム長等は Console.app や
+/// sysdiagnose で他プロセスから読める privacy 側チャネルになる。release ビルドでは
+/// 機密性の高い info/debug を一切出さないため、各 micLog.info/.debug 呼び出しを
+/// `#if DEBUG` で個別 gate する。micLog.error は運用上必要(RMSを含まず)なので残す。
 let micLog = Logger(subsystem: "com.takmin.vmate", category: "mic")
 
 /// 発話確定前の直近バッファを保持するリングバッファ。VADのonset確認(onsetFrames連続)に
@@ -142,19 +147,25 @@ final class AudioCapturePipeline {
         // 発話イベント(speechStarted等)は希少なので毎回ログする。
         tapFrameCount &+= 1
         if tapFrameCount % 8 == 0 {
+            #if DEBUG
             micLog.debug("tap rms=\(rms, format: .fixed(precision: 5)) thr=\(self.vad.debugLastThreshold, format: .fixed(precision: 5)) floor=\(self.vad.noiseFloor, format: .fixed(precision: 5)) cap=\(self.vad.capturing) frames=\(buffer.frameLength)")
+            #endif
         }
 
         switch event {
         case .speechStarted:
+            #if DEBUG
             micLog.info("VAD speechStarted rms=\(rms, format: .fixed(precision: 5)) thr=\(self.vad.debugLastThreshold, format: .fixed(precision: 5))")
+            #endif
             // preRollをpendingCaptureに引き継ぎ、非同期生成を開始。生成完了まで
             // このバッファ含め後続バッファはpendingCaptureに貯める(捨てない)。
             pendingCapture = preRoll.drainAndClear()
             beginCapture()
             feed(buffer)
         case .speechEnded, .maxDurationReached:
+            #if DEBUG
             micLog.info("VAD \(String(describing: event)) — endCapture")
+            #endif
             endCapture()
         case .silence:
             if vad.capturing {
@@ -191,7 +202,9 @@ final class AudioCapturePipeline {
         callbacks.onSpeechOnset()
 
         let usedOnDevice = recognizer.supportsOnDeviceRecognition && useOnDeviceRecognition.value
+        #if DEBUG
         micLog.info("beginCapture gen=\(gen) onDevice=\(usedOnDevice) (dispatching request creation to main)")
+        #endif
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             let req = SFSpeechAudioBufferRecognitionRequest()
@@ -202,13 +215,17 @@ final class AudioCapturePipeline {
             }
             // endCapture/resetでgenが進んでいればこの発話ターンはもう終わっている
             guard self.generation.withLock({ $0 }) == gen else {
+                #if DEBUG
                 micLog.info("beginCapture gen=\(gen) stale (turn ended before publish) — task cancelled")
+                #endif
                 task.cancel()
                 return
             }
             self.liveTask.withLock { $0 = task }
             self.armedRequest.withLock { $0 = req }   // requestをpublish(tapスレッドが読み始める)
+            #if DEBUG
             micLog.info("beginCapture gen=\(gen) request PUBLISHED")
+            #endif
         }
     }
 
@@ -221,7 +238,9 @@ final class AudioCapturePipeline {
                 for b in pendingCapture { req.append(b) }
                 pendingCapture.removeAll()
                 awaitingRequest = false
+                #if DEBUG
                 micLog.info("feed: request ready — flushed \(flushed) pending buffers, now appending live")
+                #endif
             }
             req.append(buffer)
         } else {
@@ -352,7 +371,9 @@ final class SpeechRecognizer {
         // prepare前でも .voiceChat の 16kHz フォーマットを正確に返す。
         let input = audioEngine.inputNode
         let format = input.outputFormat(forBus: 0)
+        #if DEBUG
         micLog.info("beginSession tapFormat sr=\(format.sampleRate) ch=\(format.channelCount) common=\(format.commonFormat.rawValue) interleaved=\(format.isInterleaved) | onDeviceSupported=\(recognizer.supportsOnDeviceRecognition) available=\(recognizer.isAvailable)")
+        #endif
         input.removeTap(onBus: 0)
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
             newPipeline.handleTap(buffer: buffer)
@@ -362,7 +383,9 @@ final class SpeechRecognizer {
             try audioEngine.start()
             running = true
             newPipeline.arm()
+            #if DEBUG
             micLog.info("beginSession engine started, pipeline armed")
+            #endif
         } catch {
             micLog.error("beginSession engine start FAILED: \(error.localizedDescription)")
             callbacks.onError(.noMic, "マイクが開けなかったみたい。接続を確認してね。")
@@ -407,7 +430,9 @@ final class SpeechRecognizer {
         if let result {
             receivedAnyResult = true
             finalText = result.bestTranscription.formattedString
+            #if DEBUG
             micLog.info("recognition result final=\(result.isFinal) len=\(self.finalText.count) onDevice=\(usedOnDevice)")
+            #endif
             callbacks?.onPartial(finalText)
             if result.isFinal {
                 commit()
@@ -432,10 +457,14 @@ final class SpeechRecognizer {
         let text = finalText.trimmingCharacters(in: .whitespacesAndNewlines)
         finalText = ""
         if text.count >= Self.minUtteranceLength {
+            #if DEBUG
             micLog.info("commit → onUtterance len=\(text.count)")
+            #endif
             callbacks?.onUtterance(text)
         } else {
+            #if DEBUG
             micLog.info("commit skipped (len=\(text.count) < \(Self.minUtteranceLength))")
+            #endif
         }
     }
 }

@@ -1,11 +1,11 @@
 {
   "project": "vmate-techdebt-loop",
   "definition_of_done": "Critical/High 技術問題の残存ゼロ、または20イテレーション上限",
-"iteration": 7,
-  "current_phase": "loop_h6_bump_race",
-  "last_action": "H6: bump_usage を on_conflict_do_update + RETURNING でアトミック化(SQLite/Postgres 共通)",
-  "last_verify": "pytest 63 passed / frontend tsc 0 / worker tsc 0",
+"iteration": 8,
+  "current_phase": "loop_h10_ios_miclog",
+  "last_action": "H10: SpeechRecognizer の micLog.info/.debug 13箇所を #if DEBUG gate、error は残す",
+  "last_verify": "iOS Debug build SUCCEEDED / Release build SUCCEEDED / error 0",
   "no_progress_count": 0,
-  "resolved": ["C1", "C2", "C3", "C4", "H5", "H6", "H9", "H11", "H12"],
+  "resolved": ["C1", "C2", "C3", "C4", "H5", "H6", "H9", "H10", "H11", "H12"],
   "branch": "master"
 }
