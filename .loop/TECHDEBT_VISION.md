@@ -42,7 +42,7 @@
 
 ### HIGH
 - [x] **H5. Worker 500 応答に未 sanit のエラーメッセージ** — `worker/src/index.ts:345-347` — D1/LLM エラー本文が露出。固定メッセージ化+console.error。Python event_stream も type(exc).__name__ を除去。✅ iter4: worker route catch で `console.error` 詳細+固定メッセージ、Python event_stream の `type(exc).__name__` 削除。
-- [ ] **H6. `bump_usage` レース条件 + 同期 I/O がイベントループをブロック** — `memory.py:394-416` — Postgres で INSERT..ON CONFLICT..DO UPDATE..RETURNING 化・非同期化。
+- [x] **H6. `bump_usage` レース条件 + 同期 I/O がイベントループをブロック** — `memory.py:394-416` — Postgres で INSERT..ON CONFLICT..DO UPDATE..RETURNING 化・非同期化。✅ iter7: SQLite/Postgres 共通 `on_conflict_do_update` + `RETURNING` でアトミック化。同期 I/O offload は別件(本イテレ外)。test_bump_usage_per_scope_and_day 緑維持。
 - [ ] **H7. iOS Certificate Pinning なし + Cookie `.always`** — `APIClient.swift:10,14-20` — SPKI pin / `.onlyFromMainDocumentDomain`。
 - [ ] **H8. iOS に signup/login 未実装** — `APIClient.swift:58-105` — 認証経路全欠、Cookie 1端末限り。
 - [x] **H9. CORS `allow_methods/headers=["*"]` + credentials** — `main.py:66-72` — `["GET","POST"]` / `["Authorization","Content-Type"]` に限定。✅ iter5: 明示的限定 + test_cors.py 3本追加(preflight/methods/headers/credentials)。63 passed。

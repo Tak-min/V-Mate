@@ -30,6 +30,7 @@ from sqlalchemy import (
     select,
     update,
 )
+from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 
@@ -382,28 +383,32 @@ def get_user_by_id(user_id: str) -> dict | None:
 
 
 def bump_usage(scope: str, day: str) -> int:
-    """(scope, day) のカウンタを +1 して新しい値を返す(レート制限用)。"""
+    """(scope, day) のカウンタを +1 して新しい値を返す(レート制限用)。
+
+    H6: 旧実装は「UPDATE→rowcount==0 なら INSERT→IntegrityError で再UPDATE」で、
+    Postgres 複本並行で INSERT 同士がぶつかると 1 目盛取りこぼす競合窓があった。
+    SQLite/Postgres 共通の INSERT ... ON CONFLICT (scope, day) DO UPDATE でアトミックに
+    インクリメントし RETURNING で結果を取る。
+    """
+    url = _url()
+    stmt = (
+        sqlite.insert(usage)
+        if url.startswith("sqlite")
+        else postgresql.insert(usage)
+    )
+    stmt = stmt.values(scope=scope, day=day, count=1)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=[usage.c.scope, usage.c.day],
+        set_={"count": usage.c.count + 1},
+    )
+    # SQLAlchemy 2.x の Insert.on_conflict_do_update は RETURNING を生やす。
+    # RETURNING は SQLite 3.35+/Postgres 両対応なので採用する。
+    stmt = stmt.returning(usage.c.count)
     with _get_engine().begin() as c:
-        res = c.execute(
-            update(usage)
-            .where(and_(usage.c.scope == scope, usage.c.day == day))
-            .values(count=usage.c.count + 1)
-        )
-        if res.rowcount == 0:
-            try:
-                c.execute(insert(usage).values(scope=scope, day=day, count=1))
-                return 1
-            except IntegrityError:  # 競合時は再加算
-                c.execute(
-                    update(usage)
-                    .where(and_(usage.c.scope == scope, usage.c.day == day))
-                    .values(count=usage.c.count + 1)
-                )
-        return c.execute(
-            select(usage.c.count).where(
-                and_(usage.c.scope == scope, usage.c.day == day)
-            )
-        ).scalar_one()
+        row = c.execute(stmt).first()
+    # 初回 INSERT なら 1、衝突 UPDATE なら count+1 が RETURNING で返る
+    # (SQLite 3.35+ / Postgres 共に対応)。
+    return int(row[0])
 
 
 def reassign_user_data(from_user_id: str, to_user_id: str) -> None:
