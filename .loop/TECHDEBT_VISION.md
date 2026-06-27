@@ -36,8 +36,8 @@
 
 ### CRITICAL
 - [x] **C1. JWT_SECRET ハードコードデフォルト** — `auth.py:20` / `worker/src/auth.ts` — env 未設定で公開定数稼働→任意JWT偽造可能。FAIL-FAST化(未設定/32B未満で RuntimeError)。✅ iter1: backend `_get_jwt_secret()` 関数化+conftest setenv、worker `jwtSecret()` で throw。pytest67 / tsc×2 green。
-- [ ] **C2. 研究コード+センシティブ自己開示指標が本番backendで稼働中** — `main.py:88-91,128-135,263-289,324-360,433-441,516-524` + `memory.py:94-102,419-428` — Workerは済、未同期。`/api/chat` 毎に `SENSITIVE_SELF_DISCLOSURE_RE` で自殺/自傷/恋愛関連語を `research_events.payload` へ平文保存。本番撤去。
-- [ ] **C3. 撤去阻害連鎖** — `tests/test_research.py` + `memory.reassign_user_data` が `research_events` に依存。C2 撤去と同時に cleanup。
+- [x] **C2. 研究コード+センシティブ自己開示指標が本番backendで稼働中** — `main.py:88-91,128-135,263-289,324-360,433-441,516-524` + `memory.py:94-102,419-428` — Workerは済、未同期。`/api/chat` 毎に `SENSITIVE_SELF_DISCLOSURE_RE` で自殺/自傷/恋愛関連語を `research_events.payload` へ平文保存。本番撤去。✅ iter2: research_events table、`/api/research/*` ルート、`_log_research_event`/`_message_metrics`/`_research_condition`/`SENSITIVE_SELF_DISCLOSURE_RE`、ChatRequest.condition を完全削除。`/api/research/*` は 404 確認済。
+- [x] **C3. 撤去阻害連鎖** — `tests/test_research.py` + `memory.reassign_user_data` が `research_events` に依存。C2 撤去と同時に cleanup。✅ iter2: test_research.py 削除 / test_utils.py の `_message_metrics` テスト除去 / `reassign_user_data` を `(messages, facts, diary, kv)` に縮約★ Worker(db.ts:226-231) と完全整合。
 - [ ] **C4. JWT を localStorage 保存** — `frontend/src/features/chat/api.ts:4-8` — XSS で即座乗っ取り。匿名 uid は httpOnly Cookie。JWT も HttpOnly Cookie 化、前端 removeToken/credentials:include。
 
 ### HIGH

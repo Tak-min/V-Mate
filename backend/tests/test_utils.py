@@ -1,8 +1,11 @@
-"""main.py の純粋ユーティリティ関数(_strip_emotion / _sanitize_fourth_wall / _message_metrics)のテスト。"""
+"""main.py の純粋ユーティリティ関数(_strip_emotion / _sanitize_fourth_wall)のテスト。
+
+_message_metrics は研究コード(C2)撤去で main.py から削除されたため、対応するテストも除去済み。
+"""
 
 import pytest
 
-from app.main import _message_metrics, _sanitize_fourth_wall, _strip_emotion
+from app.main import _sanitize_fourth_wall, _strip_emotion
 
 
 # --- _strip_emotion ---
@@ -60,39 +63,3 @@ def test_sanitize_leaves_clean_text_unchanged():
 def test_sanitize_user_without_san():
     result = _sanitize_fourth_wall("ユーザーはどう思う?")
     assert "ユーザー" not in result
-
-
-# --- _message_metrics ---
-
-def test_message_metrics_basic_counts():
-    m = _message_metrics("こんにちは! 今日はどう? 元気?")
-    assert m["char_count"] > 0
-    assert m["question_count"] == 2  # "?" が2つ
-
-
-def test_message_metrics_counts_fullwidth_question():
-    m = _message_metrics("どうしたの？ 大丈夫？")
-    assert m["question_count"] == 2
-
-
-def test_message_metrics_detects_self_disclosure():
-    m = _message_metrics("最近すごく不安で…")
-    assert m["contains_sensitive_self_disclosure"] is True
-
-
-def test_message_metrics_no_self_disclosure_in_neutral_text():
-    m = _message_metrics("今日は晴れですね。")
-    assert m["contains_sensitive_self_disclosure"] is False
-
-
-def test_message_metrics_empty_text():
-    m = _message_metrics("   ")
-    assert m["char_count"] == 0
-    assert m["line_count"] == 0
-    assert m["question_count"] == 0
-    assert m["contains_sensitive_self_disclosure"] is False
-
-
-def test_message_metrics_multiline():
-    m = _message_metrics("1行目\n2行目\n3行目")
-    assert m["line_count"] == 3
