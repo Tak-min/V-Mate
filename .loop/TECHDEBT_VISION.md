@@ -41,7 +41,7 @@
 - [x] **C4. JWT を localStorage 保存** — `frontend/src/features/chat/api.ts:4-8` — XSS で即座乗っ取り。匿名 uid は httpOnly Cookie。JWT も HttpOnly Cookie 化、前端 removeToken/credentials:include。✅ iter3: `aikata_token` HttpOnly/SameSite=Lax/Secure(https時) Cookie 化、`/api/auth/logout` 追加、frontend `getToken/setToken/clearToken` 廃止、AuthBar `apiLogout` 使用、signup/login body から token 除去し `/me` と Cookie jar で認証状態管理。signup 応答に token not in body の回帰テスト追加。
 
 ### HIGH
-- [ ] **H5. Worker 500 応答に未 sanit のエラーメッセージ** — `worker/src/index.ts:345-347` — D1/LLM エラー本文が露出。固定メッセージ化+console.error。Python event_stream も type(exc).__name__ を除去。
+- [x] **H5. Worker 500 応答に未 sanit のエラーメッセージ** — `worker/src/index.ts:345-347` — D1/LLM エラー本文が露出。固定メッセージ化+console.error。Python event_stream も type(exc).__name__ を除去。✅ iter4: worker route catch で `console.error` 詳細+固定メッセージ、Python event_stream の `type(exc).__name__` 削除。
 - [ ] **H6. `bump_usage` レース条件 + 同期 I/O がイベントループをブロック** — `memory.py:394-416` — Postgres で INSERT..ON CONFLICT..DO UPDATE..RETURNING 化・非同期化。
 - [ ] **H7. iOS Certificate Pinning なし + Cookie `.always`** — `APIClient.swift:10,14-20` — SPKI pin / `.onlyFromMainDocumentDomain`。
 - [ ] **H8. iOS に signup/login 未実装** — `APIClient.swift:58-105` — 認証経路全欠、Cookie 1端末限り。

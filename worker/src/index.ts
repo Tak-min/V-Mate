@@ -343,8 +343,12 @@ export default {
     try {
       response = await route(c);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "internal error";
-      response = errorDetail(`サーバーエラー: ${msg}`, 500);
+      // H5: e.message には D1/LLM 内部エラーや API キー不足の手がかりが含まれ、
+      // そのまま返すと偵察起点になる。サーバ側で console.error 相当でログに残し、
+      // クライアントには固定メッセージだけ返す。Worker には console が無い場合もあるが
+      // 標準の console.error は tail worker 出力に行く(本番で --tail で観察可)。
+      console.error("route handler threw", e?.toString?.() ?? e);
+      response = errorDetail("サーバーエラーが発生しました。しばらくしてから再度お試しください。", 500);
     }
 
     // 新規 uid なら Set-Cookie を付与(ストリーミング応答でもヘッダを引き継ぐ)

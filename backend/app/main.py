@@ -429,11 +429,13 @@ async def chat(
                     full_text += rest
                     yield sse({"type": "token", "text": rest})
         except Exception as exc:  # クラウドLLM接続失敗・APIキー未設定など
+            # H5: 旧実装は type(exc).__name__ をクライアントへ晒し、
+            # 内部スタック/ベンダ情報の偵察起点になっていた。サーバログだけで詳細を扱い、
+            # ユーザー向けメッセージは固定化する。
             logger.error("chat stream failed for user %s: %s", uid, exc)
             yield sse({
                 "type": "error",
-                "message": f"応答の生成に失敗しました ({type(exc).__name__})。"
-                "LLM_API_KEY の設定とネットワーク接続を確認してください。",
+                "message": "応答の生成に失敗しました。しばらくしてから再度お試しください。",
             })
             return
         full_text = full_text.strip()
