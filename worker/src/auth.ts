@@ -102,6 +102,15 @@ export async function decodeToken(token: string, secret: string): Promise<string
     const parts = token.split(".");
     if (parts.length !== 3) return null;
     const [header, payload, sig] = parts;
+    // H12: 旧実装は header.alg / typ を検査せず、HMAC 検証だけに頼っていた。
+    // 現状は alg=none 攻撃は成立しないが、HMAC 実装を差替えるような将来リファクタで
+    // silent regression になり得る。深度防御として header を明示的に検証する。
+    const headerObj = JSON.parse(new TextDecoder().decode(b64urlToBytes(header))) as {
+      alg?: unknown;
+      typ?: unknown;
+    };
+    if (headerObj.alg !== JWT_ALG) return null;
+    if (headerObj.typ !== undefined && headerObj.typ !== "JWT") return null;
     const data = `${header}.${payload}`;
     const ok = await crypto.subtle.verify(
       "HMAC",
