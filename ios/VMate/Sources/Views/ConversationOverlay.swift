@@ -35,7 +35,18 @@ struct ConversationOverlay: View {
                         }
                     }
                     .padding(14)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22))
+                    .background {
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .fill(Color.black.opacity(0.2))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                    .fill(.ultraThinMaterial.opacity(0.5))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                            )
+                    }
                 }
                 .buttonStyle(.plain)
             }
@@ -45,7 +56,18 @@ struct ConversationOverlay: View {
                     .textFieldStyle(.plain)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
-                    .background(.ultraThinMaterial, in: Capsule())
+                    .background {
+                        Capsule()
+                            .fill(Color.black.opacity(0.2))
+                            .overlay(
+                                Capsule()
+                                    .fill(.ultraThinMaterial.opacity(0.5))
+                            )
+                            .overlay(
+                                Capsule()
+                                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                            )
+                    }
                     .foregroundStyle(.white)
                     .onChange(of: draft) { _ in viewModel.noticeInputActivity() }
                     .onSubmit(send)
@@ -100,14 +122,18 @@ struct ConversationOverlay: View {
                         .fill(LinearGradient.pinkLavender)
                 } else {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(.ultraThinMaterial)
+                        .fill(Color.black.opacity(0.25))
                         .overlay(
                             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .strokeBorder(Color.accentPink.opacity(0.25), lineWidth: 1)
+                                .fill(.ultraThinMaterial.opacity(0.6))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.15), lineWidth: 1)
                         )
                 }
             }
-            .shadow(color: .black.opacity(0.1), radius: 4, y: 2)
+            .shadow(color: .black.opacity(0.15), radius: 6, y: 2)
             if !isUser { Spacer(minLength: 30) }
         }
     }
@@ -167,10 +193,14 @@ private struct ChatLogList: View {
                             .fill(LinearGradient.pinkLavender)
                     } else {
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(.ultraThinMaterial)
+                            .fill(Color.black.opacity(0.25))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .strokeBorder(Color.accentPink.opacity(0.2), lineWidth: 1)
+                                    .fill(.ultraThinMaterial.opacity(0.6))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
                             )
                     }
                 }

@@ -179,6 +179,7 @@ final class AudioCapturePipeline {
     /// マイクを開く前(tapインストール前)に呼ぶ。tapと並行して呼ばないこと。
     func reset() {
         enabled.value = false
+        useOnDeviceRecognition.value = true   // セッション開始ごとにオンデバイスを再試行
         pendingArm.value = false
         generation.withLock { $0 += 1 }
         awaitingRequest = false
