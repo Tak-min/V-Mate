@@ -1,8 +1,8 @@
 {
-  "iteration": 1,
+  "iteration": 2,
   "goal": "iOS版の音声認識をオンデバイス化: SFSpeechRecognizerのフォールバック永続化を修正し、オンデバイス認識を安定動作させる",
-  "last_action": "AudioCapturePipeline.reset()でuseOnDeviceRecognitionをtrueにリセット",
-  "last_verify": null,
+  "last_action": "beginSession()でonDeviceFailureNotifiedをfalseにリセット",
+  "last_verify": "18 tests passed (iteration 1)",
   "no_progress_count": 0,
   "last_verify_hash": null
 }

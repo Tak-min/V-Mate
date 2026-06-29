@@ -1,20 +1,50 @@
 import SwiftUI
 
-/// 感情に応じて揺らぐ背景グラデーション。Replika等の「柔らかい光・夢見るような雰囲気」の
-/// 調査結果(2026-06-19 UI改善ループ)を踏まえ、フラットな白背景をやめて空間に奥行きと
-/// 温度感を出す。キャラクターが「ここに存在している」感覚を強める役割。
+/// 感情に応じて揺らぐ背景グラデーション。
+/// ペルソナ(22歳女性・可愛いもの好き)に合わせ、暗いトーンを避け
+/// 温かく柔らかいパステルカラーで「心理的に安全で安心できる居場所」を演出。
 struct AmbientBackground: View {
     let emotion: Emotion
     @State private var animate = false
 
     private var colors: [Color] {
         switch emotion {
-        case .happy: return [Color(red: 1.0, green: 0.86, blue: 0.62), Color(red: 1.0, green: 0.66, blue: 0.55)]
-        case .sad: return [Color(red: 0.36, green: 0.42, blue: 0.62), Color(red: 0.18, green: 0.2, blue: 0.32)]
-        case .angry: return [Color(red: 0.62, green: 0.24, blue: 0.3), Color(red: 0.32, green: 0.12, blue: 0.18)]
-        case .relaxed: return [Color(red: 0.55, green: 0.78, blue: 0.7), Color(red: 0.24, green: 0.4, blue: 0.42)]
-        case .shy: return [Color(red: 0.95, green: 0.72, blue: 0.8), Color(red: 0.62, green: 0.42, blue: 0.55)]
-        case .neutral: return [Color(red: 0.45, green: 0.52, blue: 0.72), Color(red: 0.18, green: 0.2, blue: 0.34)]
+        case .happy:
+            // 明るいピーチ → ゴールド（嬉しい・温かい）
+            return [
+                Color(red: 1.0, green: 0.88, blue: 0.78),
+                Color(red: 0.98, green: 0.75, blue: 0.65)
+            ]
+        case .sad:
+            // 柔らかいラベンダー → ミントブルー（少し落ち込むけど優しい）
+            return [
+                Color(red: 0.78, green: 0.75, blue: 0.88),
+                Color(red: 0.65, green: 0.7, blue: 0.85)
+            ]
+        case .angry:
+            // ミューテッドローズ → ダストピンク（尖らない怒り）
+            return [
+                Color(red: 0.85, green: 0.6, blue: 0.65),
+                Color(red: 0.75, green: 0.5, blue: 0.58)
+            ]
+        case .relaxed:
+            // ソフトミント → セージグリーン（リラックス・癒やし）
+            return [
+                Color(red: 0.72, green: 0.85, blue: 0.78),
+                Color(red: 0.6, green: 0.75, blue: 0.68)
+            ]
+        case .shy:
+            // ブラッシュピンク → ローズ（照れ・可愛い）
+            return [
+                Color(red: 0.95, green: 0.78, blue: 0.82),
+                Color(red: 0.88, green: 0.65, blue: 0.72)
+            ]
+        case .neutral:
+            // ソフトラベンダー → ピーチピンク（デフォルト・夢見る雰囲気）
+            return [
+                Color(red: 0.85, green: 0.78, blue: 0.88),
+                Color(red: 0.92, green: 0.78, blue: 0.75)
+            ]
         }
     }
 
@@ -22,7 +52,7 @@ struct AmbientBackground: View {
         ZStack {
             LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom)
             RadialGradient(
-                colors: [colors[0].opacity(0.55), .clear],
+                colors: [colors[0].opacity(0.5), .clear],
                 center: animate ? .topTrailing : .topLeading,
                 startRadius: 20, endRadius: 420
             )

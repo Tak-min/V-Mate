@@ -23,9 +23,9 @@
 }
 
 :root {
-  --color-bg-top: oklch(96% 0.03 70);
-  --color-bg-mid: oklch(93% 0.045 45);
-  --color-bg-low: oklch(90% 0.05 320);
+  --color-bg-top: oklch(97% 0.03 80);
+  --color-bg-mid: oklch(95% 0.04 50);
+  --color-bg-low: oklch(93% 0.05 320);
   --color-ink: oklch(32% 0.04 50);
   --color-ink-soft: oklch(48% 0.03 50);
   --color-accent: oklch(70% 0.16 35);
@@ -61,8 +61,8 @@ body {
   color: var(--color-ink);
   overflow: hidden;
   background:
-    radial-gradient(120% 90% at 75% 10%, oklch(97% 0.05 85 / 0.9), transparent 60%),
-    radial-gradient(90% 80% at 15% 90%, oklch(92% 0.08 330 / 0.85), transparent 55%),
+    radial-gradient(120% 90% at 75% 10%, oklch(98% 0.04 80 / 0.9), transparent 60%),
+    radial-gradient(90% 80% at 15% 90%, oklch(94% 0.07 330 / 0.85), transparent 55%),
     linear-gradient(170deg, var(--color-bg-top), var(--color-bg-mid) 55%, var(--color-bg-low));
 }
 

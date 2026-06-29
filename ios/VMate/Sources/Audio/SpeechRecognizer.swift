@@ -347,6 +347,7 @@ final class SpeechRecognizer {
         self.callbacks = callbacks
         finalText = ""
         receivedAnyResult = false
+        onDeviceFailureNotified = false   // セッション再開時にオンデバイス再試行の通知を再発火可能にする
 
         let vad = VoiceActivityDetector(config: vadConfig)
         let newPipeline = AudioCapturePipeline(
