@@ -24,6 +24,7 @@
 		F157BF2D376E4C8A75E47304 /* DiaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94DF2FE0B766B214BE732B0F /* DiaryView.swift */; };
 		F5D60551FEBE3DBD8F453370 /* SpeechQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = B88BE9409D8285B3B8DFD2CC /* SpeechQueue.swift */; };
 		A1B2C3D4E5F60001AABBCCDD /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60002AABBCCDD /* OnboardingView.swift */; };
+		A1B2C3D4E5F60003AABBCCDD /* PersonaColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60004AABBCCDD /* PersonaColors.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -56,6 +57,7 @@
 		D17698B27B19C1BF08468D4F /* VMate.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = VMate.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F85A2C14BCFC1EE04EA3C92E /* ConversationOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationOverlay.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60002AABBCCDD /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60004AABBCCDD /* PersonaColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonaColors.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -130,6 +132,7 @@
 				F85A2C14BCFC1EE04EA3C92E /* ConversationOverlay.swift */,
 				94DF2FE0B766B214BE732B0F /* DiaryView.swift */,
 				A1B2C3D4E5F60002AABBCCDD /* OnboardingView.swift */,
+				A1B2C3D4E5F60004AABBCCDD /* PersonaColors.swift */,
 				558AE6CB426801861C0885BC /* RootView.swift */,
 			);
 			path = Views;
@@ -260,6 +263,7 @@
 				375BEE64A4A15871B5D1B6CD /* Models.swift in Sources */,
 				B9F0E31D043BE931467DC900 /* RootView.swift in Sources */,
 				A1B2C3D4E5F60001AABBCCDD /* OnboardingView.swift in Sources */,
+				A1B2C3D4E5F60003AABBCCDD /* PersonaColors.swift in Sources */,
 				A628D7243C100424BB38A19A /* SentenceSplitter.swift in Sources */,
 				F5D60551FEBE3DBD8F453370 /* SpeechQueue.swift in Sources */,
 				179D99AAED52D526A52C016E /* SpeechRecognizer.swift in Sources */,

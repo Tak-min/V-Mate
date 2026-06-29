@@ -1,37 +1,52 @@
-# VISION — 初回オンボーディング強化 (Web + iOS)
+# VISION — iOS オンデバイス音声認識の安定化
 
 ## Goal
-v-mate(Aikata)に初回訪問時のオンボーディング体験を追加し、初見ユーザーが「何ができるか・どう話しかけるか」を迷わず理解できるようにする。Web(frontend)とiOSの両方で強化する。
+iOS版 v-mate で音声認識がサーバ方式（ネットワーク経由）になってしまっている問題を改善し、
+iPhone独自の SFSpeechRecognizer API を活用してオンデバイス音声認識を安定動作させる。
 
-## 現状(Phase 1 Recon)
-- `onboarding.ts` (23行): localStorage flag `aikata_onboarded` のみ。`isFirstVisit()` / `markOnboarded()`。
-- `useCompanion.ts:387-399`: ready 後 useEffect → `isFirstVisit()` → `requestNudge('greeting', {firstVisit})` → `markOnboarded()`。greeted ref で重複防止。
-- `useCompanion.ts:365-379`: AudioContext 解锁需要用户手势（pointerdown/keydown），与 greeting 并行。
-- `saveName` は `StatusBar` にある（useCompanion から StatusBar に渡される）。
-- VoiceControl.tsx は独自の `vmate.voiceOnboardingSeen` フラグを持つ（既存パターン参考）。
-- CSS は単一 `global.css`。App.tsx は `<div.app>` の最初の子にオーバーレイ挿入が自然。
-- iOS: `CompanionViewModel.swift` に初回判定なし。`bootstrap()` L64-79 で直接 `requestNudge("greeting")`。
-- iOS Views: `RootView.swift`, `ConversationOverlay.swift`, `AvatarView.swift` 等。
-- `?condition=` 研究条件は製品版で撤去済み（コードに残存しない）。
-- verify: `cd frontend && npx tsc --noEmit -p .` + `npx vite build`。backend: `cd backend && pytest`。
+## Problem Statement
+現在の iOS 実装（`SpeechRecognizer.swift`）は `useOnDeviceRecognition = true` をデフォルトにしているが、
+オンデバイスモデル未ダウンロード等で初回失敗すると **永久にサーバー方式にフォールバック** してしまう。
+一度フォールバックするとセッション中は二度とオンデバイスを試さないため、ユーザーは常にサーバー遅延を体験する。
 
-## Definition of Done (verifiable stop condition)
-1. **Web**: 初回訪問時にガイド付きオンボーディングUI（ウェルカムカード + 2ステップ: 自己紹介入力 / 話しかけ方の案内）が表示される。完了後は2回目以降非表示（localStorage で制御）。
-2. **iOS**: 初回判定（UserDefaults）と初回ガイド（最低: 初回挨拶の明確化 + 使い方ヒント）を追加。
-3. **Verify gate green**:
-   - `cd frontend && npx tsc --noEmit -p .` → 0 errors
-   - `cd frontend && npx vite build` → success
-4. 既存機能（チャット・挨拶・音声・日記）の回帰なし。
+## Definition of Done (検証可能な完了条件)
+
+1. **オンデバイス認識の優先使用**: `SFSpeechRecognizer.supportsOnDeviceRecognition` が true の端末では、
+   常にオンデバイス認識を最初に試みる
+2. **フォールバック後の自動リトライ**: オンデバイス認識が失敗してサーバー方式にフォールバックしても、
+   次のセッション（会話モードの再起動時）では再度オンデバイスを試行する
+3. **モデル未ダウンロード時の適切なハンドリング**: オンデバイスモデルが利用できない場合、
+   ユーザーに明確なフィードバックを提供し、サーバー方式への切り替えを通知する
+4. **ビルド成功**: `xcodebuild` でエラーなし
+5. **テスト既存テストパス**: `xcodebuild test` で既存テストが全てパス
 
 ## Constraints
-- localStorage/UserDefaults のみで状態管理（サーバ不要・プライバシー配慮）。
-- localStorage 不可環境でも会話成立（既存の安全倒しを継承）。
-- AudioContext 解ロック（ユーザー初回ジェスチャ）に干渉しない。
-- 最小の verifiable step で進める。
+- 既存の VAD アーキテクチャ（`AudioCapturePipeline` + `VoiceActivityDetector`）は変更しない
+- 既存の `beginSession` / `endSession` / `resumeTurn` / `pauseTurn` API は維持
+- エンジンの常時稼働（AEC収束維持）は変更しない
 
-## Refined backlog (smallest verifiable steps)
-- [ ] B1: onboarding.ts 拡張 — step 管理 + isFirstVisit → isFirstOnboardingComplete へ拡張
-- [ ] B2: OnboardingOverlay.tsx 新規 — ステップUI（Welcome→Name→Hint→Done）+ global.css
-- [ ] B3: App.tsx 統合 — オーバーレイ表示 + useCompanion の greeting を onboarding 完了後にゲート
-- [ ] B4: iOS 初回判定 + 初回ガイド（CompanionViewModel + RootView）
-- [ ] B5: verify gate green + 回帰確認
+## Key Files
+- `ios/VMate/Sources/Audio/SpeechRecognizer.swift` — メインの STT ロジック（AudioCapturePipeline L71-267 + SpeechRecognizer L276-470 を含む）
+- `ios/VMate/Sources/Audio/VoiceActivityDetector.swift` — VAD 実装
+- `ios/VMate/Sources/ViewModels/CompanionViewModel.swift` — UI/ビューモデル統合
+- `ios/VMate/Tests/VoiceActivityDetectorTests.swift` — テスト
+
+## Recon Findings (Phase 1)
+
+### Root Cause: フォールバックが永続的
+- `useOnDeviceRecognition` は `AudioCapturePipeline` のプロパティ（L86）。デフォルト `true`
+- `handleRecognitionResult()` (L445-446) で初回失敗時に `pipeline?.useOnDeviceRecognition.value = false` に設定
+- 以降 `beginCapture()` (L204) で `usedOnDevice = false` → サーバー認識に固定
+- **`reset()` (L180-192) は `useOnDeviceRecognition` をリセットしない** → セッション終了→再開してもフォールバックが残る
+- `beginSession()` (L340-393) で新しい pipeline を生成するが、新 pipeline の `useOnDeviceRecognition` は `true` で初期化される
+- **ただし**: `endSession()` (L397-406) で `pipeline?.reset()` を呼ぶが、`reset()` は `useOnDeviceRecognition` をリセットしない
+
+### 問題の正体
+`endSession()` → `beginSession()` のサイクルで、旧 pipeline の `useOnDeviceRecognition = false` 状態が
+新 pipeline に持ち越される可能性がある（pipeline の再利用タイミングによる）。
+また、初回のオンデバイス失敗後、そのセッション中は二度とオンデバイスを試さない。
+
+### 修正方針
+1. `SpeechRecognizer.beginSession()` で新 pipeline 生成後に `useOnDeviceRecognition.value = true` を明示設定
+2. `AudioCapturePipeline.reset()` で `useOnDeviceRecognition.value = true` をリセット
+3. これにより、セッション開始ごとにオンデバイスを再試行する

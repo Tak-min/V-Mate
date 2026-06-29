@@ -23,6 +23,7 @@ export default function App() {
     partialTranscript,
     voiceSupported,
     voiceError,
+    whisperLoadState,
     noticeInputActivity,
     send,
     saveName,
@@ -73,6 +74,7 @@ export default function App() {
           mode={voiceMode}
           partial={partialTranscript}
           error={voiceError}
+          whisperLoadState={whisperLoadState}
           onToggle={toggleVoiceMode}
           onInterrupt={interrupt}
         />

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CompanionViewer } from '../vrm/viewer';
 import { SentenceSplitter, SpeechQueue } from '../voice/speech';
-import { isSpeechRecognitionSupported, SpeechRecognizer } from '../voice/recognition';
+import { isSpeechRecognitionSupported, SpeechRecognizer, type WhisperLoadState } from '../voice/recognition';
 import {
   fetchHistory,
   fetchState,
@@ -78,6 +78,7 @@ export function useCompanion() {
   const [partialTranscript, setPartialTranscript] = useState('');
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [voiceSupported] = useState(isSpeechRecognitionSupported);
+  const [whisperLoadState, setWhisperLoadState] = useState<WhisperLoadState>('idle');
 
   const greeted = useRef(false);
   const idleTimer = useRef<number | undefined>(undefined);
@@ -300,6 +301,13 @@ export function useCompanion() {
           viewerRef.current?.relax();
         },
       });
+      // Whisper モデルのロード状態をポーリング
+      const pollId = window.setInterval(() => {
+        if (!recognizerRef.current) { window.clearInterval(pollId); return; }
+        const s = recognizerRef.current.whisperLoadState;
+        setWhisperLoadState(s);
+        if (s === 'ready' || s === 'failed') window.clearInterval(pollId);
+      }, 500);
     }
     responseDoneRef.current = false;
     setVoiceModeBoth('listening');
@@ -432,6 +440,7 @@ export function useCompanion() {
     partialTranscript,
     voiceSupported,
     voiceError,
+    whisperLoadState,
     noticeInputActivity,
     send,
     saveName,

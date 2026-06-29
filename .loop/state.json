@@ -1,20 +1,8 @@
 {
-  "project": "aikata-public-deploy",
-  "iteration": 6,
-  "current_phase": "DONE",
-  "phases": {
-    "0_anchors": "done",
-    "A_user_scoped_data": "done",
-    "B_postgres": "done",
-    "C_accounts_auth": "done",
-    "D_ratelimit_tts_cors": "done",
-    "E_frontend_auth_ui": "done",
-    "F_deploy": "done"
-  },
-  "last_action": "Phase F: Dockerfile/render.yaml/DEPLOY.md。受け入れテスト(実Groqチャット+認証+分離)PASS",
-  "last_verify": "pytest 24 passed; tsc 0; 実Groq end-to-end OK(匿名chat/signup/me/分離); frontend build OK",
-  "definition_of_done": "コード面は完了。残る外部作業=本人のアカウント操作(GitHub push / Neon作成 / Render Blueprint デプロイ)。手順は DEPLOY.md。",
-  "branch": "feat/public-multiuser-deploy",
+  "iteration": 0,
+  "goal": "iOS版の音声認識をオンデバイス化: SFSpeechRecognizerのフォールバック永続化を修正し、オンデバイス認識を安定動作させる",
+  "last_action": null,
+  "last_verify": null,
   "no_progress_count": 0,
-  "notes": "Docker実ビルドはRender側に委譲(未ローカル実行)。merge/pushは未実施(指示待ち)。"
+  "last_verify_hash": null
 }

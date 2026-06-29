@@ -283,7 +283,7 @@ body {
 
 .name-form button:hover:not(:disabled) {
   transform: translateY(-2px) scale(1.02);
-  background: var(--color-accent-deep);
+  background: var(--color-accent-pink);
 }
 
 .name-form button:disabled {
@@ -390,7 +390,7 @@ body {
 }
 
 .auth-card input:focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-accent-pink);
   outline-offset: 1px;
 }
 
@@ -483,7 +483,7 @@ body {
 }
 
 .icon-button:focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-accent-pink);
   outline-offset: 2px;
 }
 
@@ -615,6 +615,18 @@ body {
   color: var(--color-ink-soft);
 }
 
+.voice-whisper-loading {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--color-accent-pink);
+  animation: whisper-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes whisper-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
 .voice-interrupt {
   margin-top: 2px;
   padding: 7px 16px;
@@ -703,7 +715,7 @@ body {
 .chat-suggestion-chip {
   border: 1px solid var(--color-glass-border);
   background: oklch(99% 0.01 80 / 0.55);
-  color: var(--color-accent-deep);
+  color: var(--color-accent-pink);
   font-family: inherit;
   font-size: 0.82rem;
   border-radius: 999px;
@@ -834,10 +846,11 @@ body {
 
 .bubble-assistant {
   align-self: flex-start;
-  background: oklch(97% 0.015 80 / 0.95);
-  border: 1px solid oklch(95% 0.04 60);
+  background: oklch(97% 0.015 80 / 0.78);
+  border: 1px solid oklch(95% 0.04 60 / 0.5);
   border-left: 3px solid var(--color-accent-pink);
   border-bottom-left-radius: 6px;
+  backdrop-filter: blur(8px);
 }
 
 .bubble-emotion {
@@ -914,7 +927,7 @@ body {
 }
 
 .chat-input input:focus {
-  border-color: var(--color-accent);
+  border-color: var(--color-accent-pink);
 }
 
 .chat-input button {
@@ -994,7 +1007,7 @@ body {
 
 .diary-header h2 {
   font-size: 1.25rem;
-  color: var(--color-accent-deep);
+  color: var(--color-accent-pink);
 }
 
 .diary-caption {
@@ -1048,7 +1061,7 @@ body {
 .diary-entry time {
   font-size: 0.78rem;
   font-weight: 700;
-  color: var(--color-accent-deep);
+  color: var(--color-accent-pink);
 }
 
 .diary-entry p {

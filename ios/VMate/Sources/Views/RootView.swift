@@ -85,7 +85,7 @@ struct RootView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("シロ")
                         .font(.headline)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Color.accentPink)
                     if let state = viewModel.state {
                         Text("\(state.stage) ・ 親密度 \(state.affinity)")
                             .font(.caption)
@@ -173,12 +173,12 @@ private struct HeaderControlButton: View {
             .padding(.vertical, 8)
             .padding(.horizontal, 8)
             .foregroundStyle(isActive ? Color.white : Color.white.opacity(0.92))
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(isActive ? Color.accentColor : Color.white.opacity(0.16))
-            )
+            .background {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(isActive ? AnyShapeStyle(LinearGradient.pinkLavender) : AnyShapeStyle(Color.white.opacity(0.16)))
+            }
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .strokeBorder(Color.white.opacity(isActive ? 0.0 : 0.22), lineWidth: 1)
             )
             .shadow(color: .black.opacity(0.18), radius: 4, y: 2)

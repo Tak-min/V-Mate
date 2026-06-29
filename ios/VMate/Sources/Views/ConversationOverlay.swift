@@ -54,8 +54,11 @@ struct ConversationOverlay: View {
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(.white)
                         .padding(12)
-                        .background(canSend ? Color.accentColor : Color.white.opacity(0.18), in: Circle())
-                        .shadow(color: canSend ? Color.accentColor.opacity(0.5) : .clear, radius: 6, y: 2)
+                        .background {
+                            Circle()
+                                .fill(canSend ? AnyShapeStyle(LinearGradient.pinkLavender) : AnyShapeStyle(Color.white.opacity(0.18)))
+                        }
+                        .shadow(color: canSend ? Color.accentPink.opacity(0.5) : .clear, radius: 6, y: 2)
                 }
                 .disabled(!canSend)
                 .accessibilityLabel("メッセージを送信")
@@ -89,6 +92,22 @@ struct ConversationOverlay: View {
             .font(.callout)
             .foregroundStyle(.white)
             .multilineTextAlignment(isUser ? .trailing : .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background {
+                if isUser {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(LinearGradient.pinkLavender)
+                } else {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .strokeBorder(Color.accentPink.opacity(0.25), lineWidth: 1)
+                        )
+                }
+            }
+            .shadow(color: .black.opacity(0.1), radius: 4, y: 2)
             if !isUser { Spacer(minLength: 30) }
         }
     }
@@ -138,10 +157,23 @@ private struct ChatLogList: View {
         HStack {
             if isUser { Spacer(minLength: 40) }
             Text(message.content)
+                .font(.callout)
+                .foregroundStyle(.white)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(isUser ? Color.accentColor.opacity(0.18) : Color(.secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .background {
+                    if isUser {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(LinearGradient.pinkLavender)
+                    } else {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(.ultraThinMaterial)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .strokeBorder(Color.accentPink.opacity(0.2), lineWidth: 1)
+                            )
+                    }
+                }
             if !isUser { Spacer(minLength: 40) }
         }
     }

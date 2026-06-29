@@ -1,11 +1,13 @@
 import { useRef } from 'react';
 import type { VoiceMode } from '../features/chat/useCompanion';
+import type { WhisperLoadState } from '../features/voice/recognition';
 
 interface Props {
   supported: boolean;
   mode: VoiceMode;
   partial: string;
   error: string | null;
+  whisperLoadState: WhisperLoadState;
   onToggle: () => void;
   onInterrupt: () => void;
 }
@@ -34,7 +36,7 @@ function markVoiceOnboardingSeen(): void {
   }
 }
 
-export function VoiceControl({ supported, mode, partial, error, onToggle, onInterrupt }: Props) {
+export function VoiceControl({ supported, mode, partial, error, whisperLoadState, onToggle, onInterrupt }: Props) {
   const active = mode !== 'off';
   const canInterrupt = mode === 'thinking' || mode === 'speaking';
   const showOnboardingRef = useRef<boolean | null>(null);
@@ -74,6 +76,9 @@ export function VoiceControl({ supported, mode, partial, error, onToggle, onInte
             <span className="voice-status-dot" />
             {STATUS_LABEL[mode]}
           </span>
+          {whisperLoadState === 'loading' && (
+            <p className="voice-whisper-loading">音声認識モデルを読み込み中…</p>
+          )}
           {showOnboarding && (
             <p className="voice-onboarding">
               話し終えたら少し待つと、シロが応えるよ。「とめて話す」で割り込めるよ
@@ -82,7 +87,9 @@ export function VoiceControl({ supported, mode, partial, error, onToggle, onInte
           {partial ? (
             <p className="voice-partial">{partial}</p>
           ) : (
-            mode === 'listening' && <p className="voice-hint">そのまま話しかけてね</p>
+            mode === 'listening' && whisperLoadState !== 'loading' && (
+              <p className="voice-hint">そのまま話しかけてね</p>
+            )
           )}
           {canInterrupt && (
             <button type="button" className="voice-interrupt" onClick={onInterrupt}>
