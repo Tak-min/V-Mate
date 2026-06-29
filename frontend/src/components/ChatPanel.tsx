@@ -211,7 +211,7 @@ export function ChatPanel({ messages, busy, state, daysAway, voiceMode, onInputA
           aria-label="メッセージ入力"
         />
         <button type="submit" disabled={busy || !draft.trim()} aria-label="送信">
-          ➤
+          ✈
         </button>
       </form>
     </section>

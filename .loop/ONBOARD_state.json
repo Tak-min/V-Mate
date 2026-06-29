@@ -1,8 +1,9 @@
 {
-  "iteration": 1,
+  "iteration": 6,
   "goal": "v-mate 初回オンボーディング強化 (Web + iOS)",
-  "last_action": "B1: onboarding.ts 拡張 — step 管理 + 型追加。tsc GREEN。",
-  "last_verify": "tsc --noEmit: 0 errors",
+  "last_action": "B5: verify gate green (tsc + vite + pytest + xcodebuild)。git commit 完了。",
+  "last_verify": "tsc: 0 errors, vite build: success, pytest: 63 passed, xcodebuild: BUILD SUCCEEDED",
   "no_progress_count": 0,
-  "last_verify_hash": null
+  "last_verify_hash": null,
+  "status": "DONE"
 }

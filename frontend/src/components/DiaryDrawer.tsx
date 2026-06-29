@@ -66,7 +66,7 @@ export function DiaryDrawer({ open, onClose }: Props) {
         <header className="diary-header">
           <h2>シロの日記</h2>
           <button type="button" className="icon-button" onClick={onClose} aria-label="閉じる">
-            ✕
+            ✿
           </button>
         </header>
         <p className="diary-caption">

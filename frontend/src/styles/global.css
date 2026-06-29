@@ -31,6 +31,8 @@
   --color-accent: oklch(70% 0.16 35);
   --color-accent-deep: oklch(58% 0.18 30);
   --color-user-bubble: oklch(66% 0.14 40);
+  --color-accent-lavender: oklch(72% 0.12 300);
+  --color-accent-pink: oklch(75% 0.12 350);
   --color-glass: oklch(99% 0.01 80 / 0.62);
   --color-glass-border: oklch(98% 0.02 70 / 0.85);
   --radius-panel: 26px;
@@ -38,6 +40,7 @@
   --shadow-soft: 0 18px 50px oklch(50% 0.08 40 / 0.18);
   --duration-fast: 160ms;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --font-body: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", sans-serif;
 }
 
@@ -59,7 +62,7 @@ body {
   overflow: hidden;
   background:
     radial-gradient(120% 90% at 75% 10%, oklch(97% 0.05 85 / 0.9), transparent 60%),
-    radial-gradient(90% 80% at 15% 90%, oklch(92% 0.06 330 / 0.7), transparent 55%),
+    radial-gradient(90% 80% at 15% 90%, oklch(92% 0.08 330 / 0.85), transparent 55%),
     linear-gradient(170deg, var(--color-bg-top), var(--color-bg-mid) 55%, var(--color-bg-low));
 }
 
@@ -112,7 +115,7 @@ body {
   border-radius: 50%;
   border: 4px solid oklch(90% 0.04 50 / 0.6);
   border-top-color: var(--color-accent);
-  animation: spin 0.9s linear infinite;
+  animation: spin 1.2s ease-in-out infinite;
 }
 
 @keyframes spin {
@@ -140,7 +143,8 @@ body {
 }
 
 .retry-button:hover {
-  filter: brightness(1.05);
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 8px 20px oklch(70% 0.12 30 / 0.4);
 }
 
 /* --- ステータスバー --- */
@@ -164,7 +168,7 @@ body {
   font-size: 1.7rem;
   font-weight: 700;
   letter-spacing: 0.04em;
-  color: var(--color-accent-deep);
+  color: var(--color-accent-pink);
 }
 
 .brand-sub {
@@ -189,7 +193,7 @@ body {
 .affinity-stage {
   font-weight: 700;
   font-size: 0.88rem;
-  color: var(--color-accent-deep);
+  color: var(--color-accent-pink);
 }
 
 .affinity-track {
@@ -204,7 +208,7 @@ body {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--color-accent), oklch(75% 0.16 350));
+  background: linear-gradient(90deg, var(--color-accent), var(--color-accent-lavender), var(--color-accent-pink));
   transition: width 600ms var(--ease-out);
 }
 
@@ -221,7 +225,7 @@ body {
 }
 
 .affinity-stage-up-text {
-  color: var(--color-accent-deep);
+  color: var(--color-accent-pink);
   font-weight: 600;
   opacity: 1;
 }
@@ -266,7 +270,7 @@ body {
 
 .name-form button {
   border: none;
-  border-radius: 10px;
+  border-radius: 16px;
   padding: 4px 12px;
   font-family: inherit;
   font-weight: 700;
@@ -278,7 +282,7 @@ body {
 }
 
 .name-form button:hover:not(:disabled) {
-  transform: translateY(-1px);
+  transform: translateY(-2px) scale(1.02);
   background: var(--color-accent-deep);
 }
 
@@ -306,7 +310,7 @@ body {
   background: var(--color-glass);
   border: 1px solid var(--color-glass-border);
   backdrop-filter: blur(14px);
-  color: var(--color-accent-deep);
+  color: var(--color-accent-pink);
   font-family: inherit;
   font-weight: 700;
   font-size: 0.82rem;
@@ -318,7 +322,7 @@ body {
 }
 
 .auth-pill:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px) scale(1.02);
 }
 
 .auth-email {
@@ -329,7 +333,7 @@ body {
 .auth-logout {
   border: none;
   background: transparent;
-  color: var(--color-accent-deep);
+  color: var(--color-accent-pink);
   font-family: inherit;
   font-size: 0.78rem;
   font-weight: 700;
@@ -361,14 +365,14 @@ body {
   font-family: inherit;
   font-weight: 700;
   font-size: 0.8rem;
-  border-radius: 10px;
+  border-radius: 16px;
   padding: 6px 0;
   cursor: pointer;
 }
 
 .auth-tab.active {
-  background: var(--color-accent);
-  border-color: var(--color-accent);
+  background: linear-gradient(135deg, var(--color-accent-pink), var(--color-accent-lavender));
+  border-color: var(--color-accent-pink);
   color: oklch(99% 0.01 80);
 }
 
@@ -376,7 +380,7 @@ body {
   width: 100%;
   border: 1px solid var(--color-glass-border);
   background: oklch(99% 0.01 80 / 0.7);
-  border-radius: 10px;
+  border-radius: 16px;
   color: var(--color-ink);
   font-family: inherit;
   font-size: 0.85rem;
@@ -404,22 +408,21 @@ body {
 
 .auth-submit {
   border: none;
-  border-radius: 10px;
+  border-radius: 16px;
   padding: 6px 14px;
   font-family: inherit;
   font-weight: 700;
   font-size: 0.82rem;
   color: oklch(99% 0.01 80);
-  background: var(--color-accent);
+  background: linear-gradient(135deg, var(--color-accent-pink), var(--color-accent-lavender));
   cursor: pointer;
   transition:
-    transform var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-spring),
     background var(--duration-fast) var(--ease-out);
 }
 
 .auth-submit:hover:not(:disabled) {
-  transform: translateY(-1px);
-  background: var(--color-accent-deep);
+  transform: translateY(-2px) scale(1.02);
 }
 
 .auth-submit:disabled {
@@ -460,7 +463,7 @@ body {
   display: grid;
   place-content: center;
   border: 1px solid var(--color-glass-border);
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--color-glass);
   backdrop-filter: blur(14px);
   font-size: 1.15rem;
@@ -485,8 +488,8 @@ body {
 }
 
 .icon-button.active {
-  background: var(--color-accent);
-  border-color: var(--color-accent);
+  background: linear-gradient(135deg, var(--color-accent-pink), var(--color-accent-lavender));
+  border-color: var(--color-accent-pink);
   box-shadow: var(--shadow-soft), inset 0 0 0 1px oklch(99% 0.01 80 / 0.4);
 }
 
@@ -554,7 +557,7 @@ body {
   gap: 7px;
   font-size: 0.82rem;
   font-weight: 600;
-  color: var(--color-accent-deep);
+  color: var(--color-accent-pink);
   letter-spacing: 0.02em;
 }
 
@@ -605,7 +608,7 @@ body {
 .voice-onboarding {
   margin: 0;
   padding: 8px 10px;
-  border-radius: 10px;
+  border-radius: 16px;
   background: oklch(97% 0.02 80 / 0.6);
   font-size: 0.82rem;
   line-height: 1.5;
@@ -627,7 +630,7 @@ body {
 }
 
 .voice-interrupt:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px) scale(1.02);
 }
 
 .voice-error {
@@ -645,7 +648,7 @@ body {
   border-radius: 16px;
   box-shadow: var(--shadow-soft);
   font-size: 0.84rem;
-  color: var(--color-accent-deep);
+  color: var(--color-accent-pink);
   text-align: center;
 }
 
@@ -714,7 +717,7 @@ body {
 .chat-suggestion-chip:hover {
   transform: translateY(-2px);
   background: oklch(99% 0.01 80 / 0.85);
-  border-color: var(--color-accent);
+  border-color: var(--color-accent-pink);
 }
 
 .chat-suggestion-chip:active {
@@ -758,7 +761,7 @@ body {
   background: oklch(99% 0.01 80 / 0.4);
   color: var(--color-ink-soft);
   font-family: inherit;
-  border-radius: 14px;
+  border-radius: 16px;
   padding: 10px 16px;
   cursor: pointer;
   transition:
@@ -805,13 +808,16 @@ body {
   line-height: 1.75;
   white-space: pre-wrap;
   word-break: break-word;
-  animation: bubble-in 260ms var(--ease-out);
+  animation: bubble-in 400ms var(--ease-spring);
 }
 
 @keyframes bubble-in {
   from {
     opacity: 0;
-    transform: translateY(8px) scale(0.97);
+    transform: translateY(12px) scale(0.95);
+  }
+  70% {
+    transform: translateY(-2px) scale(1.01);
   }
   to {
     opacity: 1;
@@ -821,16 +827,16 @@ body {
 
 .bubble-user {
   align-self: flex-end;
-  background: linear-gradient(135deg, var(--color-user-bubble), oklch(60% 0.15 25));
+  background: linear-gradient(135deg, var(--color-accent-pink), var(--color-accent-lavender));
   color: oklch(99% 0.01 80);
   border-bottom-right-radius: 6px;
 }
 
 .bubble-assistant {
   align-self: flex-start;
-  background: oklch(99% 0.012 85 / 0.92);
-  border: 1px solid oklch(94% 0.03 60);
-  border-left: 3px solid var(--color-accent);
+  background: oklch(97% 0.015 80 / 0.95);
+  border: 1px solid oklch(95% 0.04 60);
+  border-left: 3px solid var(--color-accent-pink);
   border-bottom-left-radius: 6px;
 }
 
@@ -914,12 +920,12 @@ body {
 .chat-input button {
   width: 46px;
   border: none;
-  border-radius: 15px;
-  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-deep));
+  border-radius: 16px;
+  background: linear-gradient(135deg, var(--color-accent-pink), var(--color-accent-lavender));
   color: oklch(99% 0.01 80);
-  font-size: 1rem;
+  font-size: 1.1rem;
   cursor: pointer;
-  transition: transform var(--duration-fast) var(--ease-out), opacity var(--duration-fast);
+  transition: transform var(--duration-fast) var(--ease-spring), opacity var(--duration-fast);
 }
 
 .chat-input button:hover:not(:disabled) {
@@ -999,15 +1005,15 @@ body {
 
 .diary-generate {
   border: none;
-  border-radius: 14px;
+  border-radius: 16px;
   padding: 12px;
   font-family: inherit;
   font-weight: 700;
   font-size: 0.92rem;
   color: oklch(99% 0.01 80);
-  background: linear-gradient(135deg, var(--color-accent), oklch(72% 0.15 350));
+  background: linear-gradient(135deg, var(--color-accent-pink), var(--color-accent-lavender));
   cursor: pointer;
-  transition: transform var(--duration-fast) var(--ease-out);
+  transition: transform var(--duration-fast) var(--ease-spring);
 }
 
 .diary-generate:hover:not(:disabled) {
@@ -1081,11 +1087,12 @@ body {
   align-items: center;
   gap: 20px;
   text-align: center;
-  animation: onboarding-card-in 380ms var(--ease-out);
+  animation: onboarding-card-in 500ms var(--ease-spring);
 }
 
 @keyframes onboarding-card-in {
-  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+  from { opacity: 0; transform: translateY(20px) scale(0.95); }
+  70% { transform: translateY(-3px) scale(1.01); }
   to { opacity: 1; transform: none; }
 }
 
@@ -1103,14 +1110,14 @@ body {
 }
 
 .onboarding-dot.active {
-  background: var(--color-accent);
+  background: var(--color-accent-pink);
   transform: scale(1.2);
 }
 
 .onboarding-title {
   font-size: 1.3rem;
   font-weight: 700;
-  color: var(--color-accent-deep);
+  color: var(--color-accent-pink);
 }
 
 .onboarding-subtitle {
@@ -1123,7 +1130,7 @@ body {
   width: 100%;
   border: 1px solid var(--color-glass-border);
   background: oklch(99% 0.01 80 / 0.7);
-  border-radius: 14px;
+  border-radius: 16px;
   padding: 11px 16px;
   font-family: inherit;
   font-size: 0.94rem;
@@ -1150,7 +1157,7 @@ body {
   padding: 10px 14px;
   background: oklch(99% 0.01 80 / 0.5);
   border: 1px solid oklch(94% 0.03 60 / 0.6);
-  border-radius: 14px;
+  border-radius: 16px;
   font-size: 0.88rem;
   color: var(--color-ink);
   text-align: left;
@@ -1165,19 +1172,19 @@ body {
 .onboarding-primary {
   flex: 1;
   border: none;
-  border-radius: 14px;
+  border-radius: 16px;
   padding: 12px;
   font-family: inherit;
   font-weight: 700;
   font-size: 0.92rem;
   color: oklch(99% 0.01 80);
-  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-deep));
+  background: linear-gradient(135deg, var(--color-accent-pink), var(--color-accent-lavender));
   cursor: pointer;
   transition: transform var(--duration-fast) var(--ease-out);
 }
 
 .onboarding-primary:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px) scale(1.02);
 }
 
 .onboarding-skip {
@@ -1225,7 +1232,7 @@ body {
     gap: 6px;
     max-width: 100%;
     padding: 7px 8px;
-    border-radius: 14px;
+    border-radius: 16px;
   }
 
   .name-form input {
