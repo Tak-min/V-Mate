@@ -1,0 +1,8 @@
+{
+  "iteration": 1,
+  "goal": "v-mate 初回オンボーディング強化 (Web + iOS)",
+  "last_action": "B1: onboarding.ts 拡張 — step 管理 + 型追加。tsc GREEN。",
+  "last_verify": "tsc --noEmit: 0 errors",
+  "no_progress_count": 0,
+  "last_verify_hash": null
+}

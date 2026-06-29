@@ -29,6 +29,15 @@ final class CompanionViewModel: ObservableObject {
     @Published var voiceError: String?
     let voiceSupported = SFSpeechRecognizer.authorizationStatus() != .restricted
 
+    /// 初回起動判定(UserDefaults)。Web版の localStorage aikata_onboarded に相当。
+    var isFirstRun: Bool {
+        !UserDefaults.standard.bool(forKey: "vmate_onboarded")
+    }
+
+    func markOnboarded() {
+        UserDefaults.standard.set(true, forKey: "vmate_onboarded")
+    }
+
     let speech = SpeechQueue()
     private let recognizer = SpeechRecognizer()
     private var streamTask: Task<Void, Never>?
@@ -71,7 +80,9 @@ final class CompanionViewModel: ObservableObject {
         state = await stateTask
         if let history = await historyTask { messages = history }
 
-        if !greeted {
+        // 初回ユーザーは OnboardingView 経由で fireGreeting() が呼ばれる。
+        // 2回目以降のユーザーのみここで挨拶。
+        if !isFirstRun && !greeted {
             greeted = true
             await requestNudge(reason: "greeting")
             resetIdleTimer()
@@ -211,6 +222,16 @@ final class CompanionViewModel: ObservableObject {
         }
         resumeWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + resumeListeningDelay, execute: work)
+    }
+
+    /// オンボーディング完了後に呼び出される挨拶トリガー。
+    func fireGreeting() {
+        guard !greeted else { return }
+        greeted = true
+        Task {
+            await requestNudge(reason: "greeting")
+            resetIdleTimer()
+        }
     }
 
     func saveName(_ name: String) {

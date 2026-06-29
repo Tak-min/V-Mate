@@ -1052,6 +1052,145 @@ body {
   white-space: pre-wrap;
 }
 
+/* --- オンボーディングオーバーレイ --- */
+.onboarding-backdrop {
+  position: fixed;
+  inset: 0;
+  background: oklch(20% 0.02 50 / 0.25);
+  display: grid;
+  place-content: center;
+  z-index: 20;
+  animation: onboarding-fade-in 320ms var(--ease-out);
+}
+
+@keyframes onboarding-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.onboarding-card {
+  background: var(--color-glass);
+  border: 1px solid var(--color-glass-border);
+  backdrop-filter: blur(24px);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-soft);
+  padding: 32px 28px;
+  width: min(380px, calc(100vw - 36px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  text-align: center;
+  animation: onboarding-card-in 380ms var(--ease-out);
+}
+
+@keyframes onboarding-card-in {
+  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+
+.onboarding-dots {
+  display: flex;
+  gap: 8px;
+}
+
+.onboarding-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: oklch(88% 0.03 50);
+  transition: background 200ms var(--ease-out), transform 200ms var(--ease-out);
+}
+
+.onboarding-dot.active {
+  background: var(--color-accent);
+  transform: scale(1.2);
+}
+
+.onboarding-title {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--color-accent-deep);
+}
+
+.onboarding-subtitle {
+  font-size: 0.92rem;
+  color: var(--color-ink-soft);
+  line-height: 1.7;
+}
+
+.onboarding-input {
+  width: 100%;
+  border: 1px solid var(--color-glass-border);
+  background: oklch(99% 0.01 80 / 0.7);
+  border-radius: 14px;
+  padding: 11px 16px;
+  font-family: inherit;
+  font-size: 0.94rem;
+  color: var(--color-ink);
+  outline: none;
+  text-align: center;
+}
+
+.onboarding-input:focus {
+  border-color: var(--color-accent);
+}
+
+.onboarding-hints {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.onboarding-hint-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: oklch(99% 0.01 80 / 0.5);
+  border: 1px solid oklch(94% 0.03 60 / 0.6);
+  border-radius: 14px;
+  font-size: 0.88rem;
+  color: var(--color-ink);
+  text-align: left;
+}
+
+.onboarding-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+.onboarding-primary {
+  flex: 1;
+  border: none;
+  border-radius: 14px;
+  padding: 12px;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: oklch(99% 0.01 80);
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-deep));
+  cursor: pointer;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.onboarding-primary:hover {
+  transform: translateY(-1px);
+}
+
+.onboarding-skip {
+  border: none;
+  background: transparent;
+  color: var(--color-ink-soft);
+  font-family: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+  text-decoration: underline;
+  align-self: center;
+}
+
 /* --- レスポンシブ --- */
 @media (max-width: 820px) {
   .status-bar {
@@ -1141,6 +1280,15 @@ body {
   .stage::after {
     transform: translateX(-50%);
   }
+
+  .onboarding-card {
+    padding: 24px 20px;
+    gap: 16px;
+  }
+
+  .onboarding-title {
+    font-size: 1.15rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1162,5 +1310,10 @@ body {
   .chat-input button:hover,
   .chat-input button:active {
     transform: none;
+  }
+
+  .onboarding-backdrop,
+  .onboarding-card {
+    animation: none;
   }
 }

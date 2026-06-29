@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useCompanion } from './features/chat/useCompanion';
 import { AuthBar } from './components/AuthBar';
 import { ChatPanel } from './components/ChatPanel';
 import { DiaryDrawer } from './components/DiaryDrawer';
+import { OnboardingOverlay } from './components/OnboardingOverlay';
 import { StatusBar } from './components/StatusBar';
 import { VoiceControl } from './components/VoiceControl';
+import { isFirstVisit, isOnboardingComplete } from './features/chat/onboarding';
 
 export default function App() {
   const {
@@ -27,8 +29,18 @@ export default function App() {
     toggleVoice,
     toggleVoiceMode,
     interrupt,
+    fireGreeting,
   } = useCompanion();
   const [diaryOpen, setDiaryOpen] = useState(false);
+  // Capture firstVisit at mount time BEFORE onboarding can mark it via completeOnboarding().
+  const [wasFirstVisit] = useState(() => isFirstVisit());
+  const [onboardingDone, setOnboardingDone] = useState(isOnboardingComplete());
+
+  const handleOnboardingComplete = useCallback((name?: string) => {
+    if (name) saveName(name);
+    setOnboardingDone(true);
+    fireGreeting(wasFirstVisit);
+  }, [saveName, fireGreeting, wasFirstVisit]);
 
   return (
     <div className="app">
@@ -51,6 +63,7 @@ export default function App() {
         )}
       </div>
 
+      {!onboardingDone && <OnboardingOverlay onComplete={handleOnboardingComplete} />}
       <AuthBar />
       <StatusBar state={state} onSaveName={saveName} />
 

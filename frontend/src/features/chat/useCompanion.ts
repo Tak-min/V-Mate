@@ -9,7 +9,7 @@ import {
   setProfile,
   streamChat,
 } from './api';
-import { isFirstVisit, markOnboarded } from './onboarding';
+import { markOnboarded, isOnboardingComplete } from './onboarding';
 import type {
   ChatMessage,
   CompanionState,
@@ -382,12 +382,10 @@ export function useCompanion() {
     if (state) viewerRef.current?.setAffinity(state.affinity);
   }, [state]);
 
-  // モデル読み込み完了後にシロから挨拶(Replika 的プロアクティブ性)。
-  // 初見(この端末で未オンボーディング)なら自己紹介+「話しかけてね」+声の案内に寄せる。
-  useEffect(() => {
-    if (!ready || greeted.current) return;
+  // オンボーディング完了後に呼び出せる挨拶トリガー。
+  const fireGreeting = useCallback((firstVisit = false) => {
+    if (greeted.current) return;
     greeted.current = true;
-    const firstVisit = isFirstVisit();
     requestNudge('greeting', { firstVisit })
       .then(({ text, emotion, days_away }) => {
         if (text) pushAssistant(text, emotion);
@@ -396,7 +394,15 @@ export function useCompanion() {
       })
       .catch(() => {})
       .finally(() => markOnboarded());
-  }, [ready, pushAssistant, resetIdleTimer]);
+  }, [pushAssistant, resetIdleTimer]);
+
+  // モデル読み込み完了後にシロから挨拶(Replika 的プロアクティブ性)。
+  // オンボーディング未完了の場合は fireGreeting() で後から発火させる。
+  useEffect(() => {
+    if (!ready || greeted.current) return;
+    if (!isOnboardingComplete()) return;
+    fireGreeting(false);
+  }, [ready, fireGreeting]);
 
   // タイマー・認識エンジンの後始末
   useEffect(
@@ -432,5 +438,6 @@ export function useCompanion() {
     toggleVoice,
     toggleVoiceMode,
     interrupt,
+    fireGreeting,
   };
 }

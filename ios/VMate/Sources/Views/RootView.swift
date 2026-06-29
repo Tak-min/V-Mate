@@ -6,6 +6,7 @@ struct RootView: View {
     @State private var nameDraft = ""
     /// 3D(WKWebView+three-vrm)読み込みに失敗したら v1 のシンプルアバターへ自動フォールバックする。
     @State private var vrmFailed = false
+    @State private var showOnboarding = false
 
     var body: some View {
         ZStack {
@@ -28,8 +29,24 @@ struct RootView: View {
                 }
             }
         }
-        .task { await viewModel.bootstrap() }
+        .task {
+            await viewModel.bootstrap()
+            if viewModel.isFirstRun {
+                showOnboarding = true
+            }
+        }
         .sheet(isPresented: $diaryOpen) { DiaryView() }
+        .fullScreenCover(isPresented: $showOnboarding) {
+            OnboardingView { name in
+                if let name = name {
+                    viewModel.saveName(name)
+                }
+                viewModel.markOnboarded()
+                viewModel.fireGreeting()
+                showOnboarding = false
+            }
+            .background(TransparentBackground())
+        }
         .preferredColorScheme(.dark)
     }
 
@@ -169,6 +186,18 @@ private struct HeaderControlButton: View {
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel)
     }
+}
+
+/// fullScreenCover のデフォルト背景色(白/黒)を透明にするヘルパー。
+private struct TransparentBackground: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        DispatchQueue.main.async {
+            view.superview?.superview?.backgroundColor = .clear
+        }
+        return view
+    }
+    func updateUIView(_ uiView: UIView, context: Context) {}
 }
 
 #Preview {
