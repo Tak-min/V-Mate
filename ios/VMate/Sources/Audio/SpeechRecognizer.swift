@@ -3,21 +3,11 @@ import Speech
 import os
 
 /// マイク音声パイプラインの診断ログ。実機での切り分け用。
-/// Console.app や `log` コマンドで subsystem=com.takmin.vmate category=mic を絞り込む。
-/// レンダースレッドからの呼び出しはスロットル(handleTap内)してRT安全性を保つ。
-///
-/// H10: レンダースレッド周辺で高頻度に出す RMS/フレーム長等は Console.app や
-/// sysdiagnose で他プロセスから読める privacy 側チャネルになる。release ビルドでは
-/// 機密性の高い info/debug を一切出さないため、各 micLog.info/.debug 呼び出しを
-/// `#if DEBUG` で個別 gate する。micLog.error は運用上必要(RMSを含まず)なので残す。
 let micLog = Logger(subsystem: "com.takmin.vmate", category: "mic")
 
 /// 発話確定前の直近バッファを保持するリングバッファ。VADのonset確認(onsetFrames連続)に
 /// かかる間に届くバッファは「まだ発話と確定していない」ため認識リクエストへ送られないが、
 /// 確定した瞬間にこのリングバッファの内容を先頭に流し込むことで、発話冒頭の取りこぼしを防ぐ。
-/// AVAudioEngineのtapはコールバックごとに新しいAVAudioPCMBufferを渡すため(既存コードの
-/// `request.append(buffer)` も同様にtapスコープ外で保持する前提)、ここでも参照をそのまま
-/// 保持してよく、ディープコピーは不要。
 struct PreRollBuffer {
     private var buffers: [AVAudioPCMBuffer] = []
     private let capacity: Int
@@ -42,8 +32,6 @@ struct PreRollBuffer {
 }
 
 /// 単純なBoolフラグをオーディオスレッドとMainActorの双方から安全に読み書きするためのロック付きラッパー。
-/// このフラグ単体の同期だけが目的で、actorにすると同期APIを公開できずtapの同期スコープから
-/// 呼べなくなるため、軽量な`OSAllocatedUnfairLock`を使う。
 final class LockedFlag: @unchecked Sendable {
     private let lock: OSAllocatedUnfairLock<Bool>
 
@@ -57,17 +45,14 @@ final class LockedFlag: @unchecked Sendable {
     }
 }
 
-/// AVAudioEngineのtapコールバック(オーディオレンダースレッド)から呼ばれる音声キャプチャパイプライン。
-/// VADで発話を検出したら `SFSpeechAudioBufferRecognitionRequest` + `recognitionTask` の生成を
-/// `setupQueue`(非同期、`.userInitiated`)に委譲し、renderスレッドをObjC allocから解放する。
-/// 生成完了までに届くバッファは `pendingCapture` に貯め、request publish後の次フレームで一括flush。
-/// これにより旧実装(renderスレッド同期生成)の問題を解消しつつ、「後続バッファが捨てられるrace」も
-/// 再発しない。
-///
-/// スレッド分担:
-/// - renderスレッド: vad/preRoll/pendingCapture/awaitingRequest を単独所有。
-/// - メインスレッド(DispatchQueue.main.async): req+task を生成し armedRequest/liveTask に publish するだけ。append はしない。
-/// - MainActor: arm()/disarm() で LockedFlag に書き込む。
+/// AVAudioEngineのtapコールバック(オーディオレンダースレッド、直列実行が保証される)から
+/// 同期的に呼ばれる音声キャプチャパイプライン。VADの発話確定と同じ呼び出しの中で
+/// `SFSpeechAudioBufferRecognitionRequest` の生成・`recognitionTask`の起動まで完了させることで、
+/// 「確定後にMainActorへの非同期Task hopを待つ間に後続バッファがrequest=nilのまま捨てられる」
+/// というレースを構造的に無くしている。
+/// vad/preRoll/request/task はこのクラスのインスタンスメソッドからのみ、かつtapスレッドからのみ
+/// 触るため、複数スレッド間でのデータ競合は発生しない。`useOnDeviceRecognition`だけは
+/// MainActor側(認識結果ハンドリング)からも書かれるため`LockedFlag`で保護する。
 final class AudioCapturePipeline {
     struct Callbacks {
         /// 発話開始の通知。MainActorへのホップ・finalText等のリセットは呼び出し側(SpeechRecognizer)が行う。
@@ -82,26 +67,16 @@ final class AudioCapturePipeline {
     /// 既定はオンデバイス認識(true)。iOS 17以降のiPhoneではja-JPモデルが自動DL済みのため
     /// ネットワーク往復なしで認識が完結し低遅延になる。モデル未DLの端末で失敗した場合は
     /// handleRecognitionResultのフォールバックがvalueをfalseに切り替え、次回以降サーバーに移行。
-    /// (サーバー認識に固定すると往復遅延が常に発生する — 2026-06-27実機報告で確認)
     let useOnDeviceRecognition = LockedFlag(true)
-    /// ターン単位の聞き取りON/OFF。MainActor(arm/disarm)が書き、tapスレッドが読む橋渡し。
+    /// ターン単位の聞き取りON/OFF。エンジン/tap自体は会話モード中ずっと生かしたまま、
+    /// このフラグだけでターンごとの「聞き取り中か」を切り替える。
     let enabled = LockedFlag(false)
     /// MainActorからの次ターン再開要求。tapスレッドが消費するタイミングで vad/preRoll をリセット。
     private let pendingArm = LockedFlag(false)
-    /// 非同期生成されたrequest。メインスレッド(DispatchQueue.main.async)が書き、tapスレッドが読む橋渡し。
-    private let armedRequest = OSAllocatedUnfairLock<SFSpeechAudioBufferRecognitionRequest?>(initialState: nil)
-    /// 認識タスク。メインスレッドが生成し、endCapture/resetでcancelする。
-    private let liveTask = OSAllocatedUnfairLock<SFSpeechRecognitionTask?>(initialState: nil)
-    /// ターン番号。endCapture/resetで進め、メインスレッド上の遅延生成が古いターンへの適用を破棄できる。
-    private let generation = OSAllocatedUnfairLock<Int>(initialState: 0)
-    /// request生成完了前に届いたバッファ。renderスレッド単独で読み書き。
-    private var pendingCapture: [AVAudioPCMBuffer] = []
-    /// request非同期生成を待機中かどうか。renderスレッド単独。
-    private var awaitingRequest = false
-    /// 診断ログのスロットル用。renderスレッド単独。
-    private var tapFrameCount = 0
 
     private var preRoll: PreRollBuffer
+    private var request: SFSpeechAudioBufferRecognitionRequest?
+    private var task: SFSpeechRecognitionTask?
 
     init(recognizer: SFSpeechRecognizer, vad: VoiceActivityDetector, preRollCapacityFrames: Int, callbacks: Callbacks) {
         self.recognizer = recognizer
@@ -123,12 +98,12 @@ final class AudioCapturePipeline {
         enabled.value = false
     }
 
-    /// tapスレッドのゲート判定を純関数として切り出したもの。AVAudioEngine/SFSpeechRecognizer
-    /// に依存せずユニットテストできるようにするためのseam。
+    /// tapスレッドのゲート判定を純関数として切り出したもの。
     static func gateDecision(enabled: Bool, pendingArm: Bool) -> (doReset: Bool, process: Bool) {
         (doReset: pendingArm, process: enabled)
     }
 
+    /// tapスレッドから直接(同期)呼ばれる。
     func handleTap(buffer: AVAudioPCMBuffer) {
         let gate = Self.gateDecision(enabled: enabled.value, pendingArm: pendingArm.value)
         if gate.doReset {
@@ -144,24 +119,24 @@ final class AudioCapturePipeline {
         let event = vad.process(rms: rms, nowMs: nowMs)
 
         // RMSは~16fps(64ms/buffer)で来るため、~0.5s毎(8バッファ毎)にスロットルしてログ。
-        // 発話イベント(speechStarted等)は希少なので毎回ログする。
-        tapFrameCount &+= 1
-        if tapFrameCount % 8 == 0 {
+        if event == .silence && vad.capturing == false {
+            // 沈黙中はログを間引く
+        } else {
             #if DEBUG
-            micLog.debug("tap rms=\(rms, format: .fixed(precision: 5)) thr=\(self.vad.debugLastThreshold, format: .fixed(precision: 5)) floor=\(self.vad.noiseFloor, format: .fixed(precision: 5)) cap=\(self.vad.capturing) frames=\(buffer.frameLength)")
+            micLog.debug("tap rms=\(rms, format: .fixed(precision: 5)) thr=\(self.vad.debugLastThreshold, format: .fixed(precision: 5)) floor=\(self.vad.noiseFloor, format: .fixed(precision: 5))")
             #endif
         }
 
         switch event {
         case .speechStarted:
             #if DEBUG
-            micLog.info("VAD speechStarted rms=\(rms, format: .fixed(precision: 5)) thr=\(self.vad.debugLastThreshold, format: .fixed(precision: 5))")
+            micLog.info("VAD speechStarted rms=\(rms, format: .fixed(precision: 5))")
             #endif
-            // preRollをpendingCaptureに引き継ぎ、非同期生成を開始。生成完了まで
-            // このバッファ含め後続バッファはpendingCaptureに貯める(捨てない)。
-            pendingCapture = preRoll.drainAndClear()
             beginCapture()
-            feed(buffer)
+            for preRollBuffer in preRoll.drainAndClear() {
+                request?.append(preRollBuffer)
+            }
+            request?.append(buffer)
         case .speechEnded, .maxDurationReached:
             #if DEBUG
             micLog.info("VAD \(String(describing: event)) — endCapture")
@@ -169,7 +144,7 @@ final class AudioCapturePipeline {
             endCapture()
         case .silence:
             if vad.capturing {
-                feed(buffer)
+                request?.append(buffer)
             } else {
                 preRoll.push(buffer)
             }
@@ -181,98 +156,42 @@ final class AudioCapturePipeline {
         enabled.value = false
         useOnDeviceRecognition.value = true   // セッション開始ごとにオンデバイスを再試行
         pendingArm.value = false
-        generation.withLock { $0 += 1 }
-        awaitingRequest = false
-        pendingCapture.removeAll()
         vad.reset()
         _ = preRoll.drainAndClear()
-        // ロック外でcancel()/cancel対象の外部APIをロック保持中に呼わない)
-        let oldTask = liveTask.withLock { t -> SFSpeechRecognitionTask? in defer { t = nil }; return t }
-        oldTask?.cancel()
-        armedRequest.withLock { $0 = nil }
+        task?.cancel()
+        task = nil
+        request = nil
     }
 
-    /// renderスレッドから呼ぶ。ObjC allocをDispatchQueue.mainに退避してrenderスレッドを解放する。
-    /// SFSpeechRecognizerはAppleドキュメント上メインスレッドでの使用が必要なため、
-    /// DispatchQueue.main.asyncで生成する(.userInitiatedキューはドキュメント違反)。
-    /// onSpeechOnset() は同期で即発火(バージインの応答性を維持)。
+    /// 同期的に呼ばれる。renderスレッド上でrequestとtaskを即座に生成する。
+    /// 非同期DispatchQueue.main.asyncを使わないことで、バッファの遅延やレースを防ぐ。
     private func beginCapture() {
-        let gen = generation.withLock { $0 += 1; return $0 }
-        awaitingRequest = true
-        armedRequest.withLock { $0 = nil }
+        let req = SFSpeechAudioBufferRecognitionRequest()
+        req.shouldReportPartialResults = true
+        let usedOnDevice = recognizer.supportsOnDeviceRecognition && useOnDeviceRecognition.value
+        req.requiresOnDeviceRecognition = usedOnDevice
+        request = req
         callbacks.onSpeechOnset()
 
-        let usedOnDevice = recognizer.supportsOnDeviceRecognition && useOnDeviceRecognition.value
         #if DEBUG
-        micLog.info("beginCapture gen=\(gen) onDevice=\(usedOnDevice) (dispatching request creation to main)")
+        micLog.info("beginCapture onDevice=\(usedOnDevice)")
         #endif
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            let req = SFSpeechAudioBufferRecognitionRequest()
-            req.shouldReportPartialResults = true
-            req.requiresOnDeviceRecognition = usedOnDevice
-            let task = self.recognizer.recognitionTask(with: req) { [weak self] result, error in
-                self?.callbacks.onRecognitionEvent(result, error, usedOnDevice)
-            }
-            // endCapture/resetでgenが進んでいればこの発話ターンはもう終わっている
-            guard self.generation.withLock({ $0 }) == gen else {
-                #if DEBUG
-                micLog.info("beginCapture gen=\(gen) stale (turn ended before publish) — task cancelled")
-                #endif
-                task.cancel()
-                return
-            }
-            self.liveTask.withLock { $0 = task }
-            self.armedRequest.withLock { $0 = req }   // requestをpublish(tapスレッドが読み始める)
-            #if DEBUG
-            micLog.info("beginCapture gen=\(gen) request PUBLISHED")
-            #endif
-        }
-    }
 
-    /// バッファをrequestに送る。request未生成ならpendingCaptureに貯め、
-    /// 生成完了後の初回呼び出しで一括flush→以後直接append。renderスレッド単独で呼ぶ。
-    private func feed(_ buffer: AVAudioPCMBuffer) {
-        if let req = armedRequest.withLock({ $0 }) {
-            if awaitingRequest {
-                let flushed = pendingCapture.count
-                for b in pendingCapture { req.append(b) }
-                pendingCapture.removeAll()
-                awaitingRequest = false
-                #if DEBUG
-                micLog.info("feed: request ready — flushed \(flushed) pending buffers, now appending live")
-                #endif
-            }
-            req.append(buffer)
-        } else {
-            pendingCapture.append(buffer)
-            // 滞留が異常に伸びたら(=publishが来ていない)警告。32バッファ≈2秒。
-            if pendingCapture.count == 32 {
-                micLog.error("feed: pendingCapture reached 32 buffers (~2s) without request publish — main queue stalled?")
-            }
+        task = recognizer.recognitionTask(with: req) { [weak self] result, error in
+            self?.callbacks.onRecognitionEvent(result, error, usedOnDevice)
         }
     }
 
     private func endCapture() {
-        generation.withLock { $0 += 1 }
-        awaitingRequest = false
-        pendingCapture.removeAll()
-        // ロック外でendAudio()(ロック保持中に外部APIを呼ばない=os_unfair_lock再入禁止)
-        let oldReq = armedRequest.withLock { req -> SFSpeechAudioBufferRecognitionRequest? in
-            defer { req = nil }
-            return req
-        }
-        oldReq?.endAudio()
-        liveTask.withLock { $0 = nil }   // task は endAudio後に自然に完了させる(cancelしない)
+        request?.endAudio()
+        request = nil
+        task = nil
     }
 }
 
 /// Web版 frontend/src/features/voice/recognition.ts の SpeechRecognizer クラスのSwift移植。
 /// AVAudioEngine の入力タップで VoiceActivityDetector を回し、発話区間だけ
 /// SFSpeechRecognizer に音声を渡す。沈黙時は認識を起動しない(マイクの監視だけ)。
-/// 実際のタップ処理・リクエスト生成は`AudioCapturePipeline`(tapスレッド専有)に委譲し、
-/// このクラスは公開API・コールバック保持・認識結果の解釈(finalText組み立て、
-/// オンデバイスフォールバック判定)というMainActor上のロジックだけを担う薄いファサード。
 @MainActor
 final class SpeechRecognizer {
     enum ErrorKind {
@@ -285,15 +204,13 @@ final class SpeechRecognizer {
     struct Callbacks {
         var onPartial: (String) -> Void
         var onUtterance: (String) -> Void
-        /// 発話検出の瞬間(バージイン用フック。応答中/発話中にこれが来たら中断する)。
+        /// 発話検出の瞬間(バージイン用フック)。
         var onSpeechOnset: () -> Void
         var onError: (ErrorKind, String) -> Void
     }
 
     private static let minUtteranceLength = 2
-    /// VADのonset確認に必要なフレーム数 + 余裕フレーム。確定までに届いた分に加え、
-    /// 「しきい値直下でじわっと立ち上がる遠距離・小声の発話冒頭」も遡って認識へ送れるよう、
-    /// pre-rollを厚めに確保する(2+6=8フレーム≒512ms@16kHz)。冒頭の語頭子音欠けを防ぐ。
+    /// VADのonset確認に必要なフレーム数 + 余裕フレーム。pre-rollを厚めに確保する(2+6=8フレーム≒512ms@16kHz)。
     private static let preRollMargin = 6
 
     private let recognizer: SFSpeechRecognizer?
@@ -317,7 +234,7 @@ final class SpeechRecognizer {
 
     var isActive: Bool { running }
 
-    /// マイクと音声認識の利用許可を求める。両方許可されないと会話モードは使えない。
+    /// マイクと音声認識の利用許可を求める。
     func requestAuthorization() async -> Bool {
         let speechStatus = await withCheckedContinuation { (continuation: CheckedContinuation<SFSpeechRecognizerAuthorizationStatus, Never>) in
             SFSpeechRecognizer.requestAuthorization { status in
@@ -335,9 +252,7 @@ final class SpeechRecognizer {
     }
 
     /// 会話モードに入る時に1回だけ呼ぶ。マイクとAVAudioEngineを開いたままにし、AECを
-    /// 会話を通して収束させる(以前は発話ターンごとにエンジンを再起動しており、ターン
-    /// ごとにAEC再収束が走ることで発話冒頭の1〜2秒が聞き取れない不具合の原因になっていた)。
-    /// 実際の「聞き取り中/休止中」の切り替えは `resumeTurn()`/`pauseTurn()` で行う。
+    /// 会話を通して収束させる。
     func beginSession(callbacks: Callbacks) {
         guard !running else { return }
         guard let recognizer, recognizer.isAvailable else {
@@ -368,18 +283,16 @@ final class SpeechRecognizer {
         pipeline = newPipeline
 
         // Apple推奨の正しい順序: installTap → prepare() → start()
-        // prepare()後にグラフを変更(installTap)すると内部アサートでクラッシュする。
-        // outputFormat は configureForConversation()でAVAudioSessionが設定済みのため、
-        // prepare前でも .voiceChat の 16kHz フォーマットを正確に返す。
         let input = audioEngine.inputNode
         let format = input.outputFormat(forBus: 0)
         #if DEBUG
-        micLog.info("beginSession tapFormat sr=\(format.sampleRate) ch=\(format.channelCount) common=\(format.commonFormat.rawValue) interleaved=\(format.isInterleaved) | onDeviceSupported=\(recognizer.supportsOnDeviceRecognition) available=\(recognizer.isAvailable)")
+        micLog.info("beginSession tapFormat sr=\(format.sampleRate) ch=\(format.channelCount) | onDeviceSupported=\(recognizer.supportsOnDeviceRecognition) available=\(recognizer.isAvailable)")
         #endif
         input.removeTap(onBus: 0)
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
             newPipeline.handleTap(buffer: buffer)
         }
+
         do {
             audioEngine.prepare()
             try audioEngine.start()
@@ -398,8 +311,6 @@ final class SpeechRecognizer {
     /// 会話モード終了時に1回だけ呼ぶ。マイクを解放する(エンジン停止・tap除去)。
     func endSession() {
         running = false
-        // removeTapは同期的にtapコールバックの完了を保証するため、これ以降は
-        // pipelineをMainActorから安全に触れる(tapスレッドとの並行アクセスが無くなる)。
         audioEngine.inputNode.removeTap(onBus: 0)
         if audioEngine.isRunning { audioEngine.stop() }
         pipeline?.reset()
@@ -408,7 +319,7 @@ final class SpeechRecognizer {
     }
 
     /// 1ターン分の聞き取りを再開する。エンジン/tapには触らず、`AudioCapturePipeline`の
-    /// ゲートフラグを立てるだけ(実際のVAD/preRollリセットはtapスレッド側で行われる)。
+    /// ゲートフラグを立てるだけ。
     func resumeTurn() {
         guard running else { return }
         finalText = ""
@@ -421,7 +332,7 @@ final class SpeechRecognizer {
         pipeline?.disarm()
     }
 
-    /// AudioCapturePipelineからのonSpeechOnset通知(MainActor上)。発話単位の状態をリセットしてからUIへ伝える。
+    /// AudioCapturePipelineからのonSpeechOnset通知(MainActor上)。
     private func handleSpeechOnset() {
         finalText = ""
         receivedAnyResult = false
