@@ -5,23 +5,11 @@ Web ブラウザと iOS の両方から利用でき、音声会話・永続記�
 
 ## スクリーンショット
 
-### Web メイン画面
-![Web メイン画面](screenshots/web-01-main.png)
-
-### オンボーディング
-![オンボーディング](screenshots/web-02-onboarding.png)
-
-### 名前入力
-![名前入力](screenshots/web-03-name.png)
+### トップ画面
+![トップ画面](screenshots/01-landing.png)
 
 ### チャット画面
-![チャット画面](screenshots/web-04-chat.png)
-
-### 会話デモ
-![会話デモ](screenshots/web-05-conversation.png)
-
-### iOS シミュレータ
-![iOS シミュレータ](screenshots/ios-simulator-full.png)
+![チャット画面](screenshots/02-chat.png)
 
 ## 機能
 
