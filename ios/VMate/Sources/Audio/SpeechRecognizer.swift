@@ -46,13 +46,15 @@ final class LockedFlag: @unchecked Sendable {
 }
 
 /// AVAudioEngineのtapコールバック(オーディオレンダースレッド、直列実行が保証される)から
-/// 同期的に呼ばれる音声キャプチャパイプライン。VADの発話確定と同じ呼び出しの中で
-/// `SFSpeechAudioBufferRecognitionRequest` の生成・`recognitionTask`の起動まで完了させることで、
-/// 「確定後にMainActorへの非同期Task hopを待つ間に後続バッファがrequest=nilのまま捨てられる」
-/// というレースを構造的に無くしている。
-/// vad/preRoll/request/task はこのクラスのインスタンスメソッドからのみ、かつtapスレッドからのみ
-/// 触るため、複数スレッド間でのデータ競合は発生しない。`useOnDeviceRecognition`だけは
-/// MainActor側(認識結果ハンドリング)からも書かれるため`LockedFlag`で保護する。
+/// 同期的に呼ばれる音声キャプチャパイプライン。
+///
+/// ターン切り替え時は cancelCapture() でタスクを明示キャンセルする。
+/// キャンセルしないと前ターンのタスクが生き続け、resumeTurn() によるリセット後に
+/// エラーコールバックが届いて useOnDeviceRecognition が誤って false に設定される
+/// (Bug: 常にサーバー認識にフォールバックする問題の真因)。
+///
+/// vad/preRoll/request/task はtapスレッドからのみ触る。`useOnDeviceRecognition`だけは
+/// MainActor側からも書かれるため `LockedFlag` で保護する。
 final class AudioCapturePipeline {
     struct Callbacks {
         /// 発話開始の通知。MainActorへのホップ・finalText等のリセットは呼び出し側(SpeechRecognizer)が行う。
@@ -110,7 +112,9 @@ final class AudioCapturePipeline {
             pendingArm.value = false
             vad.reset()
             _ = preRoll.drainAndClear()
-            endCapture()
+            // 新ターン開始のクリーンアップ: 前ターンのタスクを明示キャンセルする。
+            // task = nil だけでは参照を手放すだけでコールバックは届き続ける。
+            cancelCapture()
         }
         guard gate.process else { return }
 
@@ -118,10 +122,8 @@ final class AudioCapturePipeline {
         let nowMs = CACurrentMediaTime() * 1000
         let event = vad.process(rms: rms, nowMs: nowMs)
 
-        // RMSは~16fps(64ms/buffer)で来るため、~0.5s毎(8バッファ毎)にスロットルしてログ。
-        if event == .silence && vad.capturing == false {
-            // 沈黙中はログを間引く
-        } else {
+        // 沈黙中はログを間引く
+        if event != .silence || vad.capturing {
             #if DEBUG
             micLog.debug("tap rms=\(rms, format: .fixed(precision: 5)) thr=\(self.vad.debugLastThreshold, format: .fixed(precision: 5)) floor=\(self.vad.noiseFloor, format: .fixed(precision: 5))")
             #endif
@@ -139,9 +141,11 @@ final class AudioCapturePipeline {
             request?.append(buffer)
         case .speechEnded, .maxDurationReached:
             #if DEBUG
-            micLog.info("VAD \(String(describing: event)) — endCapture")
+            micLog.info("VAD \(String(describing: event)) — finishCapture")
             #endif
-            endCapture()
+            // 発話の自然終了: endAudio() でタスクに音声終了を通知し、最終結果コールバックを待つ。
+            // タスクはキャンセルしない(commitのためにコールバックが必要)。
+            finishCapture()
         case .silence:
             if vad.capturing {
                 request?.append(buffer)
@@ -182,7 +186,19 @@ final class AudioCapturePipeline {
         }
     }
 
-    private func endCapture() {
+    /// 新ターン開始時に前ターンのタスクを明示キャンセルする。
+    /// task = nil だけでは参照を手放すだけでコールバックは止まらない。
+    /// キャンセルしないと receivedAnyResult リセット後に届く古いエラーコールバックが
+    /// useOnDeviceRecognition を誤って false に設定してしまう。
+    private func cancelCapture() {
+        task?.cancel()
+        task = nil
+        request = nil
+    }
+
+    /// 発話の自然終了。endAudio() で残バッファを処理させ最終結果コールバックを待つ。
+    /// タスクはキャンセルしない(isFinal コールバック → commit() に必要)。
+    private func finishCapture() {
         request?.endAudio()
         request = nil
         task = nil
