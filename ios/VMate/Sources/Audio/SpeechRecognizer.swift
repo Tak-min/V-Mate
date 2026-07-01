@@ -237,12 +237,12 @@ final class SpeechRecognizer {
     private var callbacks: Callbacks?
     private var running = false
     private var finalText = ""
-    /// オンデバイス認識を試すかどうか。端末にその言語のオンデバイスモデルが
-    /// 未ダウンロードだと requiresOnDeviceRecognition=true は1件も結果を返さず
-    /// 即時失敗する(既知のSFSpeechRecognizerの挙動)。最初の発話で検出したら
-    /// 以後はサーバー認識にフォールバックする。
     private var onDeviceFailureNotified = false
     private var receivedAnyResult = false
+    /// このセッション中にオンデバイス認識が1回でも成功したか。
+    /// 成功実績があればモデルは確実に存在するため、その後「発話なし」エラーが来ても
+    /// useOnDeviceRecognition を false にしない(誤起動の無音認識を失敗扱いしないため)。
+    private var onDeviceEverSucceeded = false
 
     init(locale: Locale = Locale(identifier: "ja-JP")) {
         recognizer = SFSpeechRecognizer(locale: locale)
@@ -278,7 +278,8 @@ final class SpeechRecognizer {
         self.callbacks = callbacks
         finalText = ""
         receivedAnyResult = false
-        onDeviceFailureNotified = false   // セッション再開時にオンデバイス再試行の通知を再発火可能にする
+        onDeviceFailureNotified = false
+        onDeviceEverSucceeded = false
 
         let vad = VoiceActivityDetector(config: vadConfig)
         let newPipeline = AudioCapturePipeline(
@@ -358,6 +359,7 @@ final class SpeechRecognizer {
     private func handleRecognitionResult(result: SFSpeechRecognitionResult?, error: Error?, usedOnDevice: Bool) {
         if let result {
             receivedAnyResult = true
+            if usedOnDevice { onDeviceEverSucceeded = true }
             finalText = result.bestTranscription.formattedString
             #if DEBUG
             micLog.info("recognition result final=\(result.isFinal) len=\(self.finalText.count) onDevice=\(usedOnDevice)")
@@ -368,14 +370,26 @@ final class SpeechRecognizer {
             }
         }
         if let error {
-            micLog.error("recognition error onDevice=\(usedOnDevice) receivedAny=\(self.receivedAnyResult): \(error.localizedDescription)")
-            // オンデバイスモデル未ダウンロード等で1件も結果が来ずに失敗した場合、
-            // 以後はオンデバイスを諦めてサーバー認識に切り替える(無音のまま固まるのを防ぐ)。
-            if usedOnDevice, !receivedAnyResult {
-                pipeline?.useOnDeviceRecognition.value = false
-                if !onDeviceFailureNotified {
-                    onDeviceFailureNotified = true
-                    callbacks?.onError(.transient, "音声認識をサーバー方式に切り替えたよ。もう一度話してみてね。")
+            micLog.error("recognition error onDevice=\(usedOnDevice) receivedAny=\(self.receivedAnyResult) everSucceeded=\(self.onDeviceEverSucceeded): \(error.localizedDescription)")
+            // オンデバイス無効化の判定:
+            //   条件1: result が1件も来ていない(発話なし or モデル未DL)
+            //   条件2: このセッションで一度も成功していない
+            //          (成功実績があればモデルは存在する → 今回は単なる誤起動無音と判断、無効化しない)
+            //   条件3: エラーが「発話なし/一時的」ではない
+            //          1110 = 発話未検出, 1101 = 一時エラー(騒音等)
+            //          これらは誤起動の通常終了なのでオンデバイスを無効化しない。
+            //          モデル自体が使えない場合は別のエラーコードになる。
+            if usedOnDevice, !receivedAnyResult, !onDeviceEverSucceeded {
+                let ns = error as NSError
+                let isNoSpeechOrTransient = ns.domain == "kAFAssistantErrorDomain"
+                    && (ns.code == 1110 || ns.code == 1101)
+                if !isNoSpeechOrTransient {
+                    micLog.error("on-device model unavailable (domain=\(ns.domain) code=\(ns.code)) — switching to server STT")
+                    pipeline?.useOnDeviceRecognition.value = false
+                    if !onDeviceFailureNotified {
+                        onDeviceFailureNotified = true
+                        callbacks?.onError(.transient, "音声認識をサーバー方式に切り替えたよ。もう一度話してみてね。")
+                    }
                 }
             }
             commit()

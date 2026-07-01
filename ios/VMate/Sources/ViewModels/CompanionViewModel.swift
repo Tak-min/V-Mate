@@ -64,11 +64,19 @@ final class CompanionViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] level in self?.avatarMouthLevel = level }
         // TTS再生キューが空になったら、会話モード中は聞き取りを再開する。
+        // isSpeaking が true に戻った場合(マルチセンテンス応答のキューアンダーラン後に
+        // 次の文が届いた)は、予約済みの workItem をキャンセルしてループを防ぐ。
         isSpeakingCancellable = speech.$isSpeaking
             .receive(on: DispatchQueue.main)
             .sink { [weak self] isSpeaking in
-                guard let self, !isSpeaking, self.voiceMode == .speaking else { return }
-                self.resumeListening()
+                guard let self else { return }
+                if isSpeaking {
+                    // TTS 再開 → アンダーラン後の回復。予約中の arm をキャンセルする。
+                    self.resumeWorkItem?.cancel()
+                    self.resumeWorkItem = nil
+                } else if self.voiceMode == .speaking {
+                    self.resumeListening()
+                }
             }
     }
 
@@ -210,14 +218,16 @@ final class CompanionViewModel: ObservableObject {
         voiceMode = .listening
     }
 
-    /// 応答完了+TTS再生キューが空になったら聞き取りを再開する。即座にマイクを開くと
-    /// TTS(MP3)末尾やスピーカー残響を自己検出してしまうため、resumeListeningDelay 待って
-    /// 残響が減衰してから開く(VAD側のウォームアップと二段構え)。
+    /// 応答完了+TTS再生キューが空になったら聞き取りを再開する。
+    /// workItem 発火時に `speech.isSpeaking` を再チェックし、マルチセンテンス応答の
+    /// キューアンダーラン後に TTS が再開していた場合は arm をスキップする(ループ防止)。
     private func resumeListening() {
         guard voiceMode != .off else { return }
         resumeWorkItem?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            guard let self, self.voiceMode != .off else { return }
+            guard let self,
+                  self.voiceMode != .off,
+                  !self.speech.isSpeaking else { return }
             self.partialTranscript = ""
             self.voiceMode = .listening
             self.recognizer.resumeTurn()
