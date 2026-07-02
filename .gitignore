@@ -20,3 +20,10 @@ ios/DerivedData/
 ios/.build/
 ios/build_device/
 ios/build_sim/
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+.env*
+!.env.example

@@ -531,11 +531,23 @@ async def generate_diary(request: Request) -> dict:
     return {"ok": True, "entry": {"entry_date": today.isoformat(), "content": content}}
 
 
+def _filter_for_tts(text: str) -> str:
+    """TTS 送信前にテキストを整形する。
+    [emotion] タグ・(括弧補足)・*強調*・<タグ> をそのまま読み上げるバグを防ぐ。
+    LLM の記憶・字幕・履歴には影響させないこと(TTS 直前のみ適用)。
+    """
+    text = re.sub(r"\[.*?\]", "", text, flags=re.DOTALL)  # [happy] 等の感情タグ
+    text = re.sub(r"\(.*?\)", "", text, flags=re.DOTALL)  # (補足)
+    text = re.sub(r"\*.*?\*", "", text, flags=re.DOTALL)  # *強調*
+    text = re.sub(r"<[^>]+>", "", text)                   # <think> 残滓など
+    return text.strip()
+
+
 @app.get("/api/tts")
 async def get_tts(text: str, emotion: str | None = None) -> Response:
     if not ENABLE_TTS:  # 公開では既定オフ(無料枠保護)。無音=テキストのみ
         return Response(status_code=204)
-    audio = await tts.synthesize(text[:300], emotion)
+    audio = await tts.synthesize(_filter_for_tts(text[:300]), emotion)
     if audio is None:
         return Response(status_code=204)
     return Response(content=audio, media_type="audio/mpeg")

@@ -42,9 +42,9 @@ export function buildSystemPrompt(opts: {
   affinity: number;
   facts: string[];
   timeContext: string;
-  summary?: string;
+  lorebook?: string;
 }): string {
-  const { userName, affinity, facts, timeContext, summary = "" } = opts;
+  const { userName, affinity, facts, timeContext, lorebook = "" } = opts;
   const [stageName, tone] = stageFor(affinity);
   const namePart = userName
     ? `ユーザーの名前は「${userName}」。`
@@ -53,8 +53,9 @@ export function buildSystemPrompt(opts: {
     facts.length > 0
       ? facts.map((f) => `- ${f}`).join("\n")
       : "- (まだ何も知らない。会話の中で少しずつ知っていく)";
-  const summaryPart = summary.trim()
-    ? `\n## これまでの会話の流れ(要約)\n${summary.trim()}\n`
+  // lorebook: キーワードにマッチした世界設定の注入
+  const lorebookPart = lorebook.trim()
+    ? `\n## 追加の文脈(Lore)\n${lorebook.trim()}\n`
     : "";
   const emotions = EMOTIONS.join("|");
   return `あなたは「シロ」。ユーザーのパソコンの中に住んでいる相棒キャラクター。
@@ -82,7 +83,7 @@ export function buildSystemPrompt(opts: {
 ${namePart}
 覚えていること:
 ${factsPart}
-${summaryPart}
+${lorebookPart}
 ## いまの状況
 ${timeContext}
 

@@ -2,40 +2,34 @@ import SwiftUI
 
 struct OnboardingView: View {
     let onComplete: (String?) -> Void
-    
+
     @State private var step = 0
     @State private var name = ""
-    
+    @State private var goingForward = true
+    @FocusState private var nameFieldFocused: Bool
+
     var body: some View {
         ZStack {
-            // Semi-transparent warm backdrop
             Color.black.opacity(0.25)
                 .ignoresSafeArea()
-            
-            // Glass card
+
             VStack(spacing: 20) {
-                // Step dots
-                HStack(spacing: 8) {
-                    ForEach(0..<3, id: \.self) { i in
-                        Circle()
-                            .fill(i == step ? Color.accentPink : Color.white.opacity(0.4))
-                            .frame(width: 9, height: 9)
-                            .scaleEffect(i == step ? 1.2 : 1.0)
-                            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: step)
+                stepDots
+
+                ZStack {
+                    if step == 0 {
+                        welcomeStep
+                            .transition(slideTransition)
+                    } else if step == 1 {
+                        nameStep
+                            .transition(slideTransition)
+                    } else if step == 2 {
+                        hintStep
+                            .transition(slideTransition)
                     }
                 }
-                
-                // Step content
-                switch step {
-                case 0:
-                    welcomeStep
-                case 1:
-                    nameStep
-                case 2:
-                    hintStep
-                default:
-                    EmptyView()
-                }
+                .clipped()
+                .animation(.spring(response: 0.35, dampingFraction: 0.7), value: step)
             }
             .padding(28)
             .background(
@@ -50,98 +44,185 @@ struct OnboardingView: View {
             .padding(.horizontal, 24)
         }
         .transition(.opacity)
-        .animation(.spring(response: 0.4, dampingFraction: 0.7), value: step)
     }
-    
-    private var welcomeStep: some View {
-        VStack(spacing: 16) {
-            Text("はじめまして！")
-                .font(.title2.bold())
-                .foregroundStyle(Color.accentPink)
-            Text("ぼくはシロ、あなたのAIコンパニオンだよ。")
-                .font(.body)
-                .foregroundStyle(Color.warmBrown.opacity(0.85))
-                .multilineTextAlignment(.center)
-            Button {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.65)) { step = 1 }
-            } label: {
-                Text("つぎへ")
-                    .font(.body.bold())
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(LinearGradient.pinkLavender)
-                    .foregroundStyle(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+    // MARK: - Navigation
+
+    private func advance() {
+        goingForward = true
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) { step += 1 }
+    }
+
+    private func retreat() {
+        goingForward = false
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) { step -= 1 }
+    }
+
+    private var slideTransition: AnyTransition {
+        .asymmetric(
+            insertion: .move(edge: goingForward ? .trailing : .leading).combined(with: .opacity),
+            removal: .move(edge: goingForward ? .leading : .trailing).combined(with: .opacity)
+        )
+    }
+
+    // MARK: - Step indicator
+
+    private var stepDots: some View {
+        HStack(spacing: 8) {
+            ForEach(0..<3, id: \.self) { i in
+                Capsule()
+                    .fill(i == step ? Color.accentPink : Color.white.opacity(0.35))
+                    .frame(width: i == step ? 20 : 9, height: 9)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.6), value: step)
             }
-            Button {
-                onComplete(nil)
-            } label: {
+        }
+    }
+
+    // MARK: - Step 0: Welcome
+
+    private var welcomeStep: some View {
+        VStack(spacing: 18) {
+            // シロのアイコン
+            ZStack {
+                Circle()
+                    .fill(LinearGradient.pinkLavender)
+                    .frame(width: 72, height: 72)
+                    .shadow(color: Color.accentPink.opacity(0.4), radius: 10, y: 4)
+                Text("🐾")
+                    .font(.system(size: 34))
+            }
+
+            VStack(spacing: 8) {
+                Text("はじめまして！")
+                    .font(.title2.bold())
+                    .foregroundStyle(Color.accentPink)
+                Text("ぼくはシロ。\nいつでもそばにいるAIコンパニオンだよ。\n話しかけたら、ちゃんと答えるね。")
+                    .font(.callout)
+                    .foregroundStyle(Color.warmBrown.opacity(0.85))
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(3)
+            }
+
+            nextButton("つぎへ") { advance() }
+
+            Button { onComplete(nil) } label: {
                 Text("スキップ")
                     .font(.footnote)
-                    .foregroundStyle(Color.warmBrown.opacity(0.5))
+                    .foregroundStyle(Color.warmBrown.opacity(0.45))
                     .underline()
             }
         }
     }
-    
+
+    // MARK: - Step 1: Name
+
     private var nameStep: some View {
         VStack(spacing: 16) {
-            Text("おなまえは？")
-                .font(.title2.bold())
-                .foregroundStyle(Color.accentPink)
+            VStack(spacing: 6) {
+                Text("おなまえは？")
+                    .font(.title2.bold())
+                    .foregroundStyle(Color.accentPink)
+                Text("シロがあなたを呼ぶ名前を教えてね。\n後から変えることもできるよ。")
+                    .font(.callout)
+                    .foregroundStyle(Color.warmBrown.opacity(0.75))
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(3)
+            }
+
             TextField("なまえをいれてね", text: $name)
                 .textFieldStyle(.roundedBorder)
                 .multilineTextAlignment(.center)
                 .submitLabel(.continue)
-                .onSubmit {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.65)) { step = 2 }
-                }
-            HStack(spacing: 12) {
-                Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.65)) { step = 2 }
-                } label: {
-                    Text("つぎへ")
-                        .font(.body.bold())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(LinearGradient.pinkLavender)
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                }
-            }
-            Button {
-                onComplete(nil)
-            } label: {
-                Text("スキップ")
-                    .font(.footnote)
-                    .foregroundStyle(Color.warmBrown.opacity(0.5))
-                    .underline()
-            }
+                .focused($nameFieldFocused)
+                .onSubmit { advance() }
+                .onAppear { nameFieldFocused = true }
+
+            nextButton("つぎへ") { advance() }
+
+            backButton()
         }
     }
-    
+
+    // MARK: - Step 2: Hint
+
     private var hintStep: some View {
         VStack(spacing: 16) {
-            Text("話しかけてみて！")
-                .font(.title2.bold())
-                .foregroundStyle(Color.accentPink)
-            
+            VStack(spacing: 6) {
+                Text("こんなふうに話しかけてね")
+                    .font(.title2.bold())
+                    .foregroundStyle(Color.accentPink)
+            }
+
             VStack(spacing: 10) {
-                HintRow(icon: "text.bubble", text: "テキストで話しかける")
-                HintRow(icon: "mic.fill", text: "マイクで話しかける")
+                // 音声会話 — 目立つカードで差別化を強調
+                HStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.white.opacity(0.25))
+                            .frame(width: 36, height: 36)
+                        Image(systemName: "mic.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text("声で話しかける")
+                                .font(.callout.bold())
+                                .foregroundStyle(.white)
+                            Text("おすすめ")
+                                .font(.caption2.bold())
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(Color.white.opacity(0.3))
+                                .foregroundStyle(.white)
+                                .clipShape(Capsule())
+                        }
+                        Text("マイクボタンを押してスタート")
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.85))
+                    }
+                    Spacer()
+                }
+                .padding(14)
+                .background(LinearGradient.pinkLavender)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .shadow(color: Color.accentPink.opacity(0.3), radius: 8, y: 3)
+
+                HintRow(icon: "keyboard", text: "テキストで話しかける")
             }
-            
-            Button {
+
+            let startLabel = name.isEmpty ? "はじめる！" : "\(name)、はじめよう！"
+            nextButton(startLabel) {
                 onComplete(name.isEmpty ? nil : name)
-            } label: {
-                Text("はじめる！")
-                    .font(.body.bold())
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(LinearGradient.pinkLavender)
-                    .foregroundStyle(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
+
+            backButton()
+        }
+    }
+
+    // MARK: - Shared sub-views
+
+    private func nextButton(_ label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.body.bold())
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(LinearGradient.pinkLavender)
+                .foregroundStyle(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+    }
+
+    private func backButton() -> some View {
+        Button { retreat() } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "chevron.left")
+                    .font(.caption.bold())
+                Text("もどる")
+                    .font(.footnote)
+            }
+            .foregroundStyle(Color.warmBrown.opacity(0.45))
         }
     }
 }
@@ -149,7 +230,7 @@ struct OnboardingView: View {
 private struct HintRow: View {
     let icon: String
     let text: String
-    
+
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: icon)

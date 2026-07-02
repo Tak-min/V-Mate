@@ -79,6 +79,9 @@ final class AudioCapturePipeline {
     private var preRoll: PreRollBuffer
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
+    /// finishCapture() で endAudio() した後、まだ isFinal コールバック待ちのタスク。
+    /// cancelCapture() で新ターンが始まる前に古いコールバックが届くのを防ぐ。
+    private var finishingTask: SFSpeechRecognitionTask?
 
     init(recognizer: SFSpeechRecognizer, vad: VoiceActivityDetector, preRollCapacityFrames: Int, callbacks: Callbacks) {
         self.recognizer = recognizer
@@ -164,6 +167,8 @@ final class AudioCapturePipeline {
         _ = preRoll.drainAndClear()
         task?.cancel()
         task = nil
+        finishingTask?.cancel()
+        finishingTask = nil
         request = nil
     }
 
@@ -190,17 +195,23 @@ final class AudioCapturePipeline {
     /// task = nil だけでは参照を手放すだけでコールバックは止まらない。
     /// キャンセルしないと receivedAnyResult リセット後に届く古いエラーコールバックが
     /// useOnDeviceRecognition を誤って false に設定してしまう。
+    /// finishingTask も合わせてキャンセルし、新ターン開始前に古い最終コールバックが
+    /// 届いて stale なテキストを commit() するのを防ぐ。
     private func cancelCapture() {
         task?.cancel()
         task = nil
+        finishingTask?.cancel()
+        finishingTask = nil
         request = nil
     }
 
     /// 発話の自然終了。endAudio() で残バッファを処理させ最終結果コールバックを待つ。
     /// タスクはキャンセルしない(isFinal コールバック → commit() に必要)。
+    /// ただし次ターン開始時に cancelCapture() が呼べるよう finishingTask に移す。
     private func finishCapture() {
         request?.endAudio()
         request = nil
+        finishingTask = task
         task = nil
     }
 }
@@ -230,7 +241,7 @@ final class SpeechRecognizer {
     private static let preRollMargin = 6
 
     private let recognizer: SFSpeechRecognizer?
-    private let audioEngine = AVAudioEngine()
+    let audioEngine = AVAudioEngine()
     private let vadConfig = VADConfig()
     private var pipeline: AudioCapturePipeline?
 
@@ -326,10 +337,12 @@ final class SpeechRecognizer {
     }
 
     /// 会話モード終了時に1回だけ呼ぶ。マイクを解放する(エンジン停止・tap除去)。
+    /// removeTap → stop() の順を保証し、最後の handleTap() が完了してから pipeline?.reset() を
+    /// 呼ぶことで、render スレッドとの変数競合を防ぐ。
     func endSession() {
         running = false
         audioEngine.inputNode.removeTap(onBus: 0)
-        if audioEngine.isRunning { audioEngine.stop() }
+        audioEngine.stop()  // stop() は同期完了 → tap が確実に終了してから reset する
         pipeline?.reset()
         pipeline = nil
         finalText = ""

@@ -127,8 +127,15 @@ export class Store {
   }
 
   async setSummary(userId: string, summary: string, throughId: number): Promise<void> {
-    await this.setKv(userId, "conversation_summary", summary);
-    await this.setKv(userId, "summary_through_id", String(throughId));
+    // 2つのKV更新を1バッチにして原子性を確保する。個別書き込みだとWorkerが途中で
+    // 終了した場合にsummary_through_idが古いまま残り、同じメッセージが再要約される。
+    const upsertSql =
+      "INSERT INTO kv (user_id, key, value) VALUES (?, ?, ?) " +
+      "ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value";
+    await this.db.batch([
+      this.db.prepare(upsertSql).bind(userId, "conversation_summary", summary),
+      this.db.prepare(upsertSql).bind(userId, "summary_through_id", String(throughId)),
+    ]);
   }
 
   // --- facts ---
@@ -228,6 +235,61 @@ export class Store {
       this.db.prepare(`UPDATE ${t} SET user_id = ? WHERE user_id = ?`).bind(toUserId, fromUserId),
     );
     await this.db.batch(stmts);
+  }
+
+  // --- lorebook (OSS Phase B-B) ---
+
+  /**
+   * 直近メッセージと現在のユーザー入力からキーワードにマッチする Lorebook エントリを取得し、
+   * system prompt に挿入する文字列として返す。マッチがなければ空文字。
+   * user_id = 'global' のエントリはシロ共通設定として常に検索対象に含まれる。
+   */
+  async gatherLorebook(userId: string, message: string, recentMessages: MessageRow[]): Promise<string> {
+    try {
+      const { results } = await this.db
+        .prepare("SELECT keyword, description FROM lorebook WHERE user_id = ?1 OR user_id = 'global'")
+        .bind(userId)
+        .all<{ keyword: string; description: string }>();
+      if (results.length === 0) return "";
+      const allText = recentMessages.map((m) => m.content).join(" ") + " " + message;
+      const matched = results.filter((e) => allText.includes(e.keyword));
+      if (matched.length === 0) return "";
+      return "Lore:\n" + matched.map((e) => `${e.keyword}: ${e.description}`).join("\n");
+    } catch {
+      // lorebook テーブルが未作成(schema_v2.sql 未適用)の場合は空文字を返してグレースフルに続行する
+      return "";
+    }
+  }
+
+  // --- RAG FTS5 (OSS Phase B-A) ---
+
+  /**
+   * FTS5 全文検索で過去メッセージを検索し、上位3件を返す。
+   * excludeRecent 件の直近メッセージは除外する(HISTORY_WINDOW との重複を避ける)。
+   */
+  async searchSimilarMessages(userId: string, query: string, excludeRecent = 24): Promise<MessageRow[]> {
+    // FTS5 の MATCH クエリ中の特殊文字をエスケープ
+    const escaped = query.replace(/['"*^()]/g, " ").trim();
+    if (!escaped) return [];
+    try {
+      const { results } = await this.db
+        .prepare(
+          "SELECT m.id, m.role, m.content, m.emotion, m.created_at " +
+            "FROM messages m JOIN messages_fts f ON m.id = f.rowid " +
+            "WHERE m.user_id = ?1 AND f.content MATCH ?2 " +
+            "AND m.id < COALESCE((" +
+            "  SELECT MIN(id) FROM (" +
+            "    SELECT id FROM messages WHERE user_id = ?1 ORDER BY id DESC LIMIT ?3" +
+            "  )" +
+            "), 0) " +
+            "ORDER BY rank LIMIT 3",
+        )
+        .bind(userId, escaped, excludeRecent)
+        .all<MessageRow>();
+      return results;
+    } catch {
+      return [];
+    }
   }
 
 }

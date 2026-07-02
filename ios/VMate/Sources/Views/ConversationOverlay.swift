@@ -20,6 +20,7 @@ struct ConversationOverlay: View {
 
     var body: some View {
         VStack(spacing: 10) {
+            // 直近メッセージカード
             if !latestMessages.isEmpty {
                 Button {
                     expanded = true
@@ -31,7 +32,10 @@ struct ConversationOverlay: View {
                         HStack {
                             Spacer()
                             Image(systemName: "chevron.compact.up")
-                                .foregroundStyle(.white.opacity(0.6))
+                                .foregroundStyle(.white.opacity(0.5))
+                            Text("会話履歴")
+                                .font(.caption2)
+                                .foregroundStyle(.white.opacity(0.4))
                         }
                     }
                     .padding(14)
@@ -51,8 +55,36 @@ struct ConversationOverlay: View {
                 .buttonStyle(.plain)
             }
 
+            // 音声認識中間結果(声で話しかけている最中のリアルタイム表示)
+            if viewModel.voiceMode == .listening, !viewModel.partialTranscript.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "mic.fill")
+                        .font(.caption2)
+                        .foregroundStyle(Color.accentPink)
+                    Text(viewModel.partialTranscript)
+                        .font(.callout)
+                        .italic()
+                        .foregroundStyle(.white.opacity(0.75))
+                        .lineLimit(2)
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background {
+                    Capsule()
+                        .fill(Color.accentPink.opacity(0.12))
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(Color.accentPink.opacity(0.25), lineWidth: 1)
+                        )
+                }
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: viewModel.partialTranscript.isEmpty)
+            }
+
+            // テキスト入力 + 送信ボタン
             HStack(spacing: 10) {
-                TextField("メッセージを書く…", text: $draft)
+                TextField(inputPlaceholder, text: $draft)
                     .textFieldStyle(.plain)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
@@ -65,10 +97,11 @@ struct ConversationOverlay: View {
                             )
                             .overlay(
                                 Capsule()
-                                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                                    .strokeBorder(Color.white.opacity(inputBorderOpacity), lineWidth: 1)
                             )
                     }
                     .foregroundStyle(.white)
+                    .disabled(viewModel.busy)
                     .onChange(of: draft) { _ in viewModel.noticeInputActivity() }
                     .onSubmit(send)
                 Button(action: send) {
@@ -93,6 +126,25 @@ struct ConversationOverlay: View {
         }
     }
 
+    /// 現在の状態に応じたプレースホルダー文言
+    private var inputPlaceholder: String {
+        switch viewModel.voiceMode {
+        case .off:
+            return viewModel.busy ? "シロが考えてるよ…" : "シロに話しかける…"
+        case .listening:
+            return "声で話しかけてね…"
+        case .thinking:
+            return "シロが考えてるよ…"
+        case .speaking:
+            return "シロがお話し中…"
+        }
+    }
+
+    /// busy中はテキストフィールドのボーダーを薄くして非アクティブを示す
+    private var inputBorderOpacity: Double {
+        viewModel.busy ? 0.06 : 0.12
+    }
+
     private func send() {
         let text = draft
         draft = ""
@@ -106,7 +158,12 @@ struct ConversationOverlay: View {
             if isUser { Spacer(minLength: 30) }
             Group {
                 if !isUser, message.content.isEmpty, let cue = message.cue {
-                    Text(cue)
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                            .tint(.white.opacity(0.6))
+                        Text(cue)
+                    }
                 } else {
                     Text(message.content)
                 }
@@ -182,7 +239,7 @@ private struct ChatLogList: View {
         let isUser = message.role == "user"
         HStack {
             if isUser { Spacer(minLength: 40) }
-            Text(message.content)
+            Text(message.content.isEmpty ? (message.cue ?? "") : message.content)
                 .font(.callout)
                 .foregroundStyle(.white)
                 .padding(.horizontal, 14)

@@ -182,6 +182,9 @@ final class CompanionViewModel: ObservableObject {
         resumeWorkItem = nil
         partialTranscript = ""
         voiceMode = .listening
+        // TTS 再生を VPIO エンジン経由にする(AEC がエコー参照として機能するよう)。
+        // beginSession() の prepare()/start() より前にノードを接続する必要がある。
+        speech.attachToEngine(recognizer.audioEngine)
         recognizer.beginSession(callbacks: .init(
             onPartial: { [weak self] text in self?.partialTranscript = text },
             onUtterance: { [weak self] text in self?.handleUtterance(text) },
@@ -193,7 +196,12 @@ final class CompanionViewModel: ObservableObject {
     private func stopListening() {
         resumeWorkItem?.cancel()
         resumeWorkItem = nil
+        // エンジン停止前に TTS を止め、pending な continuation を即座に解放する。
+        // playerNode はエンジン停止で無音になるが、processQueue() の await が残り続けるため
+        // 明示的に stop() してからエンジンを止める。
+        speech.stop()
         recognizer.endSession()
+        speech.detachFromEngine()
         partialTranscript = ""
         voiceMode = .off
         try? AudioSessionManager.shared.configureForPlaybackOnly()
@@ -208,14 +216,11 @@ final class CompanionViewModel: ObservableObject {
         send(text)
     }
 
-    /// バージイン: 発話/応答待ちの最中にユーザーが話し始めたら、中断してそのまま聞き取りを続ける。
+    /// バージイン用フック(将来実装予定)。現状はパイプラインが .thinking/.speaking 中に
+    /// disarm されているため到達しない。
     private func handleSpeechOnset() {
         guard voiceMode == .thinking || voiceMode == .speaking else { return }
-        resumeWorkItem?.cancel()
-        resumeWorkItem = nil
-        streamTask?.cancel()
-        speech.stop()
-        voiceMode = .listening
+        // currently unreachable — pipeline is disarmed while thinking/speaking
     }
 
     /// 応答完了+TTS再生キューが空になったら聞き取りを再開する。
@@ -304,7 +309,7 @@ final class CompanionViewModel: ObservableObject {
         if message.range(of: "嬉|うれ|楽しか|最高|できた|成功|よかった", options: .regularExpression) != nil {
             return ["わ、それ聞きたい。", "いいね、ちゃんと聞かせて。"].randomElement()!
         }
-        if message.hasSuffix("?") || message.hasSuffix("?") || message.range(of: "どう|なぜ|なんで|教えて|かな", options: .regularExpression) != nil {
+        if message.hasSuffix("?") || message.hasSuffix("？") || message.range(of: "どう|なぜ|なんで|教えて|かな", options: .regularExpression) != nil {
             return ["うん、いっしょに考える。", "少し整理してみるね。"].randomElement()!
         }
         if message.count > 80 {
@@ -316,5 +321,9 @@ final class CompanionViewModel: ObservableObject {
     deinit {
         idleTimer?.invalidate()
         relaxTimer?.invalidate()
+        // SSE ストリームをキャンセルする。Task.cancel() はスレッドセーフ。
+        // キャンセルしないと ViewModel 解放後もストリームが継続し、busy = false コールバックが
+        // 宙ぶらりんの参照に届く。
+        streamTask?.cancel()
     }
 }

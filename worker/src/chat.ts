@@ -71,6 +71,7 @@ export function handleChat(
   const write = (obj: unknown) => writer.write(encoder.encode(sse(obj)));
 
   const work = (async () => {
+    try {
     // 親密度: 1発言 +1、その日最初の会話はボーナス
     const today = jstToday();
     const todayMsgs = await store.messagesOn(uid, today);
@@ -79,25 +80,81 @@ export function handleChat(
     const affinity = await store.addAffinity(uid, 1 + (todayFirst ? DAILY_FIRST_CHAT_BONUS : 0));
     await store.touchLastSeen(uid);
 
+    const recent = await store.recentMessages(uid, HISTORY_WINDOW);
+
+    // Lorebook (OSS Phase B-B): キーワードマッチで world-building 情報を system prompt に注入
+    const lorebook = await store.gatherLorebook(uid, message, recent);
+
     const system = buildSystemPrompt({
       userName: await store.getKv(uid, "user_name"),
       affinity,
       facts: await store.listFacts(uid),
       timeContext: timeContext(),
-      summary: await store.getSummary(uid),
+      lorebook,
     });
-    const recent = await store.recentMessages(uid, HISTORY_WINDOW);
-    const history = recent.map((m) => ({ role: m.role, content: m.content }));
+
+    // 会話要約 (OSS Phase B-C): history の末尾-2 位置に注入することで LLM が参照しやすくなる
+    const summary = await store.getSummary(uid);
+
+    // RAG D1 FTS5 (OSS Phase B-A): 過去の類似会話を全文検索して文脈として注入
+    // 直近 HISTORY_WINDOW 件に満たない場合は検索しない(全件が既に window 内に含まれるため)
+    const totalCount = await store.userMessageCount(uid);
+    const ragMessages =
+      totalCount > HISTORY_WINDOW
+        ? await store.searchSimilarMessages(uid, message, HISTORY_WINDOW)
+        : [];
+
+    // history 構築: [older messages] → [RAG] → [summary] → [last 2 messages]
+    const historyBase = recent.map((m) => ({ role: m.role, content: m.content }));
+    const middlewareBlocks: Array<{ role: "system"; content: string }> = [];
+    if (ragMessages.length > 0) {
+      const ragText =
+        "[過去の会話から関連する記憶]\n" +
+        ragMessages
+          .map((m) => `${m.role === "user" ? "ユーザー" : "シロ"}: ${m.content}`)
+          .join("\n");
+      middlewareBlocks.push({ role: "system", content: ragText });
+    }
+    if (summary) {
+      middlewareBlocks.push({ role: "system", content: `[これまでの会話の要約] ${summary}` });
+    }
+    const history =
+      middlewareBlocks.length > 0
+        ? [
+            ...historyBase.slice(0, -2),
+            ...middlewareBlocks,
+            ...historyBase.slice(-2),
+          ]
+        : historyBase;
 
     // 事実抽出の判定(Python と同じく user メッセージ追加後の件数で判定)
-    const shouldExtract = (await store.userMessageCount(uid)) % FACT_EXTRACTION_INTERVAL === 0;
+    // totalCount は RAG 判定時に取得済みのものを再利用する
+    const shouldExtract = totalCount % FACT_EXTRACTION_INTERVAL === 0;
+
+    await write({ type: "thinking" });
 
     let buffer = "";
     let emotion: string | null = null;
     let fullText = "";
+    // <think>...</think> ブロックフィルタ。DeepSeek/Qwen 等の推論モデルが
+    // ストリーム冒頭に出力するブロックを TTS/表示から除去する。
+    // ブロックが複数チャンクにまたがるためバッファ状態で管理する。
+    let inThinkBlock = false;
     try {
       for await (const chunk of streamChat(env, system, history, CHAT_MAX_TOKENS)) {
+        // <think> ブロック除去: ブロック内のチャンクは蓄積して </think> が来たら除去する
         buffer += chunk;
+        if (!inThinkBlock && buffer.includes("<think>")) {
+          inThinkBlock = true;
+        }
+        if (inThinkBlock) {
+          if (buffer.includes("</think>")) {
+            buffer = buffer.replace(/<think>[\s\S]*?<\/think>/g, "").replace(/^\s+/, "");
+            inThinkBlock = false;
+          } else {
+            continue;
+          }
+        }
         if (emotion === null) {
           // 感情タグはペルソナ指示で応答冒頭に来る前提だが、確定まで全部待つとタグが
           // 無い/遅いケースで不要なレイテンシが乗る。「まだタグの途中かもしれない」間だけ
@@ -156,6 +213,18 @@ export function handleChat(
     // --- 応答後のバックグラウンド処理 ---
     if (shouldExtract) await extractFacts(env, store, uid);
     await summarizeOldHistory(env, store, uid);
+    } catch (err) {
+      // LLMストリームの try-catch の外側(DB/KVアクセス等)で起きた予期しないエラーを捕捉し、
+      // SSEストリームを正常に閉じる。捕捉しないと waitUntil が unhandled rejection になり、
+      // クライアント側はストリームが途中で切れたまま何も受け取れなくなる。
+      try {
+        const name = err instanceof Error ? err.constructor.name : "Error";
+        await write({ type: "error", message: `予期しないエラーが発生しました (${name})。` });
+        await writer.close();
+      } catch {
+        // writer がすでに閉じられている場合は無視する
+      }
+    }
   })();
 
   execCtx.waitUntil(work);
