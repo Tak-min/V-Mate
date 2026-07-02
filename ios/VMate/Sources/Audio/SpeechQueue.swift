@@ -170,13 +170,17 @@ final class SpeechQueue: NSObject, ObservableObject {
         if !node.isPlaying { node.play() }
 
         let timeoutSeconds = max(duration + 2.0, 1.0)
+        var timeoutTask: Task<Void, Never>?
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             playbackContinuation = continuation
-            Task { @MainActor [weak self] in
+            timeoutTask = Task { @MainActor [weak self] in
                 try? await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
                 self?.resumePlaybackContinuationIfNeeded()
             }
         }
+        // 正常完了・stop()のどちらでcontinuationが解決されても、タイムアウトTaskをキャンセルして
+        // 解放する。キャンセル済みの場合はno-op。
+        timeoutTask?.cancel()
     }
 
     // MARK: - 再生 (テキストモード — AVAudioPlayer fallback)
@@ -193,13 +197,15 @@ final class SpeechQueue: NSObject, ObservableObject {
         // isPlayingのポーリングだけに頼ると、オーディオ割り込みでキュー全体が止まってしまう。
         // delegateの再生完了通知を主経路にしつつ、タイムアウトを必ず仕掛ける。
         let timeoutSeconds = max(newPlayer.duration + 2.0, 1.0)
+        var timeoutTask: Task<Void, Never>?
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             playbackContinuation = continuation
-            Task { @MainActor [weak self] in
+            timeoutTask = Task { @MainActor [weak self] in
                 try? await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
                 self?.resumePlaybackContinuationIfNeeded()
             }
         }
+        timeoutTask?.cancel()
         stopMetering()
         mouthLevel = 0
     }
