@@ -1,5 +1,26 @@
 import SwiftUI
 
+// 親密度ステージの閾値と名前(Web版 StatusBar.tsx の STAGE_FLOORS/STAGE_NAMES と同一)
+private let STAGE_FLOORS = [0, 20, 50, 100, 200]
+private let STAGE_NAMES  = ["はじめまして", "顔なじみ", "友達", "親友", "相棒"]
+private let STAGE_UP_DURATION: TimeInterval = 2.4
+
+/// 現在のステージ内進捗(0.0〜1.0)を計算する。Web版 stageProgress() の移植。
+private func stageProgress(affinity: Int, nextStageAt: Int?) -> Double {
+    guard let next = nextStageAt else { return 1.0 }
+    let floor = STAGE_FLOORS.reversed().first { affinity >= $0 } ?? 0
+    let span = next - floor
+    guard span > 0 else { return 1.0 }
+    return min(max(Double(affinity - floor) / Double(span), 0), 1)
+}
+
+private func nextStageName(nextStageAt: Int?) -> String? {
+    guard let next = nextStageAt,
+          let idx = STAGE_FLOORS.firstIndex(of: next),
+          idx < STAGE_NAMES.count else { return nil }
+    return STAGE_NAMES[idx]
+}
+
 struct RootView: View {
     @StateObject private var viewModel = CompanionViewModel()
     @State private var diaryOpen = false
@@ -7,6 +28,8 @@ struct RootView: View {
     /// 3D(WKWebView+three-vrm)読み込みに失敗したら v1 のシンプルアバターへ自動フォールバックする。
     @State private var vrmFailed = false
     @State private var showOnboarding = false
+    @State private var isStageUp = false
+    @State private var previousStage: String? = nil
 
     var body: some View {
         ZStack {
@@ -33,6 +56,17 @@ struct RootView: View {
             await viewModel.bootstrap()
             if viewModel.isFirstRun {
                 showOnboarding = true
+            }
+        }
+        .onChange(of: viewModel.state?.stage) { newStage in
+            guard let prev = previousStage, let next = newStage, prev != next else {
+                previousStage = viewModel.state?.stage
+                return
+            }
+            previousStage = next
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) { isStageUp = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + STAGE_UP_DURATION) {
+                withAnimation { isStageUp = false }
             }
         }
         .sheet(isPresented: $diaryOpen) { DiaryView() }
@@ -81,23 +115,73 @@ struct RootView: View {
 
     private var header: some View {
         VStack(spacing: 8) {
+            // おかえりバナー (Web版 ChatPanel の daysAway バナーに相当)
+            if let days = viewModel.daysAway {
+                HStack {
+                    Text("おかえり。\(days)日ぶりだね。")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background {
+                            Capsule()
+                                .fill(Color.accentPink.opacity(0.2))
+                                .overlay(Capsule().strokeBorder(Color.accentPink.opacity(0.4), lineWidth: 1))
+                        }
+                    Spacer()
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
             HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text("シロ")
                         .font(.headline)
                         .foregroundStyle(Color.accentPink)
                     if let state = viewModel.state {
-                        Text("\(state.stage) ・ 親密度 \(state.affinity)")
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.75))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                            .fixedSize(horizontal: false, vertical: true)
+                        // ステージアップ通知 or 通常の親密度表示
+                        if isStageUp {
+                            Text("『\(state.stage)』になったよ ✨")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Color.accentPink)
+                                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                        } else {
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack(spacing: 6) {
+                                    Text(state.stage)
+                                        .font(.caption)
+                                        .foregroundStyle(.white.opacity(0.75))
+                                    Text("♡ \(state.affinity)")
+                                        .font(.caption)
+                                        .foregroundStyle(Color.accentPink.opacity(0.9))
+                                    if let next = nextStageName(nextStageAt: state.next_stage_at),
+                                       let remain = state.next_stage_at.map({ max($0 - state.affinity, 0) }) {
+                                        Text("あと\(remain)で『\(next)』")
+                                            .font(.caption2)
+                                            .foregroundStyle(.white.opacity(0.45))
+                                            .lineLimit(1)
+                                            .minimumScaleFactor(0.8)
+                                    }
+                                }
+                                // 親密度プログレスバー
+                                GeometryReader { geo in
+                                    ZStack(alignment: .leading) {
+                                        RoundedRectangle(cornerRadius: 2)
+                                            .fill(Color.white.opacity(0.12))
+                                        RoundedRectangle(cornerRadius: 2)
+                                            .fill(LinearGradient.pinkLavender)
+                                            .frame(width: geo.size.width * stageProgress(affinity: state.affinity, nextStageAt: state.next_stage_at))
+                                            .animation(.spring(response: 0.6, dampingFraction: 0.8), value: state.affinity)
+                                    }
+                                }
+                                .frame(height: 4)
+                            }
+                        }
                     }
                 }
+                .animation(.easeInOut(duration: 0.3), value: isStageUp)
                 Spacer(minLength: 8)
                 // 狭い画面(iPhone SE等 375pt)でも操作ボタン行が潰れないよう優先度を上げる。
-                // タイトル側は lineLimit(1)+minimumScaleFactor で先に縮む。
                 HStack(spacing: 8) {
                     HeaderControlButton(
                         icon: micIconName,

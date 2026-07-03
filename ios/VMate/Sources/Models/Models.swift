@@ -38,6 +38,7 @@ struct CompanionState: Codable, Equatable {
     var stage: String
     var next_stage_at: Int?
     var provider: String
+    var recent_facts: [String]?
 }
 
 struct DiaryEntry: Identifiable, Codable, Equatable {
@@ -54,6 +55,7 @@ struct DiaryResponse: Codable {
 struct NudgeResponse: Codable {
     var text: String
     var emotion: Emotion
+    var days_away: Int?
 }
 
 enum APIError: Error, LocalizedError {

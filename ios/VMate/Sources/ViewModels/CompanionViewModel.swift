@@ -23,6 +23,8 @@ final class CompanionViewModel: ObservableObject {
     @Published var avatarMouthLevel: Double = 0
     @Published var currentEmotion: Emotion = .neutral
 
+    @Published var daysAway: Int? = nil
+
     // --- ハンズフリー音声会話 ---
     @Published var voiceMode: VoiceMode = .off
     @Published var partialTranscript: String = ""
@@ -280,8 +282,17 @@ final class CompanionViewModel: ObservableObject {
         guard let response = try? await APIClient.shared.requestNudge(reason: reason), !response.text.isEmpty else { return }
         messages.append(ChatMessage(role: "assistant", content: response.text, emotion: response.emotion))
         currentEmotion = response.emotion
+        if let d = response.days_away, d >= 2 { daysAway = d }
         scheduleRelax()
         speech.enqueue(response.text, emotion: response.emotion)
+    }
+
+    /// 音声会話中に発話/応答待ちをユーザーが強制割り込みする。Web版 useCompanion.ts の interrupt() に相当。
+    func interrupt() {
+        guard voiceMode != .off else { return }
+        speech.stop()
+        streamTask?.cancel()
+        resumeListening()
     }
 
     private func resetIdleTimer() {
