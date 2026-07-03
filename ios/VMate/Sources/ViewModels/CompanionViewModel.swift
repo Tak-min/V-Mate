@@ -295,6 +295,24 @@ final class CompanionViewModel: ObservableObject {
         resumeListening()
     }
 
+    /// 新しいおはなしを開始する。セッション区切りマーカーを挿入してシロに挨拶を促す。
+    func startNewConversation() {
+        let label = Self.sessionLabel(for: Date())
+        messages.append(ChatMessage(role: "_session_start", content: label))
+        Task { await requestNudge(reason: "greeting") }
+    }
+
+    /// 日付から「おはなし」ラベルを生成する。
+    private static func sessionLabel(for date: Date) -> String {
+        let cal = Calendar.current
+        if cal.isDateInToday(date)     { return "きょうのおはなし" }
+        if cal.isDateInYesterday(date) { return "きのうのおはなし" }
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "ja_JP")
+        fmt.dateFormat = "M月d日のおはなし"
+        return fmt.string(from: date)
+    }
+
     private func resetIdleTimer() {
         idleTimer?.invalidate()
         idleTimer = Timer.scheduledTimer(withTimeInterval: idleNudgeSeconds, repeats: false) { [weak self] _ in

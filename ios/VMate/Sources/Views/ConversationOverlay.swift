@@ -10,10 +10,10 @@ private let TIME_OF_DAY_PROMPTS: [String: [String]] = [
     "morning": ["おはよう、今日はどんな一日にする?", "朝ごはん食べた?"],
     "daytime": ["今日あったことを話したいな", "いま何してるの?"],
     "evening": ["今日も一日お疲れさま。何があった?", "夕方になると少し落ち着くね。今の気分は?"],
-    "night": ["もう遅い時間だね。眠れてる?", "今日のこと、寝る前に少し話そうか"],
+    "night":   ["もう遅い時間だね。眠れてる?", "今日のこと、寝る前に少し話そうか"],
 ]
 private let NEW_VISITOR_PROMPTS = ["好きな食べ物は?", "はじめまして、よろしくね。何て呼んだらいい?"]
-private let FAMILIAR_PROMPTS = ["少し元気がないの聞いてほしいな", "前に話してたこと、また聞きたいな"]
+private let FAMILIAR_PROMPTS   = ["少し元気がないの聞いてほしいな", "前に話してたこと、また聞きたいな"]
 
 private let FOLLOW_UP_PROMPTS: [Emotion: [String]] = [
     .neutral:  ["もう少し詳しく聞かせて", "他にはどんなことがあった?"],
@@ -38,21 +38,56 @@ private func currentTimeBucket() -> String {
     return "night"
 }
 
+// MARK: - Session helpers
+
+/// _session_start ロールのメッセージを区切りとして messages を「おはなし」単位に分割する。
+/// 最初のセクションは常に「はじめてのおはなし 🐾」。
+private struct OhanashiSession: Identifiable {
+    let id = UUID()
+    let label: String
+    let messages: [ChatMessage]
+}
+
+private func buildSessions(from messages: [ChatMessage]) -> [OhanashiSession] {
+    var sessions: [OhanashiSession] = []
+    var currentMessages: [ChatMessage] = []
+    var currentLabel = "はじめてのおはなし 🐾"
+
+    for msg in messages {
+        if msg.role == "_session_start" {
+            if !currentMessages.isEmpty {
+                sessions.append(OhanashiSession(label: currentLabel, messages: currentMessages))
+                currentMessages = []
+            }
+            currentLabel = msg.content + " 🐾"
+        } else {
+            currentMessages.append(msg)
+        }
+    }
+    if !currentMessages.isEmpty {
+        sessions.append(OhanashiSession(label: currentLabel, messages: currentMessages))
+    }
+    return sessions
+}
+
 // MARK: - ConversationOverlay
 
-/// アバターを画面の主役にするための会話オーバーレイ。
-/// 2026-06-19 UI改善ループ: フルスクリーンのチャットログを廃止し、
-/// 直近の発言だけを半透明カードでアバターの上に重ねる設計に変更した。
-/// 2026-07-03 Web同期: スターター/フォローアップ chip・感情絵文字・
-/// 音声HUD・バージインボタンを追加してWeb版 ChatPanel.tsx と体験を統一。
 struct ConversationOverlay: View {
     @ObservedObject var viewModel: CompanionViewModel
     @State private var draft = ""
     @State private var expanded = false
     @State private var latestDiary: DiaryEntry? = nil
 
+    /// 現在のおはなし（最後の _session_start 以降のメッセージ）。
+    private var currentSessionMessages: [ChatMessage] {
+        if let lastDivIdx = viewModel.messages.lastIndex(where: { $0.role == "_session_start" }) {
+            return Array(viewModel.messages[(lastDivIdx + 1)...])
+        }
+        return viewModel.messages
+    }
+
     private var latestMessages: [ChatMessage] {
-        Array(viewModel.messages.suffix(2))
+        Array(currentSessionMessages.suffix(2))
     }
 
     private var canSend: Bool {
@@ -66,16 +101,16 @@ struct ConversationOverlay: View {
     }
 
     private var followUpChips: [String] {
-        guard !viewModel.messages.isEmpty, !viewModel.busy, viewModel.voiceMode == .off else { return [] }
-        let last = viewModel.messages.last(where: { $0.role == "assistant" && !$0.content.isEmpty })
+        guard !currentSessionMessages.isEmpty, !viewModel.busy, viewModel.voiceMode == .off else { return [] }
+        let last = currentSessionMessages.last(where: { $0.role == "assistant" && !$0.content.isEmpty })
         return FOLLOW_UP_PROMPTS[last?.emotion ?? .neutral] ?? []
     }
 
     var body: some View {
         VStack(spacing: 10) {
 
-            // 空のチャット: ヒント + スターターチップ + recent_facts + 日記コールバック
-            if viewModel.messages.isEmpty && viewModel.voiceMode == .off {
+            // 空のおはなし: ヒント + スターターchip
+            if currentSessionMessages.isEmpty && viewModel.voiceMode == .off {
                 emptyStateView
             }
 
@@ -90,7 +125,7 @@ struct ConversationOverlay: View {
                             Spacer()
                             Image(systemName: "chevron.compact.up")
                                 .foregroundStyle(.white.opacity(0.5))
-                            Text("会話履歴")
+                            Text("おはなし履歴")
                                 .font(.caption2)
                                 .foregroundStyle(.white.opacity(0.4))
                         }
@@ -101,7 +136,7 @@ struct ConversationOverlay: View {
                 .buttonStyle(.plain)
             }
 
-            // フォローアップチップ（会話後、テキストモードのみ）
+            // フォローアップchip
             if !followUpChips.isEmpty {
                 chipScroll(followUpChips)
             }
@@ -111,13 +146,33 @@ struct ConversationOverlay: View {
                 partialTranscriptBar
             }
 
-            // 音声会話ステータス HUD + バージインボタン
+            // 音声HUD + バージインボタン
             if viewModel.voiceMode != .off {
                 voiceHUD
             }
 
-            // テキスト入力 + 送信ボタン
+            // テキスト入力 + 送信 + あたらしいおはなしボタン
             HStack(spacing: 10) {
+                // あたらしいおはなしボタン（現在おはなし中のときのみ表示）
+                if !currentSessionMessages.isEmpty {
+                    Button {
+                        viewModel.startNewConversation()
+                    } label: {
+                        Image(systemName: "plus.bubble")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.55))
+                            .frame(width: 40, height: 40)
+                            .background {
+                                Circle()
+                                    .fill(Color.white.opacity(0.1))
+                                    .overlay(Circle().strokeBorder(Color.white.opacity(0.15), lineWidth: 1))
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("あたらしいおはなしをはじめる")
+                    .disabled(viewModel.busy)
+                }
+
                 TextField(inputPlaceholder, text: $draft)
                     .textFieldStyle(.plain)
                     .padding(.horizontal, 14)
@@ -151,7 +206,7 @@ struct ConversationOverlay: View {
         .padding(.horizontal, 16)
         .padding(.bottom, 10)
         .sheet(isPresented: $expanded) {
-            ChatHistorySheet(viewModel: viewModel)
+            OhanashiHistorySheet(viewModel: viewModel)
         }
         .task {
             latestDiary = try? await APIClient.shared.fetchDiary().entries.first
@@ -169,7 +224,6 @@ struct ConversationOverlay: View {
                 .multilineTextAlignment(.leading)
                 .padding(.horizontal, 4)
 
-            // recent_facts chips
             if let facts = viewModel.state?.recent_facts, !facts.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("覚えていること")
@@ -180,12 +234,10 @@ struct ConversationOverlay: View {
                 }
             }
 
-            // 最新の日記エントリへのコールバック
             if let diary = latestDiary {
-                diaryCallbackButton(diary)
+                diaryCallbackCard(diary)
             }
 
-            // 時間帯別 + 新規/リピーター スターターチップ
             chipScroll(starterChips)
         }
         .padding(14)
@@ -220,29 +272,20 @@ struct ConversationOverlay: View {
     @ViewBuilder
     private var voiceHUD: some View {
         HStack(spacing: 12) {
-            // ステータスドット + ラベル
             HStack(spacing: 6) {
                 Circle()
                     .fill(voiceStatusColor)
                     .frame(width: 6, height: 6)
-                    .opacity(viewModel.voiceMode == .listening ? 1 : 0.7)
                 Text(VOICE_STATUS_LABEL[viewModel.voiceMode] ?? "")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.white.opacity(0.8))
             }
-
             Spacer()
-
-            // バージインボタン (thinking / speaking 時のみ)
             if viewModel.voiceMode == .thinking || viewModel.voiceMode == .speaking {
-                Button {
-                    viewModel.interrupt()
-                } label: {
+                Button { viewModel.interrupt() } label: {
                     HStack(spacing: 4) {
-                        Image(systemName: "hand.raised.fill")
-                            .font(.caption2)
-                        Text("とめて話す")
-                            .font(.caption.weight(.medium))
+                        Image(systemName: "hand.raised.fill").font(.caption2)
+                        Text("とめて話す").font(.caption.weight(.medium))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12)
@@ -256,8 +299,6 @@ struct ConversationOverlay: View {
                 .buttonStyle(.plain)
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
-
-            // 聞き取り中のヒント
             if viewModel.voiceMode == .listening && viewModel.partialTranscript.isEmpty {
                 Text("そのまま話しかけてね")
                     .font(.caption)
@@ -271,7 +312,7 @@ struct ConversationOverlay: View {
     }
 
     @ViewBuilder
-    private func diaryCallbackButton(_ entry: DiaryEntry) -> some View {
+    private func diaryCallbackCard(_ entry: DiaryEntry) -> some View {
         let preview = String(entry.content.prefix(36)) + (entry.content.count > 36 ? "…" : "")
         VStack(alignment: .leading, spacing: 3) {
             Text("\(entry.entry_date)の日記にこう書いたよ")
@@ -347,9 +388,7 @@ struct ConversationOverlay: View {
         }
     }
 
-    private var inputBorderOpacity: Double {
-        viewModel.busy ? 0.06 : 0.12
-    }
+    private var inputBorderOpacity: Double { viewModel.busy ? 0.06 : 0.12 }
 
     private func send() {
         let text = draft
@@ -365,18 +404,14 @@ struct ConversationOverlay: View {
             Group {
                 if !isUser, message.content.isEmpty, let cue = message.cue {
                     HStack(spacing: 6) {
-                        ProgressView()
-                            .scaleEffect(0.7)
-                            .tint(.white.opacity(0.6))
+                        ProgressView().scaleEffect(0.7).tint(.white.opacity(0.6))
                         Text(cue)
                     }
                 } else {
                     HStack(alignment: .bottom, spacing: 4) {
                         Text(message.content)
-                        // 感情絵文字 (Web版 EMOTION_EMOJI と同一マッピング)
                         if !isUser, let emoji = EMOTION_EMOJI[message.emotion ?? .neutral] {
-                            Text(emoji)
-                                .font(.caption)
+                            Text(emoji).font(.caption)
                         }
                     }
                 }
@@ -403,43 +438,138 @@ struct ConversationOverlay: View {
     }
 }
 
-// MARK: - ChatHistorySheet
+// MARK: - おはなし履歴シート
 
-private struct ChatHistorySheet: View {
+private struct OhanashiHistorySheet: View {
     @ObservedObject var viewModel: CompanionViewModel
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
-            ChatLogList(messages: viewModel.messages)
-                .navigationTitle("シロとの会話")
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("閉じる") { dismiss() }
-                    }
+            OhanashiLogView(
+                messages: viewModel.messages,
+                busy: viewModel.busy,
+                onNewConversation: {
+                    viewModel.startNewConversation()
+                    dismiss()
                 }
+            )
+            .navigationTitle("おはなし履歴")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("閉じる") { dismiss() }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        viewModel.startNewConversation()
+                        dismiss()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus.bubble")
+                            Text("あたらしいおはなし")
+                                .font(.caption.weight(.semibold))
+                        }
+                        .foregroundStyle(Color.accentPink)
+                    }
+                    .disabled(viewModel.busy)
+                }
+            }
         }
         .presentationDetents([.medium, .large])
     }
 }
 
-private struct ChatLogList: View {
+// MARK: - セッション分割ログビュー
+
+private struct OhanashiLogView: View {
     let messages: [ChatMessage]
+    let busy: Bool
+    let onNewConversation: () -> Void
+
+    private var sessions: [OhanashiSession] { buildSessions(from: messages) }
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 10) {
-                    ForEach(Array(messages.enumerated()), id: \.offset) { index, message in
-                        logBubble(for: message).id(index)
+                LazyVStack(spacing: 0, pinnedViews: .sectionHeaders) {
+                    ForEach(sessions) { session in
+                        Section {
+                            ForEach(Array(session.messages.enumerated()), id: \.offset) { idx, message in
+                                logBubble(for: message)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 4)
+                                    // 最後のセッションの最後のメッセージにスクロールアンカーを付ける
+                                    .id(sessions.last?.id == session.id && idx == session.messages.count - 1
+                                        ? "bottom" : nil)
+                            }
+                        } header: {
+                            ohanashiSectionHeader(session.label)
+                        }
+                    }
+
+                    // 末尾のあたらしいおはなしボタン
+                    if !messages.filter({ $0.role != "_session_start" }).isEmpty {
+                        Button(action: onNewConversation) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "plus.bubble")
+                                Text("あたらしいおはなしをはじめる")
+                                    .font(.callout.weight(.medium))
+                            }
+                            .foregroundStyle(Color.accentPink)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background {
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .fill(Color.accentPink.opacity(0.08))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                            .strokeBorder(Color.accentPink.opacity(0.25), lineWidth: 1)
+                                    )
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(busy)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 20)
+                        .id("newButton")
                     }
                 }
-                .padding(16)
             }
+            // 開いたとき最新メッセージへ自動スクロール
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    withAnimation(.easeOut(duration: 0.35)) {
+                        proxy.scrollTo("bottom", anchor: .bottom)
+                    }
+                }
+            }
+            // 新着メッセージにも追従
             .onChange(of: messages.count) { _ in
-                withAnimation { proxy.scrollTo(messages.count - 1, anchor: .bottom) }
+                withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
             }
         }
+    }
+
+    @ViewBuilder
+    private func ohanashiSectionHeader(_ label: String) -> some View {
+        HStack {
+            Rectangle()
+                .fill(Color.white.opacity(0.12))
+                .frame(height: 1)
+            Text(label)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.5))
+                .lineLimit(1)
+                .fixedSize()
+                .padding(.horizontal, 8)
+            Rectangle()
+                .fill(Color.white.opacity(0.12))
+                .frame(height: 1)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(.black.opacity(0.35))
     }
 
     @ViewBuilder
@@ -465,9 +595,7 @@ private struct ChatLogList: View {
                         }
                     }
                 if !isUser, let emoji = EMOTION_EMOJI[message.emotion ?? .neutral] {
-                    Text(emoji)
-                        .font(.caption)
-                        .padding(.bottom, 4)
+                    Text(emoji).font(.caption).padding(.bottom, 4)
                 }
             }
             if !isUser { Spacer(minLength: 40) }
