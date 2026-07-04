@@ -21,12 +21,13 @@ struct VoiceActivityDetectorTests {
         // 取りこぼした遠距離RMS(~0.0007)を、新既定(実効~0.00062)では検出できることを固定する。
         let vad = VoiceActivityDetector(config: VADConfig()) // 全て既定値
         let farRms: Float = 0.0007
-        // warmup(既定100ms)中は検出しない。
-        #expect(vad.process(rms: farRms, nowMs: 0) == .silence)
-        #expect(vad.process(rms: farRms, nowMs: 64) == .silence)
-        // warmup後、onsetFrames(2)連続で発話開始。
-        #expect(vad.process(rms: farRms, nowMs: 128) == .silence)
-        #expect(vad.process(rms: farRms, nowMs: 192) == .speechStarted)
+        // warmup(既定400ms)中は検出しない。startedMs=0 なので nowMs < 400 の間は .silence。
+        #expect(vad.process(rms: farRms, nowMs: 0) == .silence)   // warmup中
+        #expect(vad.process(rms: farRms, nowMs: 200) == .silence)  // warmup中
+        // warmup終了: nowMs=400 は "400-0 < 400" = false → warmup を抜ける。
+        // onsetFrames=2 なので2フレーム連続で .speechStarted。
+        #expect(vad.process(rms: farRms, nowMs: 400) == .silence)      // 1フレーム目(aboveFrames=1)
+        #expect(vad.process(rms: farRms, nowMs: 464) == .speechStarted) // 2フレーム目でonset
         #expect(vad.capturing == true)
     }
 
@@ -40,6 +41,7 @@ struct VoiceActivityDetectorTests {
 
     @Test("capturing中にhangoverMsを超える沈黙が続くと発話終了")
     func detectsSpeechEndAfterHangover() {
+        // shortHangoverMs(700) >= hangoverMs(100) → 短縮ハングオーバーは無効化、常に hangoverMs=100ms を使う。
         let vad = VoiceActivityDetector(config: VADConfig(onsetFrames: 1, hangoverMs: 100, minThreshold: 0.02, warmupMs: 0))
         #expect(vad.process(rms: 0.1, nowMs: 0) == .speechStarted)
         #expect(vad.process(rms: 0.0, nowMs: 50) == .silence) // hangover未満はまだ終了しない
@@ -103,6 +105,7 @@ struct VoiceActivityDetectorTests {
         #expect(vad.capturing == true)
         vad.reset()
         #expect(vad.capturing == false)
+        #expect(vad.peakCaptureRms == 0)
     }
 
     @Test("ノイズフロアは下降(decay)の方が上昇(attack)より速く追従する")
@@ -129,6 +132,113 @@ struct VoiceActivityDetectorTests {
         _ = decaying.process(rms: quietRms, nowMs: 720) // floor追従後は無音側に留まる
         let stillSilentAfterDecay = decaying.process(rms: quietRms, nowMs: 780)
         #expect(stillSilentAfterDecay == .silence)
+    }
+
+    // MARK: - 適応型ハングオーバー (shortHangover) テスト
+
+    @Test("エネルギーがピークの18%未満に落ちると shortHangoverMs で早期終了する")
+    func shortHangoverFiresWhenEnergyDropsSignificantly() {
+        // hangoverMs=1400 に対して shortHangoverMs=700 が有効になるケース。
+        // minThreshold=0.005 を使い、沈黙RMS(0.0002)がしきい値(0.005)以下になることを保証する。
+        var config = VADConfig(onsetFrames: 1, hangoverMs: 1400, minThreshold: 0.005, warmupMs: 0)
+        config.shortHangoverMs = 700
+        config.shortHangoverRatio = 0.18
+        let vad = VoiceActivityDetector(config: config)
+
+        // 発話開始(peak RMS = 0.1, threshold ≈ 0.005)
+        #expect(vad.process(rms: 0.1, nowMs: 0) == .speechStarted)
+        // 話している間(lastVoiceMs更新)
+        #expect(vad.process(rms: 0.1, nowMs: 100) == .silence)
+        // エネルギーがピーク(0.1)の 0.2%(0.0002) に急落: 0.0002 < 0.18*0.1=0.018 → 短縮パス有効
+        // rms=0.0002 < threshold(0.005) → else ブランチで hangover チェック
+        #expect(vad.process(rms: 0.0002, nowMs: 200) == .silence) // 200-100=100ms < 700ms
+        #expect(vad.process(rms: 0.0002, nowMs: 790) == .silence) // 790-100=690ms < 700ms
+        // lastVoiceMs=100, nowMs=900 → 900-100=800ms > shortHangoverMs(700ms) → speechEnded
+        #expect(vad.process(rms: 0.0002, nowMs: 900) == .speechEnded)
+        #expect(vad.capturing == false)
+        #expect(vad.peakCaptureRms == 0)
+    }
+
+    @Test("エネルギーがピークの25%程度なら shortHangover を使わず hangoverMs を待つ")
+    func highResidualNoisePreventsShortHangover() {
+        // 背景ノイズがあり、発話終了後もRMSが高め(ピークの25%)に留まるが threshold未満な場合。
+        // peak=0.04, noise=0.01, minThreshold=0.02
+        //   noise(0.01) < threshold(0.02) → else ブランチ → hangover チェック ✓
+        //   noise(0.01) / peak(0.04) = 25% > 18% → 短縮パス不使用 ✓
+        var config = VADConfig(onsetFrames: 1, hangoverMs: 1400, minThreshold: 0.02, warmupMs: 0)
+        config.shortHangoverMs = 700
+        config.shortHangoverRatio = 0.18
+        let vad = VoiceActivityDetector(config: config)
+
+        _ = vad.process(rms: 0.04, nowMs: 0)  // 発話開始, peak=0.04, lastVoiceMs=0
+        _ = vad.process(rms: 0.04, nowMs: 100) // 話している, lastVoiceMs=100
+
+        // 残留ノイズ=0.01: 0.01 < threshold(0.02) → silence判定
+        //   かつ 0.01 > 0.18*0.04=0.0072 → 短縮パス不使用 → hangoverMs(1400ms)適用
+        // 700ms後(800ms経過): shortHangoverなら終わるが、長ハングオーバーなのでまだ沈黙
+        #expect(vad.process(rms: 0.01, nowMs: 900) == .silence) // 900-100=800ms < 1400ms
+        // 1400ms後(1500ms経過): hangoverMs に達して発話終了
+        #expect(vad.process(rms: 0.01, nowMs: 1600) == .speechEnded) // 1600-100=1500ms > 1400ms
+    }
+
+    @Test("「えーと」のような中間無音(600ms)では shortHangover が誤発火しない")
+    func midSpeechPauseDoesNotTriggerShortHangover() {
+        // 発話途中の短い無音(~500ms)で発話が切れないことを確認する。
+        // shortHangoverMs=700ms なので 600ms の中間無音はセーフ。
+        var config = VADConfig(onsetFrames: 1, hangoverMs: 1400, minThreshold: 0.001, warmupMs: 0)
+        config.shortHangoverMs = 700
+        config.shortHangoverRatio = 0.18
+        let vad = VoiceActivityDetector(config: config)
+
+        _ = vad.process(rms: 0.1, nowMs: 0)    // 発話開始, peak=0.1
+        _ = vad.process(rms: 0.1, nowMs: 100)
+
+        // 「えーと」の無音区間: rms=0.0001 (ピークの0.1%) → 短縮パス判定になる
+        // しかし無音開始から 600ms < shortHangoverMs(700ms) → まだ終了しない
+        #expect(vad.process(rms: 0.0001, nowMs: 200) == .silence) // lastVoiceMs=100, 200-100=100ms
+        #expect(vad.process(rms: 0.0001, nowMs: 700) == .silence) // 700-100=600ms < 700ms → 終了しない
+        // 発話再開
+        #expect(vad.process(rms: 0.1, nowMs: 760) == .silence) // 再び threshold 超え(lastVoiceMs更新)
+        #expect(vad.capturing == true)
+    }
+
+    @Test("speechEnded後に peakCaptureRms がリセットされる")
+    func peakCaptureRmsResetsAfterSpeechEnded() {
+        var config = VADConfig(onsetFrames: 1, hangoverMs: 100, minThreshold: 0.01, warmupMs: 0)
+        config.shortHangoverRatio = 0 // 短縮ハングオーバー無効
+        let vad = VoiceActivityDetector(config: config)
+
+        _ = vad.process(rms: 0.5, nowMs: 0)
+        #expect(vad.peakCaptureRms > 0)
+        _ = vad.process(rms: 0.0, nowMs: 300)
+        #expect(vad.capturing == false)
+        #expect(vad.peakCaptureRms == 0)
+    }
+
+    @Test("shortHangoverMs >= hangoverMs のとき shortHangover は無効化される")
+    func shortHangoverDisabledWhenNotShorter() {
+        // shortHangoverMs=2000 >= hangoverMs=100 → 常に hangoverMs=100ms を使う。
+        var config = VADConfig(onsetFrames: 1, hangoverMs: 100, minThreshold: 0.01, warmupMs: 0)
+        config.shortHangoverMs = 2000
+        config.shortHangoverRatio = 0.99
+        let vad = VoiceActivityDetector(config: config)
+
+        _ = vad.process(rms: 1.0, nowMs: 0)
+        #expect(vad.process(rms: 0.0, nowMs: 200) == .speechEnded) // hangoverMs=100ms で終了
+    }
+
+    @Test("ノイズフロアが noiseFloorMinimum を下回らない")
+    func noiseFloorDoesNotDecayBelowMinimum() {
+        var config = VADConfig(onsetFrames: 1, minThreshold: 0.001, warmupMs: 0)
+        config.noiseFloorMinimum = 0.0001
+        config.floorDecay = 0.9 // 急速に下降させる
+        let vad = VoiceActivityDetector(config: config)
+
+        // 完全無音(rms=0)を大量に流す
+        for i in 0..<1000 {
+            _ = vad.process(rms: 0, nowMs: Double(i) * 60)
+        }
+        #expect(vad.noiseFloor >= config.noiseFloorMinimum)
     }
 }
 

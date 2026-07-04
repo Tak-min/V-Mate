@@ -57,9 +57,9 @@ final class CompanionViewModel: ObservableObject {
     private var resumeWorkItem: DispatchWorkItem?
     /// TTS再生終了から聞き取りを再開するまでの待ち時間。
     /// 0.45s では TTS末尾の残響がVADを誤起動させることがあった(6/23以降の常時エンジン設計では
-    /// AECは収束済みだが室内残響はAECでは除去されない)。1.2s に延長してVAD warmup(400ms)と
+    /// AECは収束済みだが室内残響はAECでは除去されない)。0.8s + VAD warmup(400ms) =
     /// 合わせて合計~1.6s の保護窓を確保する。
-    private let resumeListeningDelay: TimeInterval = 1.2
+    private let resumeListeningDelay: TimeInterval = 0.8
 
     init() {
         mouthLevelCancellable = speech.$mouthLevel
