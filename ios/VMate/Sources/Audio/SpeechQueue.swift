@@ -1,4 +1,5 @@
 import AVFoundation
+import Accelerate
 import Combine
 
 /// 音声合成キュー。Web版 frontend/src/features/voice/speech.ts と同じ役割:
@@ -237,12 +238,12 @@ final class SpeechQueue: NSObject, ObservableObject {
 
     // MARK: - メータリング (音声会話モード用 — tap コールバックから呼ばれる)
 
+    /// AVAudioPCMBuffer の RMS から口の開き具合(0..1)を計算する。
+    /// vDSP_rmsqv でレンダースレッドの SIMD 効率を確保し、スカラーループを排除。
     private static func rmsLevel(from buffer: AVAudioPCMBuffer) -> Double {
         guard let data = buffer.floatChannelData?.pointee, buffer.frameLength > 0 else { return 0 }
-        let count = Int(buffer.frameLength)
-        var sum: Float = 0
-        for i in 0..<count { sum += data[i] * data[i] }
-        let rms = sqrt(sum / Float(count))
+        var rms: Float = 0
+        vDSP_rmsqv(data, 1, &rms, vDSP_Length(buffer.frameLength))
         let db = 20 * log10(max(rms, 1e-7))
         return Double(max(0, min(1, (db + 50) / 50)))
     }

@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 import Combine
 import Speech
 
@@ -60,6 +61,8 @@ final class CompanionViewModel: ObservableObject {
     /// AECは収束済みだが室内残響はAECでは除去されない)。0.8s + VAD warmup(400ms) =
     /// 合わせて合計~1.6s の保護窓を確保する。
     private let resumeListeningDelay: TimeInterval = 0.8
+    /// AVAudioSession割り込み・AVAudioEngine設定変更の通知オブザーバー。
+    private var audioObservers: [Any] = []
 
     init() {
         mouthLevelCancellable = speech.$mouthLevel
@@ -85,6 +88,7 @@ final class CompanionViewModel: ObservableObject {
     func bootstrap() async {
         // 研究条件の取得は廃止(製品では研究スキャフォールドを撤去。Web版と同形)。
         try? AudioSessionManager.shared.configureForPlaybackOnly()
+        setupAudioNotifications()
         ready = true
 
         async let stateTask: CompanionState? = try? APIClient.shared.fetchState()
@@ -347,9 +351,68 @@ final class CompanionViewModel: ObservableObject {
         return defaults.randomElement()!
     }
 
+    // MARK: - オーディオ割り込みハンドラー
+
+    /// bootstrap() から1回だけ呼ぶ。
+    /// 着信/Siri の割り込みとイヤホン挿抜による AVAudioEngine 設定変更を監視する。
+    private func setupAudioNotifications() {
+        let nc = NotificationCenter.default
+
+        // AVAudioSession 割り込み(着信・Siri等): 音声会話を中断する
+        audioObservers.append(nc.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] note in
+            Task { @MainActor [weak self] in self?.handleAudioSessionInterruption(note) }
+        })
+
+        // AVAudioEngine 設定変更(イヤホン挿抜など): セッションを自動再起動する
+        audioObservers.append(nc.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: recognizer.audioEngine,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.handleEngineConfigurationChange() }
+        })
+    }
+
+    private func handleAudioSessionInterruption(_ note: Notification) {
+        guard let rawType = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: rawType)
+        else { return }
+
+        switch type {
+        case .began:
+            guard voiceMode != .off else { return }
+            stopListening()
+            voiceError = "通話などで音声が中断されたよ。もう一度マイクボタンを押してね。"
+        case .ended:
+            // 自動再開はしない。ユーザーがマイクボタンを押して意図的に再開する。
+            break
+        @unknown default:
+            break
+        }
+    }
+
+    /// イヤホン挿抜・Bluetoothデバイス切替などで AVAudioEngine の設定が変わった場合、
+    /// 音声セッションを安全に再起動する。再起動しないとエンジンがサイレントに停止する。
+    private func handleEngineConfigurationChange() {
+        guard voiceMode != .off else { return }
+        stopListening()
+        Task { @MainActor [weak self] in
+            // エンジンが新しいオーディオルートに安定するまで少し待つ
+            try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
+            guard let self, self.voiceMode == .off else { return }
+            try? AudioSessionManager.shared.configureForConversation()
+            self.beginVoiceSession()
+        }
+    }
+
     deinit {
         idleTimer?.invalidate()
         relaxTimer?.invalidate()
+        audioObservers.forEach { NotificationCenter.default.removeObserver($0) }
         // SSE ストリームをキャンセルする。Task.cancel() はスレッドセーフ。
         // キャンセルしないと ViewModel 解放後もストリームが継続し、busy = false コールバックが
         // 宙ぶらりんの参照に届く。
