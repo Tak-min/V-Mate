@@ -2,6 +2,7 @@ import Foundation
 import AVFoundation
 import Combine
 import Speech
+import UIKit
 
 /// ハンズフリー音声会話の状態。Web版 useCompanion.ts の VoiceMode と同じ役割。
 /// off=テキストのみ / listening=聞き取り中 / thinking=応答待ち / speaking=発話中
@@ -354,7 +355,7 @@ final class CompanionViewModel: ObservableObject {
     // MARK: - オーディオ割り込みハンドラー
 
     /// bootstrap() から1回だけ呼ぶ。
-    /// 着信/Siri の割り込みとイヤホン挿抜による AVAudioEngine 設定変更を監視する。
+    /// 着信/Siri の割り込み・イヤホン挿抜・バックグラウンド遷移を監視する。
     private func setupAudioNotifications() {
         let nc = NotificationCenter.default
 
@@ -374,6 +375,34 @@ final class CompanionViewModel: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in self?.handleEngineConfigurationChange() }
+        })
+
+        // バックグラウンド遷移: マイクとオーディオセッションを解放する。
+        // Info.plist に UIBackgroundModes:audio がないため、背景でオーディオは継続できない。
+        // AVAudioSession.interruptionNotification はサスペンド時には発火しないことがあるため
+        // 個別に監視して確実に解放する。
+        audioObservers.append(nc.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if self.voiceMode != .off { self.stopListening() }
+                AudioSessionManager.shared.deactivate()
+            }
+        })
+
+        // フォアグラウンド復帰: TTS 再生できるよう playback セッションを復活させる。
+        // 音声会話は voiceMode == .off のままなので、ユーザーが手動でマイクボタンを押す。
+        audioObservers.append(nc.addObserver(
+            forName: UIApplication.willEnterForegroundNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in
+                try? AudioSessionManager.shared.configureForPlaybackOnly()
+            }
         })
     }
 
