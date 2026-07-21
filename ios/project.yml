@@ -7,6 +7,21 @@ options:
 configs:
   Debug: debug
   Release: release
+schemes:
+  VMate:
+    build:
+      targets:
+        VMate: all
+    run:
+      config: Debug
+      # ローカル StoreKit Testing Configuration。App Store Connect への商品登録前でも
+      # シミュレータで購入/復元フローを検証できるようにする(feedback-xcode-no-simulator-launch:
+      # 実機能検証は build_sim/test_sim に留め、対話的シミュレータ起動はしない方針と両立)。
+      storeKitConfiguration: VMate/VMate.storekit
+    test:
+      config: Debug
+      targets:
+        - VMateTests
 targets:
   VMate:
     type: application
@@ -14,6 +29,8 @@ targets:
     deploymentTarget: "16.0"
     sources:
       - path: VMate/Sources
+      - path: VMate/VMate.storekit
+        buildPhase: none
     info:
       path: VMate/Info.plist
       properties:

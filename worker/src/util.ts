@@ -21,6 +21,17 @@ export function jstIso(): string {
   return jstNow().toISOString().slice(0, 19);
 }
 
+/**
+ * 指定した epoch ミリ秒(UTC)を jstIso() と同じ形式("YYYY-MM-DDTHH:MM:SS", JST, 秒精度)へ変換する。
+ * StoreKit の signedDate/purchaseDate/expiresDate(epoch ms)を entitlements.updated_at や
+ * purchases.occurred_at/expires_at に書く際、jstIso() 由来の既存値と辞書順=時系列順の比較が
+ * 成立するよう、フォーマットを完全一致させる目的で使う(upsertEntitlement の monotonic guard が
+ * 文字列比較のため、フォーマットがずれると古い通知が新しい権利を巻き戻しうる)。
+ */
+export function jstIsoFromEpochMs(epochMs: number): string {
+  return new Date(epochMs + JST_OFFSET_MS).toISOString().slice(0, 19);
+}
+
 /** ISO 文字列(秒精度)から日数差(おおよそ)を返す。last_seen の経過日数判定用。 */
 export function daysSince(iso: string): number {
   return Math.floor(secondsSince(iso) / (24 * 60 * 60));

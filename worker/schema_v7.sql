@@ -1,3 +1,6 @@
+-- [統合済み・2026-07-21] このファイルは schema.sql に統合された。以後の適用は schema.sql のみでよい。
+-- 履歴ドキュメントとして残置(内容は変更しない)。
+
 -- P4: App Store 通知を安定アカウントへ紐付けるトークン。v4-v6 適用後に実行する。
 CREATE TABLE IF NOT EXISTS app_store_accounts (
   user_id           TEXT PRIMARY KEY,

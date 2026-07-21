@@ -7,6 +7,7 @@ import type { Env } from "./env";
 import { Store } from "./db";
 import * as auth from "./auth";
 import { AppleTokenError, verifyAppleIdentityToken } from "./apple_auth";
+import { AppleTransactionError, applyAppleTransaction, appleRootCaG3, verifySignedTransaction } from "./apple_store";
 import { synthesize } from "./tts";
 import { complete } from "./llm";
 import { nudgePrompt, diaryPrompt } from "./persona";
@@ -180,12 +181,42 @@ async function getAppStoreAccountToken(c: Ctx): Promise<Response> {
   return json({ app_account_token: await c.store.getOrCreateAppAccountToken(account) });
 }
 
-/** Apple JWS 証明書チェーン検証器を導入するまで、署名済み取引も fail-closed で拒否する。 */
-async function postApplePurchaseVerify(c: Ctx): Promise<Response> {
+/**
+ * StoreKit2 の signedTransaction(JWS)をApple Root CAまでのチェーン検証込みで検証し、
+ * purchases(不変の台帳)とentitlements(唯一の真実の源)に反映する。検証失敗は必ず 400 で
+ * fail-closed(権利は一切付与しない)。ASSN V2 webhook 実装までの失効は、クライアントが
+ * 起動時に Transaction.currentEntitlements を再送する経路で expires_at を前進させることに委ねる
+ * (StoreKitManager.prepare() 参照)。
+ */
+async function postApplePurchaseVerify(c: Ctx, body: { signed_transaction?: unknown }): Promise<Response> {
   if (!iapEnabled(c)) return errorDetail("アプリ内購入は準備中です", 503);
   const account = await requirePurchasableAccount(c);
   if (account instanceof Response) return account;
-  return errorDetail("購入検証器を準備中です", 503);
+
+  if (typeof body.signed_transaction !== "string" || body.signed_transaction.length < 16 || body.signed_transaction.length > 20_000) {
+    return errorDetail("不正なリクエストです", 400);
+  }
+
+  let tx;
+  try {
+    tx = await verifySignedTransaction(body.signed_transaction, {
+      bundleId: c.env.APPLE_BUNDLE_ID ?? "com.takmin.vmate",
+      trustedRootDER: appleRootCaG3(),
+      expectedEnvironment: c.env.APPLE_ENVIRONMENT ?? "Production",
+    });
+  } catch (error) {
+    if (error instanceof AppleTransactionError) return errorDetail("購入を確認できませんでした", 400);
+    throw error;
+  }
+
+  const result = await applyAppleTransaction(c.store, account, tx);
+  if (!result.ok) {
+    if (result.reason === "account_mismatch") return errorDetail("この購入は別のアカウントに紐付いています", 403);
+    if (result.reason === "missing_account_token") return errorDetail("購入者を確認できませんでした。アプリを最新版に更新して再度お試しください。", 400);
+    return errorDetail("未対応の商品です", 400);
+  }
+
+  return json({ ok: true });
 }
 
 function validateAuth(body: { email?: unknown; password?: unknown }): Response | null {
@@ -447,7 +478,7 @@ async function route(c: Ctx): Promise<Response> {
     if (path === "/api/auth/apple") return authApple(c, body);
     if (path === "/api/auth/delete") return authDelete(c);
     if (path === "/api/analytics/event") return postAnalyticsEvent(c, body);
-    if (path === "/api/purchase/apple/verify") return postApplePurchaseVerify(c);
+    if (path === "/api/purchase/apple/verify") return postApplePurchaseVerify(c, body);
     if (path === "/api/profile") return setProfile(c, body);
     if (path === "/api/profile/age") return postAge(c, body);
     if (path === "/api/report") return postReport(c, body);

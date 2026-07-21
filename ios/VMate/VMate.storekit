@@ -1,0 +1,63 @@
+{
+  "identifier" : "99AC6435-4425-4B61-BC15-08688CC2FE3C",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_applicationInternalID" : "0",
+    "_developerTeamID" : "NVZB82UK53",
+    "_failTransactionsEnabled" : false,
+    "_lockedInAppPurchaseTerritoryEnabled" : false,
+    "_locale" : "ja_JP",
+    "_storefront" : "JPN",
+    "_storeKitErrors" : [
+
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "4DD6FC04-66AB-4618-9F8A-2223031D1432",
+      "localizations" : [
+
+      ],
+      "name" : "V-Mate Pro",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "600",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "22417CFC-1582-41B8-97CD-A68F0759AAD3",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "会話と声で、もっと長く一緒に過ごすためのプラン。",
+              "displayName" : "シロ Pro",
+              "locale" : "ja_JP"
+            }
+          ],
+          "productID" : "vmate.pro",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Shiro Pro Monthly",
+          "subscriptionGroupID" : "4DD6FC04-66AB-4618-9F8A-2223031D1432",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}

@@ -1,3 +1,6 @@
+-- [統合済み・2026-07-21] このファイルは schema.sql に統合された。以後の適用は schema.sql のみでよい。
+-- 履歴ドキュメントとして残置(内容は変更しない)。
+
 -- schema_v2.sql — OSS Phase B 追加テーブル
 -- Lorebook (キーワード連動の世界設定注入) と messages FTS5 (RAG 全文検索) を追加。
 -- schema.sql で基礎テーブルが作成済みであることを前提とする。

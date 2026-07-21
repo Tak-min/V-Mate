@@ -16,3 +16,8 @@ export const CATALOG: readonly CatalogItem[] = Object.freeze([
     description: "会話と声で、もっと長く一緒に過ごすためのプラン。",
   }),
 ]);
+
+/** StoreKit の productId から商品を引く。未知の productId(詐称・カタログ外)は undefined。 */
+export function catalogItemByProductId(productId: string): CatalogItem | undefined {
+  return CATALOG.find((item) => item.id === productId);
+}

@@ -58,14 +58,16 @@ struct RootView: View {
             showOnboarding = viewModel.isFirstRun || viewModel.ageBand == nil || viewModel.ageBand == "under13"
             if showOnboarding { APIClient.shared.trackEvent("onboarding_started") }
         }
-        .onChange(of: viewModel.state?.stage) { newStage in
+        .onChangeOf(viewModel.state?.stage) { newStage in
             guard let prev = previousStage, let next = newStage, prev != next else {
                 previousStage = viewModel.state?.stage
                 return
             }
             previousStage = next
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) { isStageUp = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + STAGE_UP_DURATION) {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(STAGE_UP_DURATION))
                 withAnimation { isStageUp = false }
             }
         }
@@ -118,7 +120,13 @@ struct RootView: View {
             AvatarView(emotion: viewModel.currentEmotion, mouthLevel: viewModel.avatarMouthLevel)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            VRMAvatarView(viewModel: viewModel, failed: $vrmFailed)
+            ZStack {
+                // VRM WebView は読み込み中は透明なため、その間 v1 アバターをプレースホルダーとして表示する。
+                // VRM 描画が開始されると 3D コンテンツが手前に重なり、このビューは隠れる。
+                AvatarView(emotion: viewModel.currentEmotion, mouthLevel: viewModel.avatarMouthLevel)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                VRMAvatarView(viewModel: viewModel, failed: $vrmFailed)
+            }
         }
     }
 
@@ -235,8 +243,18 @@ struct RootView: View {
                         .font(.caption2)
                         .lineLimit(2)
                     Spacer()
+                    Button {
+                        withAnimation { viewModel.voiceError = nil }
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.55))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("エラーを閉じる")
                 }
                 .foregroundStyle(.white.opacity(0.85))
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(.horizontal, 16)

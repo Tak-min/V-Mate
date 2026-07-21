@@ -1,3 +1,6 @@
+-- [統合済み・2026-07-21] このファイルは schema.sql に統合された。以後の適用は schema.sql のみでよい。
+-- 履歴ドキュメントとして残置(内容は変更しない)。
+
 -- P2: 個人を追跡しない日次プロダクト指標。
 -- user_id、Cookie、IP、入力文、年齢、端末識別子は保存しない。
 CREATE TABLE IF NOT EXISTS daily_metrics (

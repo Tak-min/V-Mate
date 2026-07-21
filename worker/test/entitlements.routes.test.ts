@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createToken } from "../src/auth";
 
 const adultId = "adult-account";
-const otherId = "other-account";
 
 beforeEach(async () => {
   await env.DB.exec(`

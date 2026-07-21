@@ -1,3 +1,6 @@
+-- [統合済み・2026-07-21] このファイルは schema.sql に統合された。以後の適用は schema.sql のみでよい。
+-- 履歴ドキュメントとして残置(内容は変更しない)。
+
 -- 収益化・認証・安全性の追加スキーマ(2026-07-19/20設計)。
 -- 冪等: IF NOT EXISTS。schema.sql / schema_v2.sql 適用後に実行する。
 -- 参照: dev-notes/monetization_architecture_2026-07-19.md, dev-notes/monetization_auth_and_safety_2026-07-20.md

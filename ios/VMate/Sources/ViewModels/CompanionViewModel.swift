@@ -152,7 +152,7 @@ final class CompanionViewModel: ObservableObject {
             } catch is CancellationError {
                 // バージイン(意図的な中断)。エラー表示はしない。
             } catch {
-                appendToMessage(at: placeholderIndex, text: "(接続が切れちゃったみたい…バックエンドは起動してる?)", emotion: emotion)
+                appendToMessage(at: placeholderIndex, text: "(接続が切れちゃったみたい…少し待ってからもう一度試してみてね)", emotion: emotion)
             }
             busy = false
             resetIdleTimer()

@@ -38,11 +38,20 @@
   // `wrangler secret put <NAME>` で登録する(ここには書かない)。
   "vars": {
     "LLM_BASE_URL": "https://api.groq.com/openai/v1",
-    "LLM_MODEL": "llama-3.3-70b-versatile",
+    // 2026-07-05: llama-3.3-70b-versatile から移行。コスト約1/5・速度約1.5倍。
+    // 品質が不十分なら "llama-3.3-70b-versatile" に戻す(1行変更でロールバック可能)。
+    "LLM_MODEL": "meta-llama/llama-4-scout-17b-16e-instruct",
     "ENABLE_TTS": "true",
     "RATE_PER_USER_PER_DAY": "50",
     "RATE_GLOBAL_PER_DAY": "800",
-    "RATE_LOGIN_PER_IP_PER_DAY": "30"
+    "RATE_LOGIN_PER_IP_PER_DAY": "30",
+    "APPLE_BUNDLE_ID": "com.takmin.vmate",
+    "IAP_ENABLED": "false",
+    // StoreKit2 の signedTransaction は Sandbox と Production を同一証明書チェーンで署名するため、
+    // 環境の区別は payload.environment のみ。Sandbox 購入は誰でも無料で作れるので、本番Workerは
+    // "Production" 以外の取引を fail-closed で拒否する(apple_store.ts verifySignedTransaction)。
+    // TestFlight/Sandbox の end-to-end 検証時のみ、そのデプロイで一時的に "Sandbox" へ差し替える。
+    "APPLE_ENVIRONMENT": "Production"
   },
 
   "observability": {

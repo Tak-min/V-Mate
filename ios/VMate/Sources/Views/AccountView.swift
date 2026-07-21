@@ -9,6 +9,7 @@ struct AccountView: View {
     @State private var busy = false
     @State private var message: String?
     @State private var showDeleteConfirmation = false
+    @State private var storeOpen = false
 
     var body: some View {
         NavigationStack {
@@ -39,6 +40,10 @@ struct AccountView: View {
                 }
 
                 if APIClient.shared.isAuthenticated {
+                    Section("シロ Pro") {
+                        Button("購入・復元を見る") { storeOpen = true }
+                    }
+
                     Section("データ") {
                         Button("アカウントとデータを削除", role: .destructive) {
                             showDeleteConfirmation = true
@@ -55,6 +60,7 @@ struct AccountView: View {
             }
             .navigationTitle("アカウント")
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("閉じる") { dismiss() } } }
+            .sheet(isPresented: $storeOpen) { StoreView() }
             .confirmationDialog("アカウントを削除しますか？", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
                 Button("削除する", role: .destructive) { deleteAccount() }
             } message: {

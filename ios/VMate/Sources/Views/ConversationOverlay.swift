@@ -204,7 +204,7 @@ struct ConversationOverlay: View {
                     }
                     .foregroundStyle(.white)
                     .disabled(viewModel.busy)
-                    .onChange(of: draft) { _ in viewModel.noticeInputActivity() }
+                    .onChangeOf(draft) { viewModel.noticeInputActivity() }
                     .onSubmit(send)
 
                 Button(action: send) {
@@ -469,8 +469,10 @@ struct ConversationOverlay: View {
     private var inputBorderOpacity: Double { viewModel.busy ? 0.06 : 0.12 }
 
     private func send() {
-        let text = draft
+        let text = draft.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty, !viewModel.busy else { return }
         draft = ""
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
         viewModel.send(text)
     }
 
@@ -623,7 +625,7 @@ private struct OhanashiLogView: View {
                 }
             }
             // 新着メッセージにも追従
-            .onChange(of: messages.count) { _ in
+            .onChangeOf(messages.count) {
                 withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
             }
         }

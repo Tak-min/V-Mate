@@ -95,6 +95,14 @@ final class APIClient {
         let _: VerifyResponse = try await post("/api/purchase/apple/verify", body: ["signed_transaction": signedTransaction])
     }
 
+    /// StoreKit2 の appAccountToken に使う、このアカウント専用の安定UUID(サーバ側で発行・永続化)。
+    /// App Store Server Notifications が持つ originalTransactionId をアカウントへ紐付ける鍵になる。
+    func fetchAppAccountToken() async throws -> String {
+        struct TokenResponse2: Codable { let app_account_token: String }
+        let response: TokenResponse2 = try await get("/api/store/account-token")
+        return response.app_account_token
+    }
+
     func trackEvent(_ event: String) {
         Task {
             struct EventResponse: Codable { let ok: Bool }

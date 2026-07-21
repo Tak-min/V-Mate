@@ -316,7 +316,9 @@ export class Store {
 
   /** 匿名Cookieユーザーのデータをログイン後アカウントへ引き継ぐ。 */
   async reassignUserData(fromUserId: string, toUserId: string): Promise<void> {
-    const tables = ["messages", "facts", "diary", "kv", "user_age"];
+    // entitlements/purchases/app_store_accounts は匿名uidでは作られない(購入は認証必須のため)。
+    // それでも deleteAccount のテーブル網羅と一貫させ、将来の経路変更に備えて含める(防御的)。
+    const tables = ["messages", "facts", "diary", "kv", "user_age", "entitlements", "purchases", "app_store_accounts"];
     const stmts = tables.map((t) =>
       this.db.prepare(`UPDATE ${t} SET user_id = ? WHERE user_id = ?`).bind(toUserId, fromUserId),
     );

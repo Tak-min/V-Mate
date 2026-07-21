@@ -14,6 +14,7 @@ export interface Env {
   RATE_LOGIN_PER_IP_PER_DAY: string;
   APPLE_BUNDLE_ID?: string;
   IAP_ENABLED?: string;
+  APPLE_ENVIRONMENT?: string;
 
   // secrets(wrangler secret put)。未設定なら undefined。
   LLM_API_KEY?: string;

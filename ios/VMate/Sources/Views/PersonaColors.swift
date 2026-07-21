@@ -21,3 +21,42 @@ extension LinearGradient {
         endPoint: .bottomTrailing
     )
 }
+
+// MARK: - onChange 互換修飾子(iOS 16 / iOS 17 両対応)
+// iOS 17 で onChange(of:perform:) がdeprecatedになったため、
+// ViewModifier 経由で両バージョンを切り替える。
+
+private struct OnChangeCompatModifier<V: Equatable>: ViewModifier {
+    let value: V
+    let action: (V) -> Void
+    func body(content: Content) -> some View {
+        if #available(iOS 17, *) {
+            content.onChange(of: value) { _, new in action(new) }
+        } else {
+            content.onChange(of: value, perform: action)
+        }
+    }
+}
+
+private struct OnChangeVoidCompatModifier<V: Equatable>: ViewModifier {
+    let value: V
+    let action: () -> Void
+    func body(content: Content) -> some View {
+        if #available(iOS 17, *) {
+            content.onChange(of: value) { action() }
+        } else {
+            content.onChange(of: value) { _ in action() }
+        }
+    }
+}
+
+extension View {
+    /// 値変化を新値付きで検知する。iOS 16/17 両対応。
+    func onChangeOf<V: Equatable>(_ value: V, perform action: @escaping (V) -> Void) -> some View {
+        modifier(OnChangeCompatModifier(value: value, action: action))
+    }
+    /// 値変化を検知する(新値不要)。iOS 16/17 両対応。
+    func onChangeOf<V: Equatable>(_ value: V, perform action: @escaping () -> Void) -> some View {
+        modifier(OnChangeVoidCompatModifier(value: value, action: action))
+    }
+}

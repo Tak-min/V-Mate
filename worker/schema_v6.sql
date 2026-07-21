@@ -1,3 +1,6 @@
+-- [統合済み・2026-07-21] このファイルは schema.sql に統合された。以後の適用は schema.sql のみでよい。
+-- 履歴ドキュメントとして残置(内容は変更しない)。
+
 -- P3: 読み取り専用の権利基盤。schema_v4.sql / schema_v5.sql 適用後に実行する。
 CREATE TABLE IF NOT EXISTS entitlements (
   user_id         TEXT NOT NULL,

@@ -1,3 +1,6 @@
+-- [統合済み・2026-07-21] このファイルは schema.sql に統合された。以後の適用は schema.sql のみでよい。
+-- 履歴ドキュメントとして残置(内容は変更しない)。
+
 -- Sign in with Apple 用の一回限りマイグレーション。
 -- 既存 D1 では schema.sql / schema_v3.sql 適用後に一度だけ実行すること。
 -- `wrangler d1 execute aikata --remote --file=./schema_v4.sql` は本番データを変更するため、

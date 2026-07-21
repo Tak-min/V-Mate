@@ -28,6 +28,12 @@ final class StoreKitManager: ObservableObject {
             products = try await Product.products(for: Self.productIDs)
             isAvailable = !products.isEmpty && AppStore.canMakePayments
             await refreshEntitlements()
+            // ASSN V2 webhook 未実装(P4b見送り)のため、更新/失効をサーバへ伝える経路が
+            // クライアント起動時の再送しか無い。認証済みの時だけ、現在有効な取引を都度サーバへ
+            // 再検証させ、entitlements.expires_at を前進させる(未認証はサーバが403のため送らない)。
+            if APIClient.shared.isAuthenticated {
+                await resubmitCurrentEntitlements()
+            }
         } catch {
             // 商品が未作成の環境では非表示／無効のままにする。
             products = []
@@ -35,9 +41,23 @@ final class StoreKitManager: ObservableObject {
         }
     }
 
+    private func resubmitCurrentEntitlements() async {
+        for await result in Transaction.currentEntitlements {
+            guard case let .verified(transaction) = result, Self.productIDs.contains(transaction.productID) else { continue }
+            try? await APIClient.shared.verifyApplePurchase(signedTransaction: result.jwsRepresentation)
+        }
+    }
+
     func purchase(_ product: Product) async throws {
         guard isAvailable else { throw StoreKitError.unavailable }
-        let result = try await product.purchase()
+        // appAccountToken はサーバ検証で必須。トークン無しの取引はサーバに必ず拒否されるため、購入前に
+        // 取得できなければ購入を開始しない(開始してしまうと、ユーザーは Apple に支払ったのに権利が
+        // 付与されない=ユーザー側の金銭損失バグになる)。取得失敗/UUIDパース失敗はどちらもエラーで止める。
+        guard let tokenString = try? await APIClient.shared.fetchAppAccountToken(),
+              let token = UUID(uuidString: tokenString) else {
+            throw StoreKitError.accountTokenUnavailable
+        }
+        let result = try await product.purchase(options: [.appAccountToken(token)])
         if case let .success(verification) = result,
            case let .verified(transaction) = verification {
             try await submit(transaction, signedTransaction: verification.jwsRepresentation)
@@ -76,5 +96,11 @@ final class StoreKitManager: ObservableObject {
 
 enum StoreKitError: LocalizedError {
     case unavailable
-    var errorDescription: String? { "アプリ内購入は現在利用できません。" }
+    case accountTokenUnavailable
+    var errorDescription: String? {
+        switch self {
+        case .unavailable: return "アプリ内購入は現在利用できません。"
+        case .accountTokenUnavailable: return "購入の準備に失敗しました。通信状態を確認して再度お試しください。"
+        }
+    }
 }
