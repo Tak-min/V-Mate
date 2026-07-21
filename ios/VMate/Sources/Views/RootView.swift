@@ -54,9 +54,7 @@ struct RootView: View {
         }
         .task {
             await viewModel.bootstrap()
-            if viewModel.isFirstRun {
-                showOnboarding = true
-            }
+            showOnboarding = viewModel.isFirstRun || viewModel.ageBand == nil || viewModel.ageBand == "under13"
         }
         .onChange(of: viewModel.state?.stage) { newStage in
             guard let prev = previousStage, let next = newStage, prev != next else {
@@ -71,15 +69,22 @@ struct RootView: View {
         }
         .sheet(isPresented: $diaryOpen) { DiaryView() }
         .fullScreenCover(isPresented: $showOnboarding) {
-            OnboardingView { name in
-                if let name = name {
-                    viewModel.saveName(name)
+            if viewModel.ageBand == "under13" {
+                AgeBlockedView()
+            } else {
+                OnboardingView(
+                    startAtAge: !viewModel.isFirstRun,
+                    onAgeVerified: { viewModel.updateAgeBand($0) }
+                ) { name in
+                    if let name = name {
+                        viewModel.saveName(name)
+                    }
+                    viewModel.markOnboarded()
+                    viewModel.fireGreeting()
+                    showOnboarding = false
                 }
-                viewModel.markOnboarded()
-                viewModel.fireGreeting()
-                showOnboarding = false
+                .background(TransparentBackground())
             }
-            .background(TransparentBackground())
         }
         .preferredColorScheme(.dark)
     }

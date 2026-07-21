@@ -135,6 +135,29 @@ async function getState(c: Ctx): Promise<Response> {
   return json(await statePayload(c.store, c.env, await resolveUid(c)));
 }
 
+async function getAge(c: Ctx): Promise<Response> {
+  const age = await c.store.getUserAge(await resolveUid(c));
+  return json({ age_band: age?.age_band ?? null, required: age == null });
+}
+
+/** 年齢確認前または13歳未満の利用者を、生成系APIへ到達させない。 */
+async function requireInteractionAge(c: Ctx, uid: string): Promise<Response | null> {
+  const age = await c.store.getUserAge(uid);
+  if (!age) {
+    return json(
+      { detail: "ご利用前に年齢確認を完了してください", code: "age_required" },
+      403,
+    );
+  }
+  if (age.age_band === "under13") {
+    return json(
+      { detail: "この年齢ではご利用いただけません", code: "age_restricted" },
+      403,
+    );
+  }
+  return null;
+}
+
 async function setProfile(c: Ctx, body: { user_name?: unknown }): Promise<Response> {
   const name = typeof body.user_name === "string" ? body.user_name.trim() : "";
   if (!name || name.length > 40) return errorDetail("名前は1〜40文字で入力してください", 400);
@@ -156,15 +179,13 @@ async function postChat(c: Ctx, body: { message?: unknown }): Promise<Response> 
     return errorDetail("メッセージは1〜2000文字で入力してください", 400);
   }
   const uid = await resolveUid(c);
+  const ageBlocked = await requireInteractionAge(c, uid);
+  if (ageBlocked) return ageBlocked;
   const limited = await enforceRateLimit(c, uid);
   if (limited) return limited;
-  // 年齢帯: 13歳未満はチャット自体を不可(dev-notes/monetization_auth_and_safety_2026-07-20.md §2.1)。
-  // 未登録/13-17歳は minor 相当としてモデレーション・system prompt を厳格化する(fail-safe)。
+  // 年齢帯: 13-17歳は minor 用モデレーション・system prompt を適用する。
   const age = await c.store.getUserAge(uid);
-  if (age?.age_band === "under13") {
-    return errorDetail("この年齢ではご利用いただけません", 403);
-  }
-  const minor = age?.age_band !== "adult";
+  const minor = age!.age_band !== "adult";
   return handleChat(c.env, c.store, c.execCtx, uid, message, minor);
 }
 
@@ -177,7 +198,7 @@ async function postAge(c: Ctx, body: { birth_date?: unknown }): Promise<Response
   try {
     const band = computeAgeBand(birthDate, jstNow());
     await c.store.setUserAge(uid, birthDate, band, "self_declared");
-    return json({ age_band: band });
+    return json({ age_band: band, required: false });
   } catch (e) {
     if (e instanceof auth.ValueError) return errorDetail(e.message, 400);
     throw e;
@@ -197,6 +218,8 @@ async function postNudge(c: Ctx, body: { reason?: unknown; first_visit?: unknown
   const reason = body.reason === "greeting" ? "greeting" : "idle";
   const firstVisit = body.first_visit === true;
   const uid = await resolveUid(c);
+  const ageBlocked = await requireInteractionAge(c, uid);
+  if (ageBlocked) return ageBlocked;
   const lastSeen = await c.store.getKv(uid, "last_seen");
   const userName = await c.store.getKv(uid, "user_name");
   const nameNote = userName
@@ -258,6 +281,8 @@ async function getDiary(c: Ctx): Promise<Response> {
 
 async function generateDiary(c: Ctx): Promise<Response> {
   const uid = await resolveUid(c);
+  const ageBlocked = await requireInteractionAge(c, uid);
+  if (ageBlocked) return ageBlocked;
   const today = jstToday();
   const msgs = await c.store.messagesOn(uid, today);
   if (msgs.length < 4) return json({ ok: false, reason: "今日はまだ会話が少ないみたい。" });
@@ -278,6 +303,9 @@ async function generateDiary(c: Ctx): Promise<Response> {
 }
 
 async function getTts(c: Ctx): Promise<Response> {
+  const uid = await resolveUid(c);
+  const ageBlocked = await requireInteractionAge(c, uid);
+  if (ageBlocked) return ageBlocked;
   const enabled = ["1", "true", "yes", "on"].includes((c.env.ENABLE_TTS ?? "false").toLowerCase());
   if (!enabled) return new Response(null, { status: 204 });
   const url = new URL(c.request.url);
@@ -298,6 +326,7 @@ async function route(c: Ctx): Promise<Response> {
   // GET
   if (method === "GET") {
     if (path === "/api/auth/me") return authMe(c);
+    if (path === "/api/profile/age") return getAge(c);
     if (path === "/api/state") return getState(c);
     if (path === "/api/history") return getHistory(c);
     if (path === "/api/diary") return getDiary(c);

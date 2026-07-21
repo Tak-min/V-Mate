@@ -77,7 +77,13 @@ final class APIClient {
     // --- 年齢ゲート ---
 
     struct AgeResponse: Codable {
-        var age_band: String
+        var age_band: String?
+        // 旧WorkerのPOST応答は required を返さないため、段階デプロイ中も読めるようoptional。
+        var required: Bool?
+    }
+
+    func fetchAge() async throws -> AgeResponse {
+        try await get("/api/profile/age")
     }
 
     /// birthDate は "YYYY-MM-DD"。band はクライアントで計算せずサーバの判定を信頼する。

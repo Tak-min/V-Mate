@@ -53,6 +53,30 @@ export async function logout(): Promise<void> {
 export const fetchMe = (): Promise<{ authenticated: boolean; email: string | null }> =>
   apiFetch('/api/auth/me').then((r) => r.json());
 
+export type AgeBand = 'under13' | 'minor' | 'adult';
+
+export interface AgeStatus {
+  age_band: AgeBand | null;
+  required: boolean;
+}
+
+export const fetchAge = (): Promise<AgeStatus> =>
+  apiFetch('/api/profile/age').then((r) => {
+    if (!r.ok) throw new Error(`年齢情報を取得できませんでした (${r.status})`);
+    return r.json();
+  });
+
+export const setAge = (birthDate: string): Promise<AgeStatus> =>
+  apiFetch('/api/profile/age', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ birth_date: birthDate }),
+  }).then(async (r) => {
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.detail ?? `年齢確認に失敗しました (${r.status})`);
+    return data as AgeStatus;
+  });
+
 // --- チャット ---
 export async function streamChat(
   message: string,

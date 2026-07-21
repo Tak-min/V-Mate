@@ -1,10 +1,11 @@
 import SwiftUI
 
 struct OnboardingView: View {
+    let onAgeVerified: (String) -> Void
     let onComplete: (String?) -> Void
 
     // ステップ: 0=welcome, 1=年齢確認(新規), 2=name, 3=hint
-    @State private var step = 0
+    @State private var step: Int
     @State private var name = ""
     @State private var goingForward = true
     @FocusState private var nameFieldFocused: Bool
@@ -16,6 +17,16 @@ struct OnboardingView: View {
     @State private var ageCheckInFlight = false
     @State private var ageError: String?
     @State private var isAgeBlocked = false
+
+    init(
+        startAtAge: Bool = false,
+        onAgeVerified: @escaping (String) -> Void = { _ in },
+        onComplete: @escaping (String?) -> Void
+    ) {
+        self.onAgeVerified = onAgeVerified
+        self.onComplete = onComplete
+        _step = State(initialValue: startAtAge ? 1 : 0)
+    }
 
     var body: some View {
         if isAgeBlocked {
@@ -123,12 +134,6 @@ struct OnboardingView: View {
 
             nextButton("つぎへ") { advance() }
 
-            Button { onComplete(nil) } label: {
-                Text("スキップ")
-                    .font(.footnote)
-                    .foregroundStyle(Color.warmBrown.opacity(0.45))
-                    .underline()
-            }
         }
     }
 
@@ -172,7 +177,12 @@ struct OnboardingView: View {
             defer { ageCheckInFlight = false }
             do {
                 let response = try await APIClient.shared.setAge(birthDate: Self.isoDateFormatter.string(from: birthDate))
-                if response.age_band == "under13" {
+                guard let band = response.age_band else {
+                    ageError = "確認できなかったよ。もう一度試してみてね。"
+                    return
+                }
+                onAgeVerified(band)
+                if band == "under13" {
                     withAnimation { isAgeBlocked = true }
                 } else {
                     advance()

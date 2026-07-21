@@ -1,96 +1,136 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
+import { setAge, type AgeBand } from '../features/chat/api';
 import {
   advanceOnboardingStep,
   completeOnboarding,
-  getOnboardingStep,
+  isOnboardingComplete,
 } from '../features/chat/onboarding';
 
-/** UI 上のステップ番号(0=Welcome, 1=Name, 2=Hint) */
-type UiStep = 0 | 1 | 2;
+/** UI 上のステップ番号(0=Welcome, 1=Age, 2=Name, 3=Hint) */
+type UiStep = 0 | 1 | 2 | 3;
 
 interface OnboardingOverlayProps {
+  ageBand: AgeBand | null;
+  onAgeVerified: (band: AgeBand) => void;
   onComplete: (name?: string) => void;
 }
 
-export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
-  // Restore step from localStorage on mount instead of always starting at 0.
-  const [step, setStep] = useState<UiStep>(() => {
-    const persisted = getOnboardingStep();
-    return (persisted >= 1 && persisted <= 3 ? (persisted - 1) as UiStep : 0);
-  });
+export function OnboardingOverlay({ ageBand, onAgeVerified, onComplete }: OnboardingOverlayProps) {
+  const resumeAtAge = isOnboardingComplete() && ageBand === null;
+  const [step, setStep] = useState<UiStep>(resumeAtAge ? 1 : 0);
   const [name, setName] = useState('');
-  const [visible, setVisible] = useState(false);
+  const [birthDate, setBirthDate] = useState('');
+  const [ageBusy, setAgeBusy] = useState(false);
+  const [ageError, setAgeError] = useState('');
+  const [blocked, setBlocked] = useState(ageBand === 'under13');
 
-  /* --- マウント時にオンボーディング段階を確認 --- */
-  useEffect(() => {
-    const current = getOnboardingStep();
-    if (current >= 4) {
-      setVisible(false);
-      return;
-    }
-    // Only advance to step 1 if not already past it (prevents overwriting saved progress).
-    if (current === 0) advanceOnboardingStep(1);
-    setVisible(true);
-  }, []);
-
-  /* --- ハンドラ --- */
   const handleNextFromWelcome = useCallback(() => {
-    advanceOnboardingStep(2);
-    setStep(1);
-  }, []);
+    if (ageBand === null) {
+      advanceOnboardingStep(2);
+      setStep(1);
+    } else {
+      advanceOnboardingStep(3);
+      setStep(2);
+    }
+  }, [ageBand]);
+
+  const handleAge = useCallback(async () => {
+    if (!birthDate || ageBusy) return;
+    setAgeBusy(true);
+    setAgeError('');
+    try {
+      const result = await setAge(birthDate);
+      if (!result.age_band) throw new Error('年齢確認の応答が不正です');
+      onAgeVerified(result.age_band);
+      if (result.age_band === 'under13') {
+        setBlocked(true);
+        return;
+      }
+      if (resumeAtAge) {
+        completeOnboarding();
+        onComplete();
+      } else {
+        advanceOnboardingStep(3);
+        setStep(2);
+      }
+    } catch (error) {
+      setAgeError(error instanceof Error ? error.message : '確認できませんでした。もう一度試してください。');
+    } finally {
+      setAgeBusy(false);
+    }
+  }, [ageBusy, birthDate, onAgeVerified, onComplete, resumeAtAge]);
 
   const handleNextFromName = useCallback(() => {
     advanceOnboardingStep(3);
-    setStep(2);
+    setStep(3);
   }, []);
-
-  const handleSkip = useCallback(() => {
-    completeOnboarding();
-    onComplete();
-  }, [onComplete]);
 
   const handleComplete = useCallback(() => {
     completeOnboarding();
     onComplete(name || undefined);
   }, [name, onComplete]);
 
-  /* --- 既に完了済みなら描画しない --- */
-  if (!visible) return null;
+  if (blocked) {
+    return (
+      <div className="onboarding-backdrop">
+        <div className="onboarding-card" role="alert">
+          <p className="onboarding-title">ごめんね</p>
+          <p className="onboarding-subtitle">
+            このアプリは13歳未満の方はご利用いただけません。<br />
+            大きくなったら、また会えるのを楽しみにしてるね。
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="onboarding-backdrop">
-      <div
-        className="onboarding-card"
-        role="dialog"
-        aria-modal="true"
-        aria-label="オンボーディング"
-      >
-        {/* ステップドット */}
+      <div className="onboarding-card" role="dialog" aria-modal="true" aria-label="オンボーディング">
         <div className="onboarding-dots" aria-hidden="true">
-          <span className={`onboarding-dot${step === 0 ? ' active' : ''}`} />
-          <span className={`onboarding-dot${step === 1 ? ' active' : ''}`} />
-          <span className={`onboarding-dot${step === 2 ? ' active' : ''}`} />
+          {[0, 1, 2, 3].map((value) => (
+            <span key={value} className={`onboarding-dot${step === value ? ' active' : ''}`} />
+          ))}
         </div>
 
-        {/* Step 0: Welcome */}
         {step === 0 && (
           <>
             <p className="onboarding-title">はじめまして！</p>
             <p className="onboarding-subtitle">ぼくはシロ、あなたのAIコンパニオンだよ。</p>
             <div className="onboarding-actions">
+              <button type="button" className="onboarding-primary" onClick={handleNextFromWelcome}>つぎへ</button>
+            </div>
+          </>
+        )}
+
+        {step === 1 && (
+          <>
+            <p className="onboarding-title">うまれた日をおしえてね</p>
+            <p className="onboarding-subtitle">安心して使ってもらうための確認だよ。</p>
+            <input
+              className="onboarding-input"
+              type="date"
+              value={birthDate}
+              max={new Date().toISOString().slice(0, 10)}
+              onChange={(event) => setBirthDate(event.target.value)}
+              required
+              autoFocus
+            />
+            {ageError && <p className="onboarding-error" role="alert">{ageError}</p>}
+            <div className="onboarding-actions">
               <button
                 type="button"
                 className="onboarding-primary"
-                onClick={handleNextFromWelcome}
+                onClick={() => void handleAge()}
+                disabled={!birthDate || ageBusy}
               >
-                つぎへ
+                {ageBusy ? '確認中…' : '確認する'}
               </button>
             </div>
           </>
         )}
 
-        {/* Step 1: Name */}
-        {step === 1 && (
+        {step === 2 && (
           <>
             <p className="onboarding-title">おなまえは？</p>
             <input
@@ -98,44 +138,25 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
               type="text"
               placeholder="なまえをいれてね"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(event) => setName(event.target.value)}
               autoFocus
             />
             <div className="onboarding-actions">
-              <button
-                type="button"
-                className="onboarding-primary"
-                onClick={handleNextFromName}
-              >
-                つぎへ
-              </button>
+              <button type="button" className="onboarding-primary" onClick={handleNextFromName}>つぎへ</button>
             </div>
-            <button type="button" className="onboarding-skip" onClick={handleSkip}>
-              スキップ
-            </button>
+            <button type="button" className="onboarding-skip" onClick={handleNextFromName}>スキップ</button>
           </>
         )}
 
-        {/* Step 2: Hint */}
-        {step === 2 && (
+        {step === 3 && (
           <>
             <p className="onboarding-title">話しかけてみて！</p>
             <div className="onboarding-hints">
-              <div className="onboarding-hint-item">
-                💬 テキストで話しかける
-              </div>
-              <div className="onboarding-hint-item">
-                🎤 マイクで話しかける
-              </div>
+              <div className="onboarding-hint-item">💬 テキストで話しかける</div>
+              <div className="onboarding-hint-item">🎤 マイクで話しかける</div>
             </div>
             <div className="onboarding-actions">
-              <button
-                type="button"
-                className="onboarding-primary"
-                onClick={handleComplete}
-              >
-                はじめる！
-              </button>
+              <button type="button" className="onboarding-primary" onClick={handleComplete}>はじめる！</button>
             </div>
           </>
         )}

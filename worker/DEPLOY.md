@@ -49,7 +49,11 @@ npx wrangler d1 create aikata
 
 ```bash
 npm run db:init:remote      # = wrangler d1 execute aikata --remote --file=./schema.sql
+npm run db:migrate-v3:remote # 年齢ゲート/通報テーブル。既存DBにも必ず適用
 ```
+
+`schema_v3.sql` 未適用のまま新しいフロントを公開すると、年齢状態 API が 500 になり、
+必須オンボーディングから先へ進めない。**Worker のデプロイより先に**上記2コマンドを完了する。
 
 ### 3. 秘密(シークレット)を登録
 
@@ -83,6 +87,7 @@ npm run deploy        # フロントを build → backend/static に出力 → w
 cd ~/Desktop/v-mate/worker
 printf 'JWT_SECRET=local-secret\nLLM_API_KEY=gsk_あなたのキー\n' > .dev.vars
 npm run db:init:local          # ローカル D1 にスキーマ適用
+npm run db:migrate-v3:local   # 年齢ゲート/通報テーブル
 npm run dev                    # http://localhost:8787
 ```
 

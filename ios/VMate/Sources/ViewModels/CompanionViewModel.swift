@@ -24,6 +24,7 @@ final class CompanionViewModel: ObservableObject {
     @Published var voiceEnabled = true
     @Published var avatarMouthLevel: Double = 0
     @Published var currentEmotion: Emotion = .neutral
+    @Published var ageBand: String?
 
     @Published var daysAway: Int? = nil
 
@@ -94,16 +95,22 @@ final class CompanionViewModel: ObservableObject {
 
         async let stateTask: CompanionState? = try? APIClient.shared.fetchState()
         async let historyTask: [ChatMessage]? = try? APIClient.shared.fetchHistory()
+        async let ageTask: APIClient.AgeResponse? = try? APIClient.shared.fetchAge()
         state = await stateTask
         if let history = await historyTask { messages = history }
+        ageBand = await ageTask?.age_band
 
         // 初回ユーザーは OnboardingView 経由で fireGreeting() が呼ばれる。
         // 2回目以降のユーザーのみここで挨拶。
-        if !isFirstRun && !greeted {
+        if !isFirstRun, ageBand == "minor" || ageBand == "adult", !greeted {
             greeted = true
             await requestNudge(reason: "greeting")
             resetIdleTimer()
         }
+    }
+
+    func updateAgeBand(_ band: String) {
+        ageBand = band
     }
 
     func send(_ raw: String) {

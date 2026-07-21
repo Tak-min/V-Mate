@@ -57,7 +57,7 @@ function waitingCueFor(message: string): string {
   return pick(DEFAULT_WAITING_CUES);
 }
 
-export function useCompanion() {
+export function useCompanion(interactionEnabled = true) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const viewerRef = useRef<CompanionViewer | null>(null);
   const speechRef = useRef<SpeechQueue | null>(null);
@@ -407,10 +407,10 @@ export function useCompanion() {
   // モデル読み込み完了後にシロから挨拶(Replika 的プロアクティブ性)。
   // オンボーディング未完了の場合は fireGreeting() で後から発火させる。
   useEffect(() => {
-    if (!ready || greeted.current) return;
+    if (!ready || !interactionEnabled || greeted.current) return;
     if (!isOnboardingComplete()) return;
     fireGreeting(false);
-  }, [ready, fireGreeting]);
+  }, [ready, interactionEnabled, fireGreeting]);
 
   // タイマー・認識エンジンの後始末
   useEffect(

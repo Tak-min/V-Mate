@@ -1200,6 +1200,19 @@ body {
   transform: translateY(-2px) scale(1.02);
 }
 
+.onboarding-primary:disabled {
+  cursor: default;
+  opacity: 0.5;
+  transform: none;
+}
+
+.onboarding-error {
+  margin: -8px 0 0;
+  color: oklch(52% 0.18 25);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
 .onboarding-skip {
   border: none;
   background: transparent;

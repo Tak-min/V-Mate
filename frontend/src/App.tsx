@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useCompanion } from './features/chat/useCompanion';
 import { AuthBar } from './components/AuthBar';
 import { ChatPanel } from './components/ChatPanel';
@@ -7,8 +7,10 @@ import { OnboardingOverlay } from './components/OnboardingOverlay';
 import { StatusBar } from './components/StatusBar';
 import { VoiceControl } from './components/VoiceControl';
 import { isFirstVisit, isOnboardingComplete } from './features/chat/onboarding';
+import { fetchAge, type AgeBand } from './features/chat/api';
 
 export default function App() {
+  const [ageBand, setAgeBand] = useState<AgeBand | null | undefined>(undefined);
   const {
     canvasRef,
     messages,
@@ -31,11 +33,17 @@ export default function App() {
     toggleVoiceMode,
     interrupt,
     fireGreeting,
-  } = useCompanion();
+  } = useCompanion(ageBand === 'minor' || ageBand === 'adult');
   const [diaryOpen, setDiaryOpen] = useState(false);
   // Capture firstVisit at mount time BEFORE onboarding can mark it via completeOnboarding().
   const [wasFirstVisit] = useState(() => isFirstVisit());
   const [onboardingDone, setOnboardingDone] = useState(isOnboardingComplete());
+
+  useEffect(() => {
+    fetchAge()
+      .then((status) => setAgeBand(status.age_band))
+      .catch(() => setAgeBand(null));
+  }, []);
 
   const handleOnboardingComplete = useCallback((name?: string) => {
     if (name) saveName(name);
@@ -64,7 +72,20 @@ export default function App() {
         )}
       </div>
 
-      {!onboardingDone && <OnboardingOverlay onComplete={handleOnboardingComplete} />}
+      {ageBand === undefined && (
+        <div className="onboarding-backdrop">
+          <div className="onboarding-card" role="status">
+            <p className="onboarding-subtitle">利用情報を確認しています…</p>
+          </div>
+        </div>
+      )}
+      {ageBand !== undefined && (ageBand === null || ageBand === 'under13' || !onboardingDone) && (
+        <OnboardingOverlay
+          ageBand={ageBand}
+          onAgeVerified={setAgeBand}
+          onComplete={handleOnboardingComplete}
+        />
+      )}
       <AuthBar />
       <StatusBar state={state} onSaveName={saveName} />
 
