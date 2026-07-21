@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react';
-import { setAge, type AgeBand } from '../features/chat/api';
+import { useCallback, useEffect, useState } from 'react';
+import { setAge, trackEvent, type AgeBand } from '../features/chat/api';
 import {
   advanceOnboardingStep,
   completeOnboarding,
@@ -24,6 +24,11 @@ export function OnboardingOverlay({ ageBand, onAgeVerified, onComplete }: Onboar
   const [ageError, setAgeError] = useState('');
   const [blocked, setBlocked] = useState(ageBand === 'under13');
 
+  // 個人情報を送らず、開始回数だけを日次集計する。
+  useEffect(() => {
+    if (!resumeAtAge) trackEvent('onboarding_started');
+  }, [resumeAtAge]);
+
   const handleNextFromWelcome = useCallback(() => {
     if (ageBand === null) {
       advanceOnboardingStep(2);
@@ -42,6 +47,7 @@ export function OnboardingOverlay({ ageBand, onAgeVerified, onComplete }: Onboar
       const result = await setAge(birthDate);
       if (!result.age_band) throw new Error('年齢確認の応答が不正です');
       onAgeVerified(result.age_band);
+      trackEvent('onboarding_age_verified');
       if (result.age_band === 'under13') {
         setBlocked(true);
         return;
@@ -67,6 +73,7 @@ export function OnboardingOverlay({ ageBand, onAgeVerified, onComplete }: Onboar
 
   const handleComplete = useCallback(() => {
     completeOnboarding();
+    trackEvent('onboarding_completed');
     onComplete(name || undefined);
   }, [name, onComplete]);
 
@@ -96,7 +103,7 @@ export function OnboardingOverlay({ ageBand, onAgeVerified, onComplete }: Onboar
         {step === 0 && (
           <>
             <p className="onboarding-title">はじめまして！</p>
-            <p className="onboarding-subtitle">ぼくはシロ、あなたのAIコンパニオンだよ。</p>
+            <p className="onboarding-subtitle">ぼくはシロ。話すほどあなたのことを覚えて、毎日をいっしょに振り返る相棒だよ。</p>
             <div className="onboarding-actions">
               <button type="button" className="onboarding-primary" onClick={handleNextFromWelcome}>つぎへ</button>
             </div>
@@ -154,9 +161,11 @@ export function OnboardingOverlay({ ageBand, onAgeVerified, onComplete }: Onboar
             <div className="onboarding-hints">
               <div className="onboarding-hint-item">💬 テキストで話しかける</div>
               <div className="onboarding-hint-item">🎤 マイクで話しかける</div>
+              <div className="onboarding-hint-item">🧠 好きなことを覚えてくれる</div>
+              <div className="onboarding-hint-item">📓 今日のことが日記になる</div>
             </div>
             <div className="onboarding-actions">
-              <button type="button" className="onboarding-primary" onClick={handleComplete}>はじめる！</button>
+              <button type="button" className="onboarding-primary" onClick={handleComplete}>最初のひとことを話す</button>
             </div>
           </>
         )}

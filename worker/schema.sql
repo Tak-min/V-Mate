@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS usage (
 -- 認証。user_id はこの users.id(uuid hex)を指す。
 CREATE TABLE IF NOT EXISTS users (
   id            TEXT PRIMARY KEY,
-  email         TEXT NOT NULL UNIQUE,
-  password_hash TEXT NOT NULL,
+  email         TEXT UNIQUE,
+  password_hash TEXT,
   created_at    TEXT NOT NULL
 );

@@ -43,7 +43,10 @@ struct DiaryView: View {
                     }
                 }
             }
-            .task { await load() }
+            .task {
+                APIClient.shared.trackEvent("diary_opened")
+                await load()
+            }
         }
     }
 

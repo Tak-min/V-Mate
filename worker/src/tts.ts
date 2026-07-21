@@ -22,13 +22,21 @@ const EMOTION_VOICE_SETTINGS: Record<
   neutral: DEFAULT_SETTINGS,
 };
 
+export interface TtsResult {
+  audio: ArrayBuffer | null;
+  outcome: "success" | "disabled" | "unconfigured" | "upstream_error" | "network_error";
+  latencyMs: number;
+}
+
 export async function synthesize(
   env: Env,
   text: string,
   emotion?: string | null,
-): Promise<ArrayBuffer | null> {
+): Promise<TtsResult> {
+  const startedAt = Date.now();
   const key = env.AIVIS_API_KEY;
-  if (!key || !text.trim()) return null;
+  if (!text.trim()) return { audio: null, outcome: "disabled", latencyMs: 0 };
+  if (!key) return { audio: null, outcome: "unconfigured", latencyMs: 0 };
   const modelUuid = env.AIVIS_MODEL_UUID || DEFAULT_MODEL_UUID;
   const voiceSettings = EMOTION_VOICE_SETTINGS[emotion ?? "neutral"] ?? DEFAULT_SETTINGS;
   const url = `${AIVIS_BASE}/tts/synthesize`;
@@ -52,9 +60,9 @@ export async function synthesize(
       },
       body: JSON.stringify(payload),
     });
-    if (!response.ok) return null;
-    return await response.arrayBuffer();
+    if (!response.ok) return { audio: null, outcome: "upstream_error", latencyMs: Date.now() - startedAt };
+    return { audio: await response.arrayBuffer(), outcome: "success", latencyMs: Date.now() - startedAt };
   } catch {
-    return null;
+    return { audio: null, outcome: "network_error", latencyMs: Date.now() - startedAt };
   }
 }

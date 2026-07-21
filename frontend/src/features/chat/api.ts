@@ -13,6 +13,14 @@ function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
 
 const jsonHeaders = { 'Content-Type': 'application/json' };
 
+export function trackEvent(event: 'onboarding_started' | 'onboarding_age_verified' | 'onboarding_completed' | 'voice_mode_started' | 'diary_opened'): void {
+  void apiFetch('/api/analytics/event', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ event }),
+  }).catch(() => undefined);
+}
+
 // --- 認証 ---
 export interface AuthResult {
   ok: boolean;

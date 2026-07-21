@@ -125,7 +125,7 @@ struct OnboardingView: View {
                 Text("はじめまして！")
                     .font(.title2.bold())
                     .foregroundStyle(Color.accentPink)
-                Text("ぼくはシロ。\nいつでもそばにいるAIコンパニオンだよ。\n話しかけたら、ちゃんと答えるね。")
+                Text("ぼくはシロ。\n話すほどあなたのことを覚えて、\n毎日をいっしょに振り返る相棒だよ。")
                     .font(.callout)
                     .foregroundStyle(Color.warmBrown.opacity(0.85))
                     .multilineTextAlignment(.center)
@@ -182,6 +182,7 @@ struct OnboardingView: View {
                     return
                 }
                 onAgeVerified(band)
+                APIClient.shared.trackEvent("onboarding_age_verified")
                 if band == "under13" {
                     withAnimation { isAgeBlocked = true }
                 } else {
@@ -276,9 +277,11 @@ struct OnboardingView: View {
                 .shadow(color: Color.accentPink.opacity(0.3), radius: 8, y: 3)
 
                 HintRow(icon: "keyboard", text: "テキストで話しかける")
+                HintRow(icon: "brain.head.profile", text: "好きなことを覚えてくれる")
+                HintRow(icon: "book.closed", text: "今日のことが日記になる")
             }
 
-            let startLabel = name.isEmpty ? "はじめる！" : "\(name)、はじめよう！"
+            let startLabel = name.isEmpty ? "最初のひとことを話す" : "\(name)、最初のひとことを話す"
             nextButton(startLabel) {
                 onComplete(name.isEmpty ? nil : name)
             }

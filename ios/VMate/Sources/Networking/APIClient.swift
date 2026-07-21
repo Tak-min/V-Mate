@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 /// Cloudflare Worker(本番)への通信クライアント。worker/src/index.ts のAPI契約に一致させる。
 /// 匿名ID は Set-Cookie(aikata_uid, HttpOnly)で発行される。URLSession 既定の HTTPCookieStorage.shared
@@ -10,6 +11,7 @@ final class APIClient {
     let baseURL = URL(string: "https://aikata.taku810616.workers.dev")!
 
     private let session: URLSession
+    private let tokenStore = KeychainTokenStore(service: "com.takmin.vmate", account: "session-token")
 
     private init() {
         let config = URLSessionConfiguration.default
@@ -44,8 +46,16 @@ final class APIClient {
         }
     }
 
+    private func authorized(_ request: inout URLRequest) {
+        if let token = tokenStore.read() {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+    }
+
     private func get<T: Decodable>(_ path: String, query: [String: String] = [:]) async throws -> T {
-        let (data, response) = try await session.data(from: url(path, query: query))
+        var request = URLRequest(url: url(path, query: query))
+        authorized(&request)
+        let (data, response) = try await session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         return try decode(data, status: status)
     }
@@ -54,10 +64,42 @@ final class APIClient {
         var request = URLRequest(url: url(path))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        authorized(&request)
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         return try decode(data, status: status)
+    }
+
+    var isAuthenticated: Bool { tokenStore.read() != nil }
+
+    struct TokenResponse: Codable { let token: String }
+
+    /// Apple の identity token は Worker 側で署名・issuer・audience・nonce を検証する。
+    func signInWithApple(identityToken: String, nonce: String) async throws {
+        let response: TokenResponse = try await post("/api/auth/apple", body: [
+            "identity_token": identityToken,
+            "nonce": nonce,
+        ])
+        try tokenStore.write(response.token)
+    }
+
+    func deleteAccount() async throws {
+        struct DeleteResponse: Codable { let ok: Bool }
+        let _: DeleteResponse = try await post("/api/auth/delete", body: [:])
+        try tokenStore.delete()
+    }
+
+    func verifyApplePurchase(signedTransaction: String) async throws {
+        struct VerifyResponse: Codable { let ok: Bool }
+        let _: VerifyResponse = try await post("/api/purchase/apple/verify", body: ["signed_transaction": signedTransaction])
+    }
+
+    func trackEvent(_ event: String) {
+        Task {
+            struct EventResponse: Codable { let ok: Bool }
+            _ = try? await post("/api/analytics/event", body: ["event": event]) as EventResponse
+        }
     }
 
     // --- 状態・履歴 ---
@@ -131,7 +173,9 @@ final class APIClient {
     func fetchTTS(text: String, emotion: Emotion?) async throws -> Data? {
         var query = ["text": text]
         if let emotion { query["emotion"] = emotion.rawValue }
-        let (data, response) = try await session.data(from: url("/api/tts", query: query))
+        var request = URLRequest(url: url("/api/tts", query: query))
+        authorized(&request)
+        let (data, response) = try await session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 204 { return nil }
         guard (200..<300).contains(status) else { return nil }
@@ -156,6 +200,7 @@ final class APIClient {
                     var request = URLRequest(url: self.url("/api/chat"))
                     request.httpMethod = "POST"
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    self.authorized(&request)
                     request.httpBody = try JSONSerialization.data(withJSONObject: [
                         "message": message,
                     ])
@@ -215,5 +260,49 @@ final class APIClient {
             }
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+}
+
+private final class KeychainTokenStore {
+    private let service: String
+    private let account: String
+
+    init(service: String, account: String) {
+        self.service = service
+        self.account = account
+    }
+
+    func read() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    func write(_ token: String) throws {
+        let data = Data(token.utf8)
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
+        let attributes: [String: Any] = [kSecValueData as String: data, kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock]
+        let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if status == errSecItemNotFound {
+            var add = query
+            attributes.forEach { add[$0.key] = $0.value }
+            guard SecItemAdd(add as CFDictionary, nil) == errSecSuccess else { throw APIError.decoding }
+        } else if status != errSecSuccess {
+            throw APIError.decoding
+        }
+    }
+
+    func delete() throws {
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else { throw APIError.decoding }
     }
 }

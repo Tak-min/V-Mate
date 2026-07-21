@@ -216,6 +216,74 @@ export class Store {
       .first<{ id: string; email: string }>();
   }
 
+  async getIdentity(provider: string, externalId: string): Promise<{ user_id: string } | null> {
+    return await this.db
+      .prepare("SELECT user_id FROM identities WHERE provider = ? AND external_id = ?")
+      .bind(provider, externalId)
+      .first<{ user_id: string }>();
+  }
+
+  async createAppleUser(userId: string, externalId: string, email: string | null): Promise<void> {
+    await this.db.batch([
+      this.db
+        .prepare("INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, NULL, ?)")
+        .bind(userId, email, jstIso()),
+      this.db
+        .prepare("INSERT INTO identities (provider, external_id, user_id, email, created_at) VALUES ('apple', ?, ?, ?, ?)")
+        .bind(externalId, userId, email, jstIso()),
+    ]);
+  }
+
+  async deleteAccount(userId: string): Promise<void> {
+    const tables = ["messages", "facts", "diary", "kv", "user_age", "reports", "entitlements", "purchases", "app_store_accounts", "identities", "users"];
+    await this.db.batch(tables.map((table) => this.db.prepare(`DELETE FROM ${table} WHERE ${table === "users" ? "id" : "user_id"} = ?`).bind(userId)));
+  }
+
+  async getActiveEntitlements(userId: string, now = jstIso()): Promise<Array<{ entitlement_key: string; expires_at: string | null }>> {
+    const { results } = await this.db
+      .prepare("SELECT entitlement_key, expires_at FROM entitlements WHERE user_id = ? AND status = 'active' AND (expires_at IS NULL OR expires_at > ?)")
+      .bind(userId, now)
+      .all<{ entitlement_key: string; expires_at: string | null }>();
+    return results;
+  }
+
+  async isEntitled(userId: string, entitlementKey: string, now = jstIso()): Promise<boolean> {
+    const row = await this.db
+      .prepare("SELECT 1 AS ok FROM entitlements WHERE user_id = ? AND entitlement_key = ? AND status = 'active' AND (expires_at IS NULL OR expires_at > ?)")
+      .bind(userId, entitlementKey, now)
+      .first<{ ok: number }>();
+    return row?.ok === 1;
+  }
+
+  /** P4 の検証器のみが呼ぶ内部 API。古い通知による状態巻き戻しを拒否する。 */
+  async upsertEntitlement(userId: string, key: string, status: string, source: string, expiresAt: string | null, updatedAt: string): Promise<void> {
+    await this.db
+      .prepare(
+        "INSERT INTO entitlements (user_id, entitlement_key, status, source, expires_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) " +
+          "ON CONFLICT(user_id, entitlement_key) DO UPDATE SET status = excluded.status, source = excluded.source, expires_at = excluded.expires_at, updated_at = excluded.updated_at WHERE excluded.updated_at >= entitlements.updated_at",
+      )
+      .bind(userId, key, status, source, expiresAt, updatedAt)
+      .run();
+  }
+
+  async recordPurchaseIfAbsent(input: {
+    userId: string; provider: string; externalId: string; originalExternalId?: string | null; productId: string;
+    kind: string; status: string; occurredAt: string; expiresAt?: string | null;
+  }): Promise<void> {
+    await this.db
+      .prepare("INSERT INTO purchases (user_id, provider, external_id, original_external_id, product_id, kind, status, occurred_at, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(provider, external_id) DO NOTHING")
+      .bind(input.userId, input.provider, input.externalId, input.originalExternalId ?? null, input.productId, input.kind, input.status, input.occurredAt, input.expiresAt ?? null, jstIso())
+      .run();
+  }
+
+  async getOrCreateAppAccountToken(userId: string): Promise<string> {
+    const existing = await this.db.prepare("SELECT app_account_token FROM app_store_accounts WHERE user_id = ?").bind(userId).first<{ app_account_token: string }>();
+    if (existing) return existing.app_account_token;
+    const candidate = crypto.randomUUID();
+    await this.db.prepare("INSERT INTO app_store_accounts (user_id, app_account_token, created_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO NOTHING").bind(userId, candidate, jstIso()).run();
+    return (await this.db.prepare("SELECT app_account_token FROM app_store_accounts WHERE user_id = ?").bind(userId).first<{ app_account_token: string }>())!.app_account_token;
+  }
+
   /** (scope, day) のカウンタを +1 して新しい値を返す(レート制限用)。 */
   async bumpUsage(scope: string, day: string): Promise<number> {
     const row = await this.db
@@ -226,6 +294,24 @@ export class Store {
       .bind(scope, day)
       .first<{ count: number }>();
     return row ? row.count : 1;
+  }
+
+  /** 個人を紐付けない日次の積み上げ指標。計測不能でもプロダクト本線は止めない呼出側で使う。 */
+  async recordDailyMetric(
+    day: string,
+    metric: string,
+    dimension: string,
+    elapsedMs = 0,
+    bytes = 0,
+  ): Promise<void> {
+    await this.db
+      .prepare(
+        "INSERT INTO daily_metrics (day, metric, dimension, count, total_ms, total_bytes) VALUES (?, ?, ?, 1, ?, ?) " +
+          "ON CONFLICT(day, metric, dimension) DO UPDATE SET count = count + 1, " +
+          "total_ms = total_ms + excluded.total_ms, total_bytes = total_bytes + excluded.total_bytes",
+      )
+      .bind(day, metric, dimension, Math.max(0, Math.round(elapsedMs)), Math.max(0, Math.round(bytes)))
+      .run();
   }
 
   /** 匿名Cookieユーザーのデータをログイン後アカウントへ引き継ぐ。 */

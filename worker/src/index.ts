@@ -6,11 +6,14 @@
 import type { Env } from "./env";
 import { Store } from "./db";
 import * as auth from "./auth";
+import { AppleTokenError, verifyAppleIdentityToken } from "./apple_auth";
 import { synthesize } from "./tts";
 import { complete } from "./llm";
 import { nudgePrompt, diaryPrompt } from "./persona";
 import { handleChat, statePayload } from "./chat";
 import { computeAgeBand } from "./agegate";
+import { assertPurchasable } from "./agegate";
+import { CATALOG } from "./catalog";
 import {
   json,
   errorDetail,
@@ -113,6 +116,78 @@ async function authLogin(c: Ctx, body: { email?: unknown; password?: unknown }):
   }
 }
 
+async function authApple(c: Ctx, body: { identity_token?: unknown; nonce?: unknown }): Promise<Response> {
+  if (typeof body.identity_token !== "string" || body.identity_token.length > 12_000 || typeof body.nonce !== "string" || body.nonce.length < 16 || body.nonce.length > 256) {
+    return errorDetail("Apple の認証情報が不正です", 400);
+  }
+  const perIp = envInt(c.env.RATE_LOGIN_PER_IP_PER_DAY, 30);
+  if ((await c.store.bumpUsage(`login:${clientIp(c.request)}`, jstToday())) > perIp) {
+    return errorDetail("ログイン試行が多すぎます。時間をおいて再度お試しください。", 429);
+  }
+  try {
+    const identity = await verifyAppleIdentityToken(body.identity_token, c.env.APPLE_BUNDLE_ID ?? "com.takmin.vmate", body.nonce);
+    const token = await auth.loginWithApple(c.store, auth.jwtSecret(c.env.JWT_SECRET), identity, c.uid);
+    return json({ token });
+  } catch (error) {
+    if (error instanceof AppleTokenError || error instanceof auth.ValueError) return errorDetail(error.message, 401);
+    throw error;
+  }
+}
+
+async function authDelete(c: Ctx): Promise<Response> {
+  const header = c.request.headers.get("Authorization") ?? "";
+  if (!header.startsWith("Bearer ")) return errorDetail("ログインが必要です", 401);
+  const userId = await auth.decodeToken(header.slice("Bearer ".length), auth.jwtSecret(c.env.JWT_SECRET));
+  if (!userId || !(await c.store.getUserById(userId))) return errorDetail("ログインが必要です", 401);
+  await c.store.deleteAccount(userId);
+  return json({ ok: true });
+}
+
+/** 匿名 Cookie では権利 API に到達させない。購入復元可能な P1 アカウントが必須。 */
+async function requireAuthenticatedUid(c: Ctx): Promise<string | null> {
+  const header = c.request.headers.get("Authorization") ?? "";
+  if (!header.startsWith("Bearer ")) return null;
+  const userId = await auth.decodeToken(header.slice("Bearer ".length), auth.jwtSecret(c.env.JWT_SECRET));
+  return userId && (await c.store.getUserById(userId)) ? userId : null;
+}
+
+async function requirePurchasableAccount(c: Ctx): Promise<string | Response> {
+  const userId = await requireAuthenticatedUid(c);
+  if (!userId) return errorDetail("ログインが必要です", 403);
+  return (await assertPurchasable(c.store, userId)) ?? userId;
+}
+
+async function getEntitlements(c: Ctx): Promise<Response> {
+  const account = await requirePurchasableAccount(c);
+  if (account instanceof Response) return account;
+  return json({ entitlements: await c.store.getActiveEntitlements(account) });
+}
+
+async function getCatalog(c: Ctx): Promise<Response> {
+  const account = await requirePurchasableAccount(c);
+  if (account instanceof Response) return account;
+  return json({ items: CATALOG.map(({ id, entitlementKey, kind, name, description }) => ({ id, entitlement_key: entitlementKey, kind, name, description })) });
+}
+
+function iapEnabled(c: Ctx): boolean {
+  return ["1", "true", "yes", "on"].includes((c.env.IAP_ENABLED ?? "false").toLowerCase());
+}
+
+async function getAppStoreAccountToken(c: Ctx): Promise<Response> {
+  if (!iapEnabled(c)) return errorDetail("アプリ内購入は準備中です", 503);
+  const account = await requirePurchasableAccount(c);
+  if (account instanceof Response) return account;
+  return json({ app_account_token: await c.store.getOrCreateAppAccountToken(account) });
+}
+
+/** Apple JWS 証明書チェーン検証器を導入するまで、署名済み取引も fail-closed で拒否する。 */
+async function postApplePurchaseVerify(c: Ctx): Promise<Response> {
+  if (!iapEnabled(c)) return errorDetail("アプリ内購入は準備中です", 503);
+  const account = await requirePurchasableAccount(c);
+  if (account instanceof Response) return account;
+  return errorDetail("購入検証器を準備中です", 503);
+}
+
 function validateAuth(body: { email?: unknown; password?: unknown }): Response | null {
   const email = body.email;
   const password = body.password;
@@ -186,7 +261,26 @@ async function postChat(c: Ctx, body: { message?: unknown }): Promise<Response> 
   // 年齢帯: 13-17歳は minor 用モデレーション・system prompt を適用する。
   const age = await c.store.getUserAge(uid);
   const minor = age!.age_band !== "adult";
+  // クライアント申告ではなく、サーバが最初の送信だけを集計する。
+  if ((await c.store.userMessageCount(uid)) === 0) {
+    c.execCtx.waitUntil(c.store.recordDailyMetric(jstToday(), "first_chat_sent", clientPlatform(c.request)).catch(() => undefined));
+  }
   return handleChat(c.env, c.store, c.execCtx, uid, message, minor);
+}
+
+const ANALYTICS_EVENTS = new Set(["onboarding_started", "onboarding_age_verified", "onboarding_completed", "voice_mode_started", "diary_opened"]);
+
+function clientPlatform(request: Request): string {
+  const ua = request.headers.get("User-Agent") ?? "";
+  return /iPhone|iPad|iPod/.test(ua) ? "ios" : "web";
+}
+
+async function postAnalyticsEvent(c: Ctx, body: { event?: unknown }): Promise<Response> {
+  if (typeof body.event !== "string" || !ANALYTICS_EVENTS.has(body.event)) return errorDetail("未対応の計測イベントです", 400);
+  if ((await c.store.bumpUsage(`analytics:${clientIp(c.request)}`, jstToday())) > 100) return errorDetail("計測回数が多すぎます", 429);
+  // イベント名以外の payload を受け取らない。個人データを収集しないための境界。
+  c.execCtx.waitUntil(c.store.recordDailyMetric(jstToday(), body.event, clientPlatform(c.request)).catch(() => undefined));
+  return json({ ok: true });
 }
 
 async function postAge(c: Ctx, body: { birth_date?: unknown }): Promise<Response> {
@@ -307,13 +401,19 @@ async function getTts(c: Ctx): Promise<Response> {
   const ageBlocked = await requireInteractionAge(c, uid);
   if (ageBlocked) return ageBlocked;
   const enabled = ["1", "true", "yes", "on"].includes((c.env.ENABLE_TTS ?? "false").toLowerCase());
-  if (!enabled) return new Response(null, { status: 204 });
+  if (!enabled) {
+    c.execCtx.waitUntil(c.store.recordDailyMetric(jstToday(), "tts_request", "disabled").catch(() => undefined));
+    return new Response(null, { status: 204 });
+  }
   const url = new URL(c.request.url);
   const text = url.searchParams.get("text") ?? "";
   const emotion = url.searchParams.get("emotion");
-  const audio = await synthesize(c.env, text.slice(0, 300), emotion);
-  if (!audio) return new Response(null, { status: 204 });
-  return new Response(audio, { headers: { "Content-Type": "audio/mpeg" } });
+  const result = await synthesize(c.env, text.slice(0, 300), emotion);
+  c.execCtx.waitUntil(
+    c.store.recordDailyMetric(jstToday(), "tts_request", result.outcome, result.latencyMs, result.audio?.byteLength ?? 0).catch(() => undefined),
+  );
+  if (!result.audio) return new Response(null, { status: 204 });
+  return new Response(result.audio, { headers: { "Content-Type": "audio/mpeg" } });
 }
 
 // --- ルーティング ---
@@ -326,6 +426,9 @@ async function route(c: Ctx): Promise<Response> {
   // GET
   if (method === "GET") {
     if (path === "/api/auth/me") return authMe(c);
+    if (path === "/api/entitlements") return getEntitlements(c);
+    if (path === "/api/catalog") return getCatalog(c);
+    if (path === "/api/store/account-token") return getAppStoreAccountToken(c);
     if (path === "/api/profile/age") return getAge(c);
     if (path === "/api/state") return getState(c);
     if (path === "/api/history") return getHistory(c);
@@ -339,6 +442,10 @@ async function route(c: Ctx): Promise<Response> {
     const body = await readJson(c.request);
     if (path === "/api/auth/signup") return authSignup(c, body);
     if (path === "/api/auth/login") return authLogin(c, body);
+    if (path === "/api/auth/apple") return authApple(c, body);
+    if (path === "/api/auth/delete") return authDelete(c);
+    if (path === "/api/analytics/event") return postAnalyticsEvent(c, body);
+    if (path === "/api/purchase/apple/verify") return postApplePurchaseVerify(c);
     if (path === "/api/profile") return setProfile(c, body);
     if (path === "/api/profile/age") return postAge(c, body);
     if (path === "/api/report") return postReport(c, body);
