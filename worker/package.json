@@ -7,11 +7,15 @@
   "scripts": {
     "build:frontend": "npm --prefix ../frontend run build",
     "dev": "wrangler dev",
+    "pretest": "npm run cf-typegen",
     "test": "vitest run",
     "test:watch": "vitest",
+    "pretypecheck": "npm run cf-typegen",
     "typecheck": "tsc --noEmit",
     "db:init:local": "wrangler d1 execute aikata --local --file=./schema.sql",
     "db:init:remote": "wrangler d1 execute aikata --remote --file=./schema.sql",
+    "db:migrate-v3:local": "wrangler d1 execute aikata --local --file=./schema_v3.sql",
+    "db:migrate-v3:remote": "wrangler d1 execute aikata --remote --file=./schema_v3.sql",
     "deploy": "npm run build:frontend && wrangler deploy",
     "cf-typegen": "wrangler types"
   },

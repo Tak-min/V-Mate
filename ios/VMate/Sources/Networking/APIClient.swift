@@ -74,6 +74,29 @@ final class APIClient {
         try await post("/api/profile", body: ["user_name": name])
     }
 
+    // --- 年齢ゲート ---
+
+    struct AgeResponse: Codable {
+        var age_band: String
+    }
+
+    /// birthDate は "YYYY-MM-DD"。band はクライアントで計算せずサーバの判定を信頼する。
+    func setAge(birthDate: String) async throws -> AgeResponse {
+        try await post("/api/profile/age", body: ["birth_date": birthDate])
+    }
+
+    // --- 通報(Apple 1.2 UGC対応) ---
+
+    struct ReportResponse: Codable {
+        var ok: Bool
+    }
+
+    func reportMessage(messageId: Int?, reason: String) async throws -> ReportResponse {
+        var body: [String: Any] = ["reason": reason]
+        if let messageId { body["message_id"] = messageId }
+        return try await post("/api/report", body: body)
+    }
+
     // --- 日記 ---
 
     func fetchDiary() async throws -> DiaryResponse {
@@ -180,7 +203,7 @@ final class APIClient {
                     // バージイン(意図的な中断)。エラー表示はしない。
                     continuation.finish()
                 } catch {
-                    continuation.yield(.error("接続が切れちゃったみたい…バックエンドは起動してる?"))
+                    continuation.yield(.error("接続が切れちゃったみたい…少し待ってからもう一度試してみてね"))
                     continuation.finish()
                 }
             }

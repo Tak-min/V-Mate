@@ -10,6 +10,7 @@ import { synthesize } from "./tts";
 import { complete } from "./llm";
 import { nudgePrompt, diaryPrompt } from "./persona";
 import { handleChat, statePayload } from "./chat";
+import { computeAgeBand } from "./agegate";
 import {
   json,
   errorDetail,
@@ -17,6 +18,7 @@ import {
   stripEmotion,
   timeContext,
   jstToday,
+  jstNow,
   daysSince,
   secondsSince,
 } from "./util";
@@ -156,7 +158,39 @@ async function postChat(c: Ctx, body: { message?: unknown }): Promise<Response> 
   const uid = await resolveUid(c);
   const limited = await enforceRateLimit(c, uid);
   if (limited) return limited;
-  return handleChat(c.env, c.store, c.execCtx, uid, message);
+  // 年齢帯: 13歳未満はチャット自体を不可(dev-notes/monetization_auth_and_safety_2026-07-20.md §2.1)。
+  // 未登録/13-17歳は minor 相当としてモデレーション・system prompt を厳格化する(fail-safe)。
+  const age = await c.store.getUserAge(uid);
+  if (age?.age_band === "under13") {
+    return errorDetail("この年齢ではご利用いただけません", 403);
+  }
+  const minor = age?.age_band !== "adult";
+  return handleChat(c.env, c.store, c.execCtx, uid, message, minor);
+}
+
+async function postAge(c: Ctx, body: { birth_date?: unknown }): Promise<Response> {
+  const birthDate = body.birth_date;
+  if (typeof birthDate !== "string") {
+    return errorDetail("生年月日を入力してください", 400);
+  }
+  const uid = await resolveUid(c);
+  try {
+    const band = computeAgeBand(birthDate, jstNow());
+    await c.store.setUserAge(uid, birthDate, band, "self_declared");
+    return json({ age_band: band });
+  } catch (e) {
+    if (e instanceof auth.ValueError) return errorDetail(e.message, 400);
+    throw e;
+  }
+}
+
+async function postReport(c: Ctx, body: { message_id?: unknown; reason?: unknown }): Promise<Response> {
+  const messageId = typeof body.message_id === "number" ? body.message_id : null;
+  const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 500) : "";
+  if (!reason) return errorDetail("通報理由を入力してください", 400);
+  const uid = await resolveUid(c);
+  await c.store.createReport(uid, messageId, reason);
+  return json({ ok: true });
 }
 
 async function postNudge(c: Ctx, body: { reason?: unknown; first_visit?: unknown }): Promise<Response> {
@@ -277,6 +311,8 @@ async function route(c: Ctx): Promise<Response> {
     if (path === "/api/auth/signup") return authSignup(c, body);
     if (path === "/api/auth/login") return authLogin(c, body);
     if (path === "/api/profile") return setProfile(c, body);
+    if (path === "/api/profile/age") return postAge(c, body);
+    if (path === "/api/report") return postReport(c, body);
     if (path === "/api/chat") return postChat(c, body);
     if (path === "/api/nudge") return postNudge(c, body);
     if (path === "/api/diary/generate") return generateDiary(c);

@@ -13,6 +13,7 @@ import {
   stageFor,
   nextStageThreshold,
 } from "./persona";
+import { crisisSupportReply, redactDisallowed, screenUserInput } from "./moderation";
 import {
   EMOTION_TAG_RE,
   couldStillBeTagPrefix,
@@ -57,13 +58,15 @@ export async function statePayload(store: Store, env: Env, userId: string): Prom
   };
 }
 
-/** チャット応答を SSE ストリームで返す。レート制限は呼び出し側(index.ts)で済ませておくこと。 */
+/** チャット応答を SSE ストリームで返す。レート制限・年齢帯判定は呼び出し側(index.ts)で済ませておくこと。
+ * minor: 13-17歳または年齢未登録(fail-safe)。モデレーションのしきい値と system prompt の制約を厳格化する。 */
 export function handleChat(
   env: Env,
   store: Store,
   execCtx: ExecutionContext,
   uid: string,
   message: string,
+  minor: boolean,
 ): Response {
   const { readable, writable } = new TransformStream();
   const writer = writable.getWriter();
@@ -72,6 +75,22 @@ export function handleChat(
 
   const work = (async () => {
     try {
+    // モデレーション一次防御: refuse/crisis は LLM を呼ばず即応答する(dev-notes/
+    // monetization_auth_and_safety_2026-07-20.md §2.2)。通常の会話フロー(親密度加算等)は
+    // 行わず、ユーザー発言とシロの安全応答だけを履歴に残す。
+    const screening = screenUserInput(message, { minor });
+    if (screening.action !== "allow") {
+      await store.addMessage(uid, "user", message);
+      const replyText = screening.action === "crisis" ? crisisSupportReply() : redactDisallowed(message, { minor }).clean;
+      await write({ type: "emotion", emotion: "relaxed" });
+      await write({ type: "token", text: replyText });
+      await store.addMessage(uid, "assistant", replyText, "relaxed");
+      const state = await statePayload(store, env, uid);
+      await write({ type: "done", ...state });
+      await writer.close();
+      return;
+    }
+
     // 親密度: 1発言 +1、その日最初の会話はボーナス
     const today = jstToday();
     const todayMsgs = await store.messagesOn(uid, today);
@@ -91,6 +110,7 @@ export function handleChat(
       facts: await store.listFacts(uid),
       timeContext: timeContext(),
       lorebook,
+      minor,
     });
 
     // 会話要約 (OSS Phase B-C): history の末尾-2 位置に注入することで LLM が参照しやすくなる
@@ -176,9 +196,18 @@ export function handleChat(
         }
         if (buffer) {
           const clean = sanitizeFourthWall(stripTags(buffer));
+          buffer = "";
+          // 出力ポストフィルタ(二次防御、主制御はpersona.tsのsystem prompt制約)。
+          // このチャンク自体が禁止語を含む場合は書き込まず安全文へ差し替えてストリームを打ち切る。
+          // チャンク境界をまたぐ分割は検出できない既知の限界がある(sanitizeFourthWallと同様)。
+          const { clean: safeClean, blocked } = redactDisallowed(clean, { minor });
+          if (blocked) {
+            fullText += safeClean;
+            await write({ type: "token", text: safeClean });
+            break;
+          }
           fullText += clean;
           await write({ type: "token", text: clean });
-          buffer = "";
         }
       }
       if (emotion === null) {

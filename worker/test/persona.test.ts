@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { stageFor, nextStageThreshold } from "../src/persona";
+import { stageFor, nextStageThreshold, buildSystemPrompt } from "../src/persona";
 
 describe("stageFor", () => {
   it("returns the lowest stage for a fresh user", () => {
@@ -30,5 +30,20 @@ describe("nextStageThreshold", () => {
 
   it("returns null once no higher threshold remains", () => {
     expect(nextStageThreshold(200)).toBeNull();
+  });
+});
+
+describe("buildSystemPrompt minor safety constraints", () => {
+  const baseOpts = { userName: "たろう", affinity: 10, facts: [], timeContext: "" };
+
+  it("omits the minor safety section by default", () => {
+    const prompt = buildSystemPrompt(baseOpts);
+    expect(prompt).not.toContain("安全ルール");
+  });
+
+  it("includes the minor safety section when minor is true", () => {
+    const prompt = buildSystemPrompt({ ...baseOpts, minor: true });
+    expect(prompt).toContain("安全ルール");
+    expect(prompt).toContain("恋愛的・性的な表現");
   });
 });

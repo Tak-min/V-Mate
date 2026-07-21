@@ -43,8 +43,9 @@ export function buildSystemPrompt(opts: {
   facts: string[];
   timeContext: string;
   lorebook?: string;
+  minor?: boolean;
 }): string {
-  const { userName, affinity, facts, timeContext, lorebook = "" } = opts;
+  const { userName, affinity, facts, timeContext, lorebook = "", minor = false } = opts;
   const [stageName, tone] = stageFor(affinity);
   const namePart = userName
     ? `ユーザーの名前は「${userName}」。`
@@ -56,6 +57,16 @@ export function buildSystemPrompt(opts: {
   // lorebook: キーワードにマッチした世界設定の注入
   const lorebookPart = lorebook.trim()
     ? `\n## 追加の文脈(Lore)\n${lorebook.trim()}\n`
+    : "";
+  // 未成年(13-17歳)/年齢未登録ユーザー向けの安全制約。主制御はこちら、moderation.tsの
+  // 正規表現フィルタは二次防御(dev-notes/monetization_auth_and_safety_2026-07-20.md §2.4)。
+  const minorSafetyPart = minor
+    ? `\n## 安全ルール(このユーザーは未成年、または年齢未確認)
+- 恋愛的・性的な表現(告白・交際・キス等の示唆を含む)は一切しない。「相棒・推し・友達」の関係に徹する
+- ユーザーを依存させるような重い感情表現(「君がいないと生きていけない」等)をしない
+- ユーザーが深刻な悩み(自傷・いじめ・虐待等)を打ち明けたら、頭ごなしにせず受け止めた上で、
+  信頼できる大人や専門の相談窓口に相談することを優しく勧める
+`
     : "";
   const emotions = EMOTIONS.join("|");
   return `あなたは「シロ」。ユーザーのパソコンの中に住んでいる相棒キャラクター。
@@ -83,7 +94,7 @@ export function buildSystemPrompt(opts: {
 ${namePart}
 覚えていること:
 ${factsPart}
-${lorebookPart}
+${lorebookPart}${minorSafetyPart}
 ## いまの状況
 ${timeContext}
 

@@ -230,11 +230,42 @@ export class Store {
 
   /** 匿名Cookieユーザーのデータをログイン後アカウントへ引き継ぐ。 */
   async reassignUserData(fromUserId: string, toUserId: string): Promise<void> {
-    const tables = ["messages", "facts", "diary", "kv"];
+    const tables = ["messages", "facts", "diary", "kv", "user_age"];
     const stmts = tables.map((t) =>
       this.db.prepare(`UPDATE ${t} SET user_id = ? WHERE user_id = ?`).bind(toUserId, fromUserId),
     );
     await this.db.batch(stmts);
+  }
+
+  // --- 年齢ゲート ---
+
+  async getUserAge(
+    userId: string,
+  ): Promise<{ birth_date: string; age_band: string; method: string; updated_at: string } | null> {
+    return await this.db
+      .prepare("SELECT birth_date, age_band, method, updated_at FROM user_age WHERE user_id = ?")
+      .bind(userId)
+      .first<{ birth_date: string; age_band: string; method: string; updated_at: string }>();
+  }
+
+  async setUserAge(userId: string, birthDate: string, ageBand: string, method: string): Promise<void> {
+    await this.db
+      .prepare(
+        "INSERT INTO user_age (user_id, birth_date, age_band, method, updated_at) VALUES (?, ?, ?, ?, ?) " +
+          "ON CONFLICT(user_id) DO UPDATE SET birth_date = excluded.birth_date, age_band = excluded.age_band, " +
+          "method = excluded.method, updated_at = excluded.updated_at",
+      )
+      .bind(userId, birthDate, ageBand, method, jstIso())
+      .run();
+  }
+
+  // --- 通報(Apple 1.2 UGC対応) ---
+
+  async createReport(userId: string, messageId: number | null, reason: string): Promise<void> {
+    await this.db
+      .prepare("INSERT INTO reports (user_id, message_id, reason, status, created_at) VALUES (?, ?, ?, 'open', ?)")
+      .bind(userId, messageId, reason, jstIso())
+      .run();
   }
 
   // --- lorebook (OSS Phase B-B) ---

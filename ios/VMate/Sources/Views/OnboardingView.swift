@@ -3,47 +3,65 @@ import SwiftUI
 struct OnboardingView: View {
     let onComplete: (String?) -> Void
 
+    // ステップ: 0=welcome, 1=年齢確認(新規), 2=name, 3=hint
     @State private var step = 0
     @State private var name = ""
     @State private var goingForward = true
     @FocusState private var nameFieldFocused: Bool
 
+    // --- 年齢ゲート ---
+    // 13歳未満/18歳ちょうどを挟んだ判定が誤らないよう、デフォルトは意図的に「12歳」寄りに
+    // 倒さない中立値(16年前)にする。サーバ側(agegate.ts computeAgeBand)がband の唯一の権威。
+    @State private var birthDate = Calendar.current.date(byAdding: .year, value: -16, to: Date()) ?? Date()
+    @State private var ageCheckInFlight = false
+    @State private var ageError: String?
+    @State private var isAgeBlocked = false
+
     var body: some View {
-        ZStack {
-            Color.black.opacity(0.25)
-                .ignoresSafeArea()
+        if isAgeBlocked {
+            // 13歳未満と判定された場合、以降のオンボーディングには一切進めない
+            // (onComplete も呼ばない。COPPA/Apple 1.3対応)。
+            AgeBlockedView()
+        } else {
+            ZStack {
+                Color.black.opacity(0.25)
+                    .ignoresSafeArea()
 
-            VStack(spacing: 20) {
-                stepDots
+                VStack(spacing: 20) {
+                    stepDots
 
-                ZStack {
-                    if step == 0 {
-                        welcomeStep
-                            .transition(slideTransition)
-                    } else if step == 1 {
-                        nameStep
-                            .transition(slideTransition)
-                    } else if step == 2 {
-                        hintStep
-                            .transition(slideTransition)
+                    ZStack {
+                        if step == 0 {
+                            welcomeStep
+                                .transition(slideTransition)
+                        } else if step == 1 {
+                            ageStep
+                                .transition(slideTransition)
+                        } else if step == 2 {
+                            nameStep
+                                .transition(slideTransition)
+                        } else if step == 3 {
+                            hintStep
+                                .transition(slideTransition)
+                        }
                     }
+                    .clipped()
+                    .animation(.spring(response: 0.35, dampingFraction: 0.7), value: step)
                 }
-                .clipped()
-                .animation(.spring(response: 0.35, dampingFraction: 0.7), value: step)
+                .padding(28)
+                .background(
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                                .strokeBorder(Color.accentPink.opacity(0.3), lineWidth: 1)
+                        )
+                        .shadow(color: Color.accentPink.opacity(0.15), radius: 20, y: 8)
+                )
+                .padding(.horizontal, 24)
             }
-            .padding(28)
-            .background(
-                RoundedRectangle(cornerRadius: 26, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 26, style: .continuous)
-                            .strokeBorder(Color.accentPink.opacity(0.3), lineWidth: 1)
-                    )
-                    .shadow(color: Color.accentPink.opacity(0.15), radius: 20, y: 8)
-            )
-            .padding(.horizontal, 24)
+            .transition(.opacity)
         }
-        .transition(.opacity)
     }
 
     // MARK: - Navigation
@@ -69,7 +87,7 @@ struct OnboardingView: View {
 
     private var stepDots: some View {
         HStack(spacing: 8) {
-            ForEach(0..<3, id: \.self) { i in
+            ForEach(0..<4, id: \.self) { i in
                 Capsule()
                     .fill(i == step ? Color.accentPink : Color.white.opacity(0.35))
                     .frame(width: i == step ? 20 : 9, height: 9)
@@ -114,7 +132,66 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: - Step 1: Name
+    // MARK: - Step 1: 年齢確認
+
+    private var ageStep: some View {
+        VStack(spacing: 16) {
+            VStack(spacing: 6) {
+                Text("うまれた日をおしえてね")
+                    .font(.title2.bold())
+                    .foregroundStyle(Color.accentPink)
+                Text("安心して使ってもらうための確認だよ。\n入力した内容は他の人には見えないよ。")
+                    .font(.callout)
+                    .foregroundStyle(Color.warmBrown.opacity(0.75))
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(3)
+            }
+
+            DatePicker("", selection: $birthDate, displayedComponents: .date)
+                .datePickerStyle(.wheel)
+                .labelsHidden()
+                .frame(maxHeight: 160)
+
+            if let ageError {
+                Text(ageError)
+                    .font(.caption)
+                    .foregroundStyle(.red.opacity(0.8))
+            }
+
+            nextButton(ageCheckInFlight ? "確認中…" : "つぎへ") { submitAge() }
+                .disabled(ageCheckInFlight)
+
+            backButton()
+        }
+    }
+
+    private func submitAge() {
+        ageError = nil
+        ageCheckInFlight = true
+        Task {
+            defer { ageCheckInFlight = false }
+            do {
+                let response = try await APIClient.shared.setAge(birthDate: Self.isoDateFormatter.string(from: birthDate))
+                if response.age_band == "under13" {
+                    withAnimation { isAgeBlocked = true }
+                } else {
+                    advance()
+                }
+            } catch {
+                ageError = "確認できなかったよ。もう一度試してみてね。"
+            }
+        }
+    }
+
+    private static let isoDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "Asia/Tokyo")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
+    // MARK: - Step 2: Name
 
     private var nameStep: some View {
         VStack(spacing: 16) {
@@ -143,7 +220,7 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: - Step 2: Hint
+    // MARK: - Step 3: Hint
 
     private var hintStep: some View {
         VStack(spacing: 16) {
