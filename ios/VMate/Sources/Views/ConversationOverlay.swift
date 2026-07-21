@@ -77,6 +77,21 @@ struct ConversationOverlay: View {
     @State private var draft = ""
     @State private var expanded = false
     @State private var latestDiary: DiaryEntry? = nil
+    @State private var diaryOpen = false
+    @State private var canOfferDiary = false
+    @AppStorage("diary_prompt_decision_day") private var diaryPromptDecisionDay = ""
+
+    private static let diaryPromptDayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
+    private var diaryPromptDay: String {
+        Self.diaryPromptDayFormatter.string(from: Date())
+    }
 
     /// 現在のおはなし（最後の _session_start 以降のメッセージ）。
     private var currentSessionMessages: [ChatMessage] {
@@ -139,6 +154,10 @@ struct ConversationOverlay: View {
             // フォローアップchip
             if !followUpChips.isEmpty {
                 chipScroll(followUpChips)
+            }
+
+            if canOfferDiary {
+                diaryInvitationCard
             }
 
             // 音声認識中間結果
@@ -208,8 +227,14 @@ struct ConversationOverlay: View {
         .sheet(isPresented: $expanded) {
             OhanashiHistorySheet(viewModel: viewModel)
         }
+        .sheet(isPresented: $diaryOpen) {
+            DiaryView()
+        }
         .task {
             latestDiary = try? await APIClient.shared.fetchDiary().entries.first
+        }
+        .task(id: "\(currentSessionMessages.count)-\(viewModel.busy)-\(diaryPromptDecisionDay)") {
+            await refreshDiaryInvitation()
         }
     }
 
@@ -333,6 +358,43 @@ struct ConversationOverlay: View {
         }
     }
 
+    private var diaryInvitationCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("今日のこと、シロの日記に残してみる？")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.white)
+            Text("会話の内容をもとに書くよ")
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.65))
+            HStack(spacing: 10) {
+                Button("今はしない") {
+                    diaryPromptDecisionDay = diaryPromptDay
+                    canOfferDiary = false
+                }
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.white.opacity(0.7))
+
+                Spacer()
+
+                Button("日記を書く") {
+                    diaryPromptDecisionDay = diaryPromptDay
+                    canOfferDiary = false
+                    diaryOpen = true
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.accentPink)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.accentPink.opacity(0.13))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.accentPink.opacity(0.3), lineWidth: 1))
+        }
+        .accessibilityElement(children: .contain)
+    }
+
     @ViewBuilder
     private func chipScroll(_ chips: [String]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -358,6 +420,22 @@ struct ConversationOverlay: View {
                 }
             }
             .padding(.horizontal, 4)
+        }
+    }
+
+    private func refreshDiaryInvitation() async {
+        guard currentSessionMessages.count >= 4,
+              !viewModel.busy,
+              diaryPromptDecisionDay != diaryPromptDay else {
+            canOfferDiary = false
+            return
+        }
+
+        do {
+            canOfferDiary = try await APIClient.shared.fetchDiary().can_generate_today
+        } catch {
+            // 会話の本線を止めず、次の状態変化時にだけ再確認する。
+            canOfferDiary = false
         }
     }
 

@@ -390,9 +390,11 @@ async function generateDiary(c: Ctx): Promise<Response> {
     content = stripEmotion(await complete(c.env, diaryPrompt(userName, conversation)))[1];
   } catch {
     // LLM呼び出し失敗時、生のエラーをクライアントに露出させない(キャラクター性も壊れる)。
+    c.execCtx.waitUntil(c.store.recordDailyMetric(today, "diary_generation_failed", clientPlatform(c.request)).catch(() => undefined));
     return json({ ok: false, reason: "今は日記がうまく書けないみたい。少ししてからまた試してね。" });
   }
   await c.store.addDiary(uid, today, content);
+  c.execCtx.waitUntil(c.store.recordDailyMetric(today, "diary_generated", clientPlatform(c.request)).catch(() => undefined));
   return json({ ok: true, entry: { entry_date: today, content } });
 }
 
