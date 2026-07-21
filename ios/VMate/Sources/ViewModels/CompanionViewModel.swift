@@ -183,6 +183,7 @@ final class CompanionViewModel: ObservableObject {
             return
         }
         voiceError = nil
+        APIClient.shared.trackEvent("voice_mode_started")
         try? AudioSessionManager.shared.configureForConversation()
         if !voiceEnabled { toggleVoice() } // 会話なので相手の声も聞こえるように
         beginVoiceSession()

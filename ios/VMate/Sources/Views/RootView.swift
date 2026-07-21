@@ -30,6 +30,7 @@ struct RootView: View {
     @State private var showOnboarding = false
     @State private var isStageUp = false
     @State private var previousStage: String? = nil
+    @State private var accountOpen = false
 
     var body: some View {
         ZStack {
@@ -55,6 +56,7 @@ struct RootView: View {
         .task {
             await viewModel.bootstrap()
             showOnboarding = viewModel.isFirstRun || viewModel.ageBand == nil || viewModel.ageBand == "under13"
+            if showOnboarding { APIClient.shared.trackEvent("onboarding_started") }
         }
         .onChange(of: viewModel.state?.stage) { newStage in
             guard let prev = previousStage, let next = newStage, prev != next else {
@@ -68,6 +70,7 @@ struct RootView: View {
             }
         }
         .sheet(isPresented: $diaryOpen) { DiaryView() }
+        .sheet(isPresented: $accountOpen) { AccountView() }
         .fullScreenCover(isPresented: $showOnboarding) {
             if viewModel.ageBand == "under13" {
                 AgeBlockedView()
@@ -80,6 +83,7 @@ struct RootView: View {
                         viewModel.saveName(name)
                     }
                     viewModel.markOnboarded()
+                    APIClient.shared.trackEvent("onboarding_completed")
                     viewModel.fireGreeting()
                     showOnboarding = false
                 }
@@ -211,6 +215,14 @@ struct RootView: View {
                         accessibilityLabel: "シロの日記を開く"
                     ) {
                         diaryOpen = true
+                    }
+                    HeaderControlButton(
+                        icon: "person.crop.circle",
+                        label: "アカウント",
+                        isActive: APIClient.shared.isAuthenticated,
+                        accessibilityLabel: "アカウントを開く"
+                    ) {
+                        accountOpen = true
                     }
                 }
                 .layoutPriority(1)
