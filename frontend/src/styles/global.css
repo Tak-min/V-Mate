@@ -763,6 +763,56 @@ body {
   padding: 0 16px 10px;
 }
 
+.chat-diary-invitation {
+  margin: 0 16px 10px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in oklch, var(--color-accent-pink) 34%, var(--color-glass-border));
+  border-radius: 16px;
+  background: color-mix(in oklch, var(--color-accent-pink) 10%, oklch(99% 0.01 80 / 0.55));
+}
+
+.chat-diary-invitation-title,
+.chat-diary-invitation-copy {
+  margin: 0;
+}
+
+.chat-diary-invitation-title {
+  color: var(--color-ink);
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+
+.chat-diary-invitation-copy {
+  margin-top: 4px;
+  color: var(--color-ink-soft);
+  font-size: 0.76rem;
+}
+
+.chat-diary-invitation-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.chat-diary-invitation-actions button {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chat-diary-invitation-dismiss {
+  color: var(--color-ink-soft);
+}
+
+.chat-diary-invitation-open {
+  color: var(--color-accent-pink);
+}
+
 .chat-diary-callback {
   display: flex;
   flex-direction: column;

@@ -63,6 +63,17 @@ function buildStarters(state: CompanionState | null, now: Date): string[] {
   return [...timePrompts, ...tailoredPrompts];
 }
 
+function jstDay(now: Date): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? '';
+  return `${value('year')}-${value('month')}-${value('day')}`;
+}
+
 interface Props {
   messages: ChatMessage[];
   busy: boolean;
@@ -77,7 +88,10 @@ interface Props {
 export function ChatPanel({ messages, busy, state, daysAway, voiceMode, onInputActivity, onSend, onOpenDiary }: Props) {
   const [draft, setDraft] = useState('');
   const [latestDiaryEntry, setLatestDiaryEntry] = useState<DiaryEntry | null>(null);
+  const [canOfferDiary, setCanOfferDiary] = useState(false);
+  const [diaryPromptDecisionDay, setDiaryPromptDecisionDay] = useState(() => localStorage.getItem('diary_prompt_decision_day') ?? '');
   const logRef = useRef<HTMLDivElement | null>(null);
+  const today = jstDay(new Date());
   const starterPrompts = buildStarters(state, new Date());
   const showFollowUps = messages.length > 0 && !busy && voiceMode === 'off';
   const followUpPrompts = showFollowUps ? buildFollowUps(messages) : [];
@@ -94,6 +108,28 @@ export function ChatPanel({ messages, busy, state, daysAway, voiceMode, onInputA
       .then(({ entries }) => setLatestDiaryEntry(entries[0] ?? null))
       .catch(() => setLatestDiaryEntry(null));
   }, []);
+
+  useEffect(() => {
+    if (messages.length < 4 || busy || diaryPromptDecisionDay === today) {
+      setCanOfferDiary(false);
+      return;
+    }
+    let active = true;
+    fetchDiary()
+      .then(({ can_generate_today }) => {
+        if (active) setCanOfferDiary(can_generate_today);
+      })
+      .catch(() => {
+        if (active) setCanOfferDiary(false);
+      });
+    return () => { active = false; };
+  }, [messages.length, busy, diaryPromptDecisionDay, today]);
+
+  const decideDiaryPrompt = () => {
+    localStorage.setItem('diary_prompt_decision_day', today);
+    setDiaryPromptDecisionDay(today);
+    setCanOfferDiary(false);
+  };
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -189,6 +225,19 @@ export function ChatPanel({ messages, busy, state, daysAway, voiceMode, onInputA
             </button>
           ))}
         </div>
+      )}
+      {canOfferDiary && (
+        <section className="chat-diary-invitation" aria-label="日記の案内">
+          <p className="chat-diary-invitation-title">今日のこと、シロの日記に残してみる？</p>
+          <p className="chat-diary-invitation-copy">会話の内容をもとに書くよ</p>
+          <div className="chat-diary-invitation-actions">
+            <button type="button" className="chat-diary-invitation-dismiss" onClick={decideDiaryPrompt}>今はしない</button>
+            <button type="button" className="chat-diary-invitation-open" onClick={() => {
+              decideDiaryPrompt();
+              onOpenDiary();
+            }}>日記を書く</button>
+          </div>
+        </section>
       )}
       <form className="chat-input" onSubmit={submit}>
         <input
