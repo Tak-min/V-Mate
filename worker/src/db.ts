@@ -235,7 +235,7 @@ export class Store {
   }
 
   async deleteAccount(userId: string): Promise<void> {
-    const tables = ["messages", "facts", "diary", "kv", "user_age", "reports", "entitlements", "purchases", "app_store_accounts", "identities", "users"];
+    const tables = ["messages", "facts", "diary", "kv", "user_age", "reports", "entitlements", "purchases", "identities", "users"];
     await this.db.batch(tables.map((table) => this.db.prepare(`DELETE FROM ${table} WHERE ${table === "users" ? "id" : "user_id"} = ?`).bind(userId)));
   }
 
@@ -276,14 +276,6 @@ export class Store {
       .run();
   }
 
-  async getOrCreateAppAccountToken(userId: string): Promise<string> {
-    const existing = await this.db.prepare("SELECT app_account_token FROM app_store_accounts WHERE user_id = ?").bind(userId).first<{ app_account_token: string }>();
-    if (existing) return existing.app_account_token;
-    const candidate = crypto.randomUUID();
-    await this.db.prepare("INSERT INTO app_store_accounts (user_id, app_account_token, created_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO NOTHING").bind(userId, candidate, jstIso()).run();
-    return (await this.db.prepare("SELECT app_account_token FROM app_store_accounts WHERE user_id = ?").bind(userId).first<{ app_account_token: string }>())!.app_account_token;
-  }
-
   /** (scope, day) のカウンタを +1 して新しい値を返す(レート制限用)。 */
   async bumpUsage(scope: string, day: string): Promise<number> {
     const row = await this.db
@@ -316,9 +308,9 @@ export class Store {
 
   /** 匿名Cookieユーザーのデータをログイン後アカウントへ引き継ぐ。 */
   async reassignUserData(fromUserId: string, toUserId: string): Promise<void> {
-    // entitlements/purchases/app_store_accounts は匿名uidでは作られない(購入は認証必須のため)。
+    // entitlements/purchases は匿名uidでは作られない(購入は認証必須のため)。
     // それでも deleteAccount のテーブル網羅と一貫させ、将来の経路変更に備えて含める(防御的)。
-    const tables = ["messages", "facts", "diary", "kv", "user_age", "entitlements", "purchases", "app_store_accounts"];
+    const tables = ["messages", "facts", "diary", "kv", "user_age", "entitlements", "purchases"];
     const stmts = tables.map((t) =>
       this.db.prepare(`UPDATE ${t} SET user_id = ? WHERE user_id = ?`).bind(toUserId, fromUserId),
     );

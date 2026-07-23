@@ -169,11 +169,7 @@ CREATE TABLE IF NOT EXISTS purchases (
 );
 CREATE INDEX IF NOT EXISTS ix_purchases_user ON purchases (user_id, occurred_at DESC);
 
--- ─────────────────────────────────────────────────────────────
--- schema_v7.sql — App Store 通知を安定アカウントへ紐付けるトークン。
--- ─────────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS app_store_accounts (
-  user_id           TEXT PRIMARY KEY,
-  app_account_token TEXT NOT NULL UNIQUE,
-  created_at        TEXT NOT NULL
-);
+-- schema_v7.sql(app_store_accounts、自前StoreKit2のappAccountToken束縛用テーブル)は
+-- 2026-07-22のRevenueCat SDK移行で廃止。RevenueCatのapp_user_id(=users.idを直接使う)が
+-- 同じ役目を果たすため、別テーブルでの束縛が不要になった。本番remoteにこのテーブルは
+-- 一度も作成されていない(未デプロイのため、既存データへの影響なし)。

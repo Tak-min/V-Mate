@@ -1,19 +1,24 @@
+import RevenueCat
 import StoreKit
 import SwiftUI
 
-/// 課金(StoreKit2)専用のシート。AccountView(身元管理)から開く。
+/// 課金(RevenueCat SDK)専用のシート。AccountView(身元管理)から開く。
 /// 未成年/年齢未確認には購入導線を一切出さない(サーバ権威ゲートは worker/src/agegate.ts が別途強制するが、
 /// クライアント側も「買えない購入を煽らない」ための多層防御として同じ方針を守る)。
 struct StoreView: View {
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var store = StoreKitManager.shared
+    @StateObject private var store = RevenueCatManager.shared
     @State private var ageBand: String?
     @State private var loadingAge = true
-    @State private var busyProductID: String?
+    @State private var busyPackageID: String?
     @State private var message: String?
     @State private var showManageSubscriptions = false
 
     private var isAdult: Bool { ageBand == "adult" }
+
+    private var availablePackages: [Package] {
+        store.offerings?.current?.availablePackages ?? []
+    }
 
     var body: some View {
         NavigationStack {
@@ -33,9 +38,11 @@ struct StoreView: View {
         }
         .task {
             async let age: APIClient.AgeResponse? = try? APIClient.shared.fetchAge()
-            async let _prepare: Void = store.prepare()
+            async let _offerings: Void = store.loadOfferings()
+            async let _info: Void = store.refreshCustomerInfo()
             ageBand = await age?.age_band
-            _ = await _prepare
+            _ = await _offerings
+            _ = await _info
             loadingAge = false
         }
         .manageSubscriptionsSheet(isPresented: $showManageSubscriptions)
@@ -63,16 +70,16 @@ struct StoreView: View {
     @ViewBuilder
     private var storeList: some View {
         List {
-            if store.products.isEmpty {
+            if availablePackages.isEmpty {
                 Section {
                     Text("現在ご購入いただける商品がありません。時間をおいて再度お試しください。")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
             }
-            ForEach(store.products) { product in
+            ForEach(availablePackages, id: \.identifier) { package in
                 Section {
-                    productRow(product)
+                    packageRow(package)
                 }
             }
             Section {
@@ -85,12 +92,13 @@ struct StoreView: View {
     }
 
     @ViewBuilder
-    private func productRow(_ product: Product) -> some View {
+    private func packageRow(_ package: Package) -> some View {
+        let product = package.storeProduct
         VStack(alignment: .leading, spacing: 6) {
-            Text(product.displayName).font(.headline)
-            Text(product.description).font(.footnote).foregroundStyle(.secondary)
+            Text(product.localizedTitle).font(.headline)
+            Text(product.localizedDescription).font(.footnote).foregroundStyle(.secondary)
 
-            if store.ownedProductIDs.contains(product.id) {
+            if store.isProActive {
                 HStack {
                     Label("ご利用中", systemImage: "checkmark.seal.fill").foregroundStyle(.green)
                     Spacer()
@@ -100,20 +108,20 @@ struct StoreView: View {
                 .padding(.top, 4)
             } else {
                 Button {
-                    Task { await purchase(product) }
+                    Task { await purchase(package) }
                 } label: {
                     HStack {
-                        Text(product.displayPrice)
-                        if busyProductID == product.id { ProgressView().padding(.leading, 4) }
+                        Text(product.localizedPriceString)
+                        if busyPackageID == package.identifier { ProgressView().padding(.leading, 4) }
                     }
                 }
-                .disabled(busyProductID != nil)
+                .disabled(busyPackageID != nil)
                 .padding(.top, 4)
             }
 
             // Apple 3.1.2: 自動更新サブスクの価格・期間・自動更新である旨の開示。
-            if case .autoRenewable = product.type, let subscription = product.subscription {
-                Text("\(product.displayPrice) / \(periodLabel(subscription.subscriptionPeriod))・自動更新。いつでも解約できます。")
+            if let period = product.subscriptionPeriod {
+                Text("\(product.localizedPriceString) / \(periodLabel(period))・自動更新。いつでも解約できます。")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -121,7 +129,7 @@ struct StoreView: View {
         .padding(.vertical, 4)
     }
 
-    private func periodLabel(_ period: Product.SubscriptionPeriod) -> String {
+    private func periodLabel(_ period: RevenueCat.SubscriptionPeriod) -> String {
         switch period.unit {
         case .day: return "\(period.value)日ごと"
         case .week: return "\(period.value)週間ごと"
@@ -131,25 +139,24 @@ struct StoreView: View {
         }
     }
 
-    private func purchase(_ product: Product) async {
-        busyProductID = product.id
+    private func purchase(_ package: Package) async {
+        busyPackageID = package.identifier
         message = nil
-        defer { busyProductID = nil }
+        defer { busyPackageID = nil }
         do {
-            try await store.purchase(product)
-            message = store.ownedProductIDs.contains(product.id) ? "ご購入ありがとうございます。" : nil
-        } catch let error as StoreKitError {
-            // 自前のエラー(トークン未取得など)は原因が分かる文言をそのまま表示する。握りつぶさない。
-            message = error.errorDescription
+            let cancelled = try await store.purchase(package)
+            if !cancelled {
+                message = store.isProActive ? "ご購入ありがとうございます。" : nil
+            }
         } catch {
             message = "購入を完了できませんでした。時間をおいて再度お試しください。"
         }
     }
 
     private func restore() async {
-        busyProductID = "__restore__"
+        busyPackageID = "__restore__"
         message = nil
-        defer { busyProductID = nil }
+        defer { busyPackageID = nil }
         do {
             try await store.restorePurchases()
             message = "復元が完了しました。"

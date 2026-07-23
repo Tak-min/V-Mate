@@ -9,7 +9,7 @@ const store = new Store(env.DB);
 beforeEach(async () => {
   await env.DB.exec(`
     DROP TABLE IF EXISTS messages; DROP TABLE IF EXISTS facts; DROP TABLE IF EXISTS diary; DROP TABLE IF EXISTS kv;
-    DROP TABLE IF EXISTS user_age; DROP TABLE IF EXISTS reports; DROP TABLE IF EXISTS entitlements; DROP TABLE IF EXISTS purchases; DROP TABLE IF EXISTS app_store_accounts; DROP TABLE IF EXISTS identities; DROP TABLE IF EXISTS users;
+    DROP TABLE IF EXISTS user_age; DROP TABLE IF EXISTS reports; DROP TABLE IF EXISTS entitlements; DROP TABLE IF EXISTS purchases; DROP TABLE IF EXISTS identities; DROP TABLE IF EXISTS users;
     CREATE TABLE messages (id INTEGER PRIMARY KEY, user_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, emotion TEXT, created_at TEXT NOT NULL);
     CREATE TABLE facts (id INTEGER PRIMARY KEY, user_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE diary (id INTEGER PRIMARY KEY, user_id TEXT NOT NULL, entry_date TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL);
@@ -18,7 +18,6 @@ beforeEach(async () => {
     CREATE TABLE reports (id INTEGER PRIMARY KEY, user_id TEXT NOT NULL, message_id INTEGER, reason TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE entitlements (user_id TEXT NOT NULL, entitlement_key TEXT NOT NULL, status TEXT NOT NULL, source TEXT NOT NULL, expires_at TEXT, updated_at TEXT NOT NULL, PRIMARY KEY(user_id, entitlement_key));
     CREATE TABLE purchases (id INTEGER PRIMARY KEY, user_id TEXT NOT NULL, provider TEXT NOT NULL, external_id TEXT NOT NULL, original_external_id TEXT, product_id TEXT NOT NULL, kind TEXT NOT NULL, status TEXT NOT NULL, occurred_at TEXT NOT NULL, expires_at TEXT, created_at TEXT NOT NULL, UNIQUE(provider, external_id));
-    CREATE TABLE app_store_accounts (user_id TEXT PRIMARY KEY, app_account_token TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL);
     CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT UNIQUE, password_hash TEXT, created_at TEXT NOT NULL);
     CREATE TABLE identities (provider TEXT NOT NULL, external_id TEXT NOT NULL, user_id TEXT NOT NULL, email TEXT, created_at TEXT NOT NULL, PRIMARY KEY(provider, external_id));
   `);

@@ -84,6 +84,11 @@ struct AccountView: View {
             do {
                 try await APIClient.shared.signInWithApple(identityToken: token, nonce: Self.sha256(rawNonce))
                 message = "Apple ID と連携しました。"
+                // RevenueCat の匿名IDをこのアカウントへ紐付ける(worker側 webhook が app_user_id で
+                // アカウントを束縛するため、ここで実 user_id を渡しておく必要がある)。
+                if let me = try? await APIClient.shared.fetchMe(), let userId = me.user_id {
+                    await RevenueCatManager.shared.logIn(userId)
+                }
             } catch {
                 message = "連携できませんでした。時間をおいて再試行してください。"
             }
@@ -96,6 +101,7 @@ struct AccountView: View {
             defer { busy = false }
             do {
                 try await APIClient.shared.deleteAccount()
+                await RevenueCatManager.shared.logOut()
                 dismiss()
             } catch {
                 message = "削除できませんでした。時間をおいて再試行してください。"

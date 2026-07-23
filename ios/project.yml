@@ -7,6 +7,12 @@ options:
 configs:
   Debug: debug
   Release: release
+packages:
+  # Shipaton 2026 応募要件("uses the RevenueCat SDK to power in-app purchases")のため、
+  # 自前StoreKit2実装からRevenueCat SDK経由へ移行(2026-07-22)。
+  RevenueCat:
+    url: https://github.com/RevenueCat/purchases-ios
+    from: 5.0.0
 schemes:
   VMate:
     build:
@@ -53,6 +59,8 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
+    dependencies:
+      - package: RevenueCat
   VMateTests:
     type: bundle.unit-test
     platform: iOS

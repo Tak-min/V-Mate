@@ -13,8 +13,7 @@ export interface Env {
   RATE_GLOBAL_PER_DAY: string;
   RATE_LOGIN_PER_IP_PER_DAY: string;
   APPLE_BUNDLE_ID?: string;
-  IAP_ENABLED?: string;
-  APPLE_ENVIRONMENT?: string;
+  REVENUECAT_ENVIRONMENT?: string;
 
   // secrets(wrangler secret put)。未設定なら undefined。
   LLM_API_KEY?: string;
@@ -23,4 +22,8 @@ export interface Env {
   AIVIS_MODEL_UUID?: string;
   AIVIS_SPEAKER_UUID?: string;
   AIVIS_STYLE_NAME?: string;
+  // RevenueCat webhook(POST /api/webhooks/revenuecat)の Authorization ヘッダ照合用 shared secret。
+  REVENUECAT_WEBHOOK_AUTH?: string;
+  // RevenueCat REST API(GET /v1/subscribers/{app_user_id})呼び出し用の Secret API Key。
+  REVENUECAT_SECRET_API_KEY?: string;
 }

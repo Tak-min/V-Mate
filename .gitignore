@@ -27,3 +27,4 @@ ios/build_sim/
 !.dev.vars.example
 .env*
 !.env.example
+.loop/
