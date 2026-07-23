@@ -28,6 +28,26 @@ export interface TtsResult {
   latencyMs: number;
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+/** 感情ベースの声設定に小さなランダム揺らぎを加える。同じ感情タグ・同じ台詞でも
+ * 毎回わずかに語調が変わり、生きた声に聞こえるようにする(Shizuku AIの「声はキャラクターの
+ * 魂」という設計思想を踏まえた最小コストの実装。2026-07-22)。
+ * rng は決定的テストのために差し替え可能。 */
+export function applyJitter(
+  base: { speaking_rate: number; emotional_intensity: number; volume: number },
+  rng: () => number = Math.random,
+): { speaking_rate: number; emotional_intensity: number; volume: number } {
+  const jitter = (spread: number) => (rng() * 2 - 1) * spread;
+  return {
+    speaking_rate: clamp(base.speaking_rate + jitter(0.04), 0.7, 1.4),
+    emotional_intensity: clamp(base.emotional_intensity + jitter(0.06), 0.3, 2.0),
+    volume: clamp(base.volume + jitter(0.03), 0.5, 1.3),
+  };
+}
+
 export async function synthesize(
   env: Env,
   text: string,
@@ -38,7 +58,7 @@ export async function synthesize(
   if (!text.trim()) return { audio: null, outcome: "disabled", latencyMs: 0 };
   if (!key) return { audio: null, outcome: "unconfigured", latencyMs: 0 };
   const modelUuid = env.AIVIS_MODEL_UUID || DEFAULT_MODEL_UUID;
-  const voiceSettings = EMOTION_VOICE_SETTINGS[emotion ?? "neutral"] ?? DEFAULT_SETTINGS;
+  const voiceSettings = applyJitter(EMOTION_VOICE_SETTINGS[emotion ?? "neutral"] ?? DEFAULT_SETTINGS);
   const url = `${AIVIS_BASE}/tts/synthesize`;
   const payload: Record<string, unknown> = {
     model_uuid: modelUuid,

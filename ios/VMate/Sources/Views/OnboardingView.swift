@@ -2,13 +2,19 @@ import SwiftUI
 
 struct OnboardingView: View {
     let onAgeVerified: (String) -> Void
-    let onComplete: (String?) -> Void
+    /// 第2引数は「音声の初対面で既にシロが名前へ反応済み(=はじめましての挨拶は済んでいる)か」。
+    /// trueならRootView側は独白挨拶(fireGreeting)を重ねて呼ばない。
+    let onComplete: (String?, Bool) -> Void
 
-    // ステップ: 0=welcome, 1=年齢確認(新規), 2=name, 3=hint
+    // ステップ: 0=welcome, 1=年齢確認(新規), 2=name(音声の初対面。失敗時は手入力), 3=hint
     @State private var step: Int
     @State private var name = ""
     @State private var goingForward = true
     @FocusState private var nameFieldFocused: Bool
+    @StateObject private var firstMeeting = FirstMeetingViewModel()
+    /// step2の見せ方。音声の初対面を既定とし、権限拒否・聞き取り失敗の繰り返し・通信エラー等で
+    /// 自動的にtrueへ切り替わる(FirstMeetingStepのonTextFallback経由)。
+    @State private var nameCaptureFallbackToText = false
 
     // --- 年齢ゲート ---
     // 13歳未満/18歳ちょうどを挟んだ判定が誤らないよう、デフォルトは意図的に「12歳」寄りに
@@ -21,11 +27,21 @@ struct OnboardingView: View {
     init(
         startAtAge: Bool = false,
         onAgeVerified: @escaping (String) -> Void = { _ in },
-        onComplete: @escaping (String?) -> Void
+        onComplete: @escaping (String?, Bool) -> Void
     ) {
         self.onAgeVerified = onAgeVerified
         self.onComplete = onComplete
+        #if DEBUG
+        // UX目視レビュー用: 実機/シミュレータでタップ操作なしに任意ステップへ直接ジャンプする。
+        // 通常起動時はこの環境変数は存在しないため本番挙動に影響しない。
+        if let forced = ProcessInfo.processInfo.environment["UITEST_ONBOARDING_STEP"].flatMap(Int.init) {
+            _step = State(initialValue: forced)
+        } else {
+            _step = State(initialValue: startAtAge ? 1 : 0)
+        }
+        #else
         _step = State(initialValue: startAtAge ? 1 : 0)
+        #endif
     }
 
     var body: some View {
@@ -35,7 +51,9 @@ struct OnboardingView: View {
             AgeBlockedView()
         } else {
             ZStack {
-                Color.black.opacity(0.25)
+                // RootView側でヘッダー/チャットUIは隠しているため、ここではアバターの気配を
+                // 覆いすぎない程度に暗くする(2026-07-22: 0.25では背後のUIが読めてしまっていた)。
+                Color.black.opacity(0.45)
                     .ignoresSafeArea()
 
                 VStack(spacing: 20) {
@@ -49,8 +67,21 @@ struct OnboardingView: View {
                             ageStep
                                 .transition(slideTransition)
                         } else if step == 2 {
-                            nameStep
-                                .transition(slideTransition)
+                            Group {
+                                if nameCaptureFallbackToText {
+                                    nameStep
+                                } else {
+                                    FirstMeetingStep(
+                                        viewModel: firstMeeting,
+                                        onTextFallback: { nameCaptureFallbackToText = true },
+                                        onDone: { resolvedName in
+                                            name = resolvedName
+                                            advance()
+                                        }
+                                    )
+                                }
+                            }
+                            .transition(slideTransition)
                         } else if step == 3 {
                             hintStep
                                 .transition(slideTransition)
@@ -105,6 +136,9 @@ struct OnboardingView: View {
                     .animation(.spring(response: 0.3, dampingFraction: 0.6), value: step)
             }
         }
+        .accessibilityElement()
+        .accessibilityLabel("オンボーディングの進み具合")
+        .accessibilityValue("ステップ \(step + 1) / 4")
     }
 
     // MARK: - Step 0: Welcome
@@ -127,9 +161,12 @@ struct OnboardingView: View {
                     .foregroundStyle(Color.accentPink)
                 Text("ぼくはシロ。\n話すほどあなたのことを覚えて、\n毎日をいっしょに振り返る相棒だよ。")
                     .font(.callout)
-                    .foregroundStyle(Color.warmBrown.opacity(0.85))
+                    .foregroundStyle(Color.white.opacity(0.85))
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
+                Text("このあと、声で挨拶するね")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.5))
             }
 
             nextButton("つぎへ") { advance() }
@@ -147,7 +184,7 @@ struct OnboardingView: View {
                     .foregroundStyle(Color.accentPink)
                 Text("安心して使ってもらうための確認だよ。\n入力した内容は他の人には見えないよ。")
                     .font(.callout)
-                    .foregroundStyle(Color.warmBrown.opacity(0.75))
+                    .foregroundStyle(Color.white.opacity(0.8))
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
             }
@@ -212,7 +249,7 @@ struct OnboardingView: View {
                     .foregroundStyle(Color.accentPink)
                 Text("シロがあなたを呼ぶ名前を教えてね。\n後から変えることもできるよ。")
                     .font(.callout)
-                    .foregroundStyle(Color.warmBrown.opacity(0.75))
+                    .foregroundStyle(Color.white.opacity(0.8))
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
             }
@@ -236,6 +273,11 @@ struct OnboardingView: View {
     private var hintStep: some View {
         VStack(spacing: 16) {
             VStack(spacing: 6) {
+                if !name.isEmpty {
+                    Text("\(name)、よろしくね！")
+                        .font(.callout.bold())
+                        .foregroundStyle(Color.accentPink.opacity(0.9))
+                }
                 Text("こんなふうに話しかけてね")
                     .font(.title2.bold())
                     .foregroundStyle(Color.accentPink)
@@ -283,7 +325,7 @@ struct OnboardingView: View {
 
             let startLabel = name.isEmpty ? "最初のひとことを話す" : "\(name)、最初のひとことを話す"
             nextButton(startLabel) {
-                onComplete(name.isEmpty ? nil : name)
+                onComplete(name.isEmpty ? nil : name, !nameCaptureFallbackToText)
             }
 
             backButton()
@@ -312,7 +354,7 @@ struct OnboardingView: View {
                 Text("もどる")
                     .font(.footnote)
             }
-            .foregroundStyle(Color.warmBrown.opacity(0.45))
+            .foregroundStyle(Color.white.opacity(0.5))
         }
     }
 }
@@ -329,13 +371,13 @@ private struct HintRow: View {
                 .foregroundStyle(Color.accentPink)
             Text(text)
                 .font(.body)
-                .foregroundStyle(Color.warmBrown.opacity(0.9))
+                .foregroundStyle(Color.white.opacity(0.85))
             Spacer()
         }
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.accentPink.opacity(0.08))
+                .fill(Color.white.opacity(0.08))
         )
     }
 }

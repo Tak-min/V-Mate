@@ -7,10 +7,11 @@ import type { Env } from "./env";
 import { Store } from "./db";
 import * as auth from "./auth";
 import { AppleTokenError, verifyAppleIdentityToken } from "./apple_auth";
-import { AppleTransactionError, applyAppleTransaction, appleRootCaG3, verifySignedTransaction } from "./apple_store";
+import { applyRevenueCatEntitlements, fetchSubscriber, parseRevenueCatWebhookEvent, timingSafeEqual } from "./revenuecat";
 import { synthesize } from "./tts";
 import { complete } from "./llm";
 import { nudgePrompt, diaryPrompt } from "./persona";
+import { generateIntroNameResponse } from "./onboarding";
 import { handleChat, statePayload } from "./chat";
 import { computeAgeBand } from "./agegate";
 import { assertPurchasable } from "./agegate";
@@ -170,52 +171,49 @@ async function getCatalog(c: Ctx): Promise<Response> {
   return json({ items: CATALOG.map(({ id, entitlementKey, kind, name, description }) => ({ id, entitlement_key: entitlementKey, kind, name, description })) });
 }
 
-function iapEnabled(c: Ctx): boolean {
-  return ["1", "true", "yes", "on"].includes((c.env.IAP_ENABLED ?? "false").toLowerCase());
-}
-
-async function getAppStoreAccountToken(c: Ctx): Promise<Response> {
-  if (!iapEnabled(c)) return errorDetail("アプリ内購入は準備中です", 503);
-  const account = await requirePurchasableAccount(c);
-  if (account instanceof Response) return account;
-  return json({ app_account_token: await c.store.getOrCreateAppAccountToken(account) });
-}
-
 /**
- * StoreKit2 の signedTransaction(JWS)をApple Root CAまでのチェーン検証込みで検証し、
- * purchases(不変の台帳)とentitlements(唯一の真実の源)に反映する。検証失敗は必ず 400 で
- * fail-closed(権利は一切付与しない)。ASSN V2 webhook 実装までの失効は、クライアントが
- * 起動時に Transaction.currentEntitlements を再送する経路で expires_at を前進させることに委ねる
- * (StoreKitManager.prepare() 参照)。
+ * RevenueCat webhook(POST /api/webhooks/revenuecat)。JWTではなくshared secretで認証する
+ * サーバー間エンドポイント。以下を全て満たさない限り権利は一切付与しない(fail-closed):
+ *   1. Authorization ヘッダが REVENUECAT_WEBHOOK_AUTH と定数時間で一致する
+ *   2. event.environment が REVENUECAT_ENVIRONMENT と厳密一致する
+ *      (旧apple_store.tsのSandbox/Production検証と同じ理由: RevenueCatもSandbox購入は
+ *      誰でも無料で作れるため、環境の取り違えは無料でPro権利を詐取できる欠陥になる)
+ *   3. event.app_user_id が実在する users.id に解決できる(=RevenueCatのapp_user_idを
+ *      アカウント束縛の鍵として使う。旧appAccountToken方式と同じ目的を、専用テーブル無しで果たす)
+ * 通過後は webhookペイロード自体ではなく GET /v1/subscribers/{app_user_id} で取得した
+ * 正規化状態を反映する(RevenueCat公式推奨のパターン)。
  */
-async function postApplePurchaseVerify(c: Ctx, body: { signed_transaction?: unknown }): Promise<Response> {
-  if (!iapEnabled(c)) return errorDetail("アプリ内購入は準備中です", 503);
-  const account = await requirePurchasableAccount(c);
-  if (account instanceof Response) return account;
-
-  if (typeof body.signed_transaction !== "string" || body.signed_transaction.length < 16 || body.signed_transaction.length > 20_000) {
-    return errorDetail("不正なリクエストです", 400);
+async function postRevenueCatWebhook(c: Ctx, body: Record<string, unknown>): Promise<Response> {
+  const authHeader = c.request.headers.get("Authorization") ?? "";
+  const expected = c.env.REVENUECAT_WEBHOOK_AUTH;
+  const validAuth = typeof expected === "string" && expected.length > 0 && timingSafeEqual(authHeader, `Bearer ${expected}`);
+  if (!validAuth) {
+    // shared secret の総当たり対策。認証成功リクエスト(=正規のRevenueCat配信)はここを通らないため、
+    // 正規のwebhook配信を巻き込まずに攻撃試行だけをレート制限できる。
+    const perIp = envInt(c.env.RATE_LOGIN_PER_IP_PER_DAY, 30);
+    if ((await c.store.bumpUsage(`rc-webhook-auth-fail:${clientIp(c.request)}`, jstToday())) > perIp) {
+      return errorDetail("Too Many Requests", 429);
+    }
+    return errorDetail("Unauthorized", 401);
   }
 
-  let tx;
+  const event = parseRevenueCatWebhookEvent(body);
+  if (!event) return errorDetail("不正なwebhookです", 400);
+
+  // 200 を返して RevenueCat のリトライを止めつつ、権利は付与しない(以下いずれも fail-closed)。
+  if (event.environment !== (c.env.REVENUECAT_ENVIRONMENT ?? "Production")) return json({ ok: true });
+  const user = await c.store.getUserById(event.appUserId);
+  if (!user) return json({ ok: true });
+
+  let subscriber;
   try {
-    tx = await verifySignedTransaction(body.signed_transaction, {
-      bundleId: c.env.APPLE_BUNDLE_ID ?? "com.takmin.vmate",
-      trustedRootDER: appleRootCaG3(),
-      expectedEnvironment: c.env.APPLE_ENVIRONMENT ?? "Production",
-    });
+    subscriber = await fetchSubscriber(c.env.REVENUECAT_SECRET_API_KEY ?? "", event.appUserId);
   } catch (error) {
-    if (error instanceof AppleTransactionError) return errorDetail("購入を確認できませんでした", 400);
-    throw error;
+    console.error("revenuecat subscriber fetch failed", error?.toString?.() ?? error);
+    return errorDetail("購入情報を取得できませんでした", 502);
   }
 
-  const result = await applyAppleTransaction(c.store, account, tx);
-  if (!result.ok) {
-    if (result.reason === "account_mismatch") return errorDetail("この購入は別のアカウントに紐付いています", 403);
-    if (result.reason === "missing_account_token") return errorDetail("購入者を確認できませんでした。アプリを最新版に更新して再度お試しください。", 400);
-    return errorDetail("未対応の商品です", 400);
-  }
-
+  await applyRevenueCatEntitlements(c.store, user.id, event.id, event.eventTimestampMs, subscriber.entitlements);
   return json({ ok: true });
 }
 
@@ -234,7 +232,9 @@ function validateAuth(body: { email?: unknown; password?: unknown }): Response |
 async function authMe(c: Ctx): Promise<Response> {
   const uid = await resolveUid(c);
   const user = await c.store.getUserById(uid);
-  return json({ authenticated: user != null, email: user ? user.email : null });
+  // user_id は RevenueCat の appUserID として使う(Purchases.shared.logIn の引数)。
+  // 匿名Cookieユーザーには実アカウントが無いため null。
+  return json({ authenticated: user != null, email: user ? user.email : null, user_id: user ? user.id : null });
 }
 
 async function getState(c: Ctx): Promise<Response> {
@@ -396,6 +396,20 @@ async function postNudge(c: Ctx, body: { reason?: unknown; first_visit?: unknown
   return json({ text, emotion, days_away: daysAway });
 }
 
+/** 音声オンボーディングの初対面ステップ: 発話から名前を抽出し、温かい返事を生成する。
+ * DB書き込みはしない(名前の永続化はクライアントが /api/profile を1回だけ呼ぶ)。 */
+async function postIntroName(c: Ctx, body: { transcript?: unknown }): Promise<Response> {
+  const transcript = typeof body.transcript === "string" ? body.transcript.trim() : "";
+  if (!transcript || transcript.length > 300) {
+    return errorDetail("聞き取り結果が正しくありません", 400);
+  }
+  const uid = await resolveUid(c);
+  const ageBlocked = await requireInteractionAge(c, uid);
+  if (ageBlocked) return ageBlocked;
+  const result = await generateIntroNameResponse(c.env, transcript);
+  return json(result);
+}
+
 async function getDiary(c: Ctx): Promise<Response> {
   const uid = await resolveUid(c);
   const today = jstToday();
@@ -461,7 +475,6 @@ async function route(c: Ctx): Promise<Response> {
     if (path === "/api/auth/me") return authMe(c);
     if (path === "/api/entitlements") return getEntitlements(c);
     if (path === "/api/catalog") return getCatalog(c);
-    if (path === "/api/store/account-token") return getAppStoreAccountToken(c);
     if (path === "/api/profile/age") return getAge(c);
     if (path === "/api/state") return getState(c);
     if (path === "/api/history") return getHistory(c);
@@ -478,12 +491,13 @@ async function route(c: Ctx): Promise<Response> {
     if (path === "/api/auth/apple") return authApple(c, body);
     if (path === "/api/auth/delete") return authDelete(c);
     if (path === "/api/analytics/event") return postAnalyticsEvent(c, body);
-    if (path === "/api/purchase/apple/verify") return postApplePurchaseVerify(c, body);
+    if (path === "/api/webhooks/revenuecat") return postRevenueCatWebhook(c, body);
     if (path === "/api/profile") return setProfile(c, body);
     if (path === "/api/profile/age") return postAge(c, body);
     if (path === "/api/report") return postReport(c, body);
     if (path === "/api/chat") return postChat(c, body);
     if (path === "/api/nudge") return postNudge(c, body);
+    if (path === "/api/onboarding/intro-name") return postIntroName(c, body);
     if (path === "/api/diary/generate") return generateDiary(c);
     return errorDetail("Not Found", 404);
   }

@@ -46,10 +46,16 @@ struct RootView: View {
                 avatar
                     .ignoresSafeArea(edges: .bottom)
 
-                VStack(spacing: 0) {
-                    header
-                    Spacer()
-                    ConversationOverlay(viewModel: viewModel)
+                // オンボーディング中はヘッダー(親密度バー等)とチャットUIを隠す。
+                // まだ関係が始まっていない初回ユーザーに「空の実績」や会話の複雑さを
+                // 先に見せてしまうと、オンボーディングカードが伝えたい「はじめまして」の
+                // 純度が薄まるため(2026-07-22 FTUEレビュー)。
+                if !showOnboarding {
+                    VStack(spacing: 0) {
+                        header
+                        Spacer()
+                        ConversationOverlay(viewModel: viewModel)
+                    }
                 }
             }
         }
@@ -80,13 +86,19 @@ struct RootView: View {
                 OnboardingView(
                     startAtAge: !viewModel.isFirstRun,
                     onAgeVerified: { viewModel.updateAgeBand($0) }
-                ) { name in
+                ) { name, alreadyGreeted in
                     if let name = name {
                         viewModel.saveName(name)
                     }
                     viewModel.markOnboarded()
                     APIClient.shared.trackEvent("onboarding_completed")
-                    viewModel.fireGreeting()
+                    // 音声の初対面で既にシロが名前へ反応済みなら、独白挨拶(fireGreeting)は
+                    // 二重挨拶になるため呼ばない(2026-07-22)。
+                    if alreadyGreeted {
+                        viewModel.markGreeted()
+                    } else {
+                        viewModel.fireGreeting()
+                    }
                     showOnboarding = false
                 }
                 .background(TransparentBackground())

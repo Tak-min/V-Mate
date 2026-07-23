@@ -10,16 +10,18 @@
 		0179681B5236B507FEF3CCC5 /* ConversationOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = F85A2C14BCFC1EE04EA3C92E /* ConversationOverlay.swift */; };
 		179D99AAED52D526A52C016E /* SpeechRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAC0B91A2F4CA30F9E64A53E /* SpeechRecognizer.swift */; };
 		2652A4CD6E1984665C1F8763 /* StoreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 129A70FA5A92E98B10952DC7 /* StoreView.swift */; };
+		290224B49B116CC62943FD41 /* FirstMeetingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB5AFF7333EE389CB6FAF195 /* FirstMeetingViewModel.swift */; };
 		328CC4E92129317DEBF554F9 /* AvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19C829075B174B8C436FC3DA /* AvatarView.swift */; };
 		375BEE64A4A15871B5D1B6CD /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 627E8E6FAA44CB248CAB829F /* Models.swift */; };
 		3BF4360D55F95483DD1DDD04 /* VoiceActivityDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89588DD2BCB0B1628454234B /* VoiceActivityDetectorTests.swift */; };
+		47D2A693C2B1D774C13C5947 /* RevenueCatManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 769A3424B6CABD6F3265B110 /* RevenueCatManager.swift */; };
 		4A57CA77DE4D2D45336AA8D0 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 344EE1C5E6B2515B03742E6C /* OnboardingView.swift */; };
 		760C42C0B596D46C631BD941 /* PersonaColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21ED29007C2BB868777F0645 /* PersonaColors.swift */; };
+		8BED92CE56D3A218E39D6A2B /* FirstMeetingStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0B9892D3C4C61FA6924F9E6 /* FirstMeetingStep.swift */; };
 		907ABF8A351B6015BD323EB3 /* VRMAvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 933F65D829A8A9996CE40018 /* VRMAvatarView.swift */; };
 		A628D7243C100424BB38A19A /* SentenceSplitter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7C5707F31A1E4C4C73FAED4 /* SentenceSplitter.swift */; };
 		A790AC8EC600EFF254AF3C34 /* CompanionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D590B18853AE01E38AE6A30 /* CompanionViewModel.swift */; };
 		B9F0E31D043BE931467DC900 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 558AE6CB426801861C0885BC /* RootView.swift */; };
-		BF529AB0CBFFF63017B48EBC /* StoreKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E794BD4867F64B050C15319 /* StoreKitManager.swift */; };
 		BFA269AFDB506D242C2DCFC6 /* AgeBlockedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 604235767F397EB0E4E333B6 /* AgeBlockedView.swift */; };
 		C0901E8F6B779605202C80FD /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C47781B2A06612BF80E4D5EC /* APIClient.swift */; };
 		C495EE1ADA4B65683FFDC067 /* VMateApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74FAF615F76F22005FB0978E /* VMateApp.swift */; };
@@ -29,6 +31,7 @@
 		E1FFDC36AC31A0BACFD0DF8C /* VoiceActivityDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C95C9F5DEE1C40DE271CBC0 /* VoiceActivityDetector.swift */; };
 		F157BF2D376E4C8A75E47304 /* DiaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94DF2FE0B766B214BE732B0F /* DiaryView.swift */; };
 		F5D60551FEBE3DBD8F453370 /* SpeechQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = B88BE9409D8285B3B8DFD2CC /* SpeechQueue.swift */; };
+		FB52FE0ADCFBA85A8F4AD90E /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = DEB628E10977746256BB08BA /* RevenueCat */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -49,7 +52,6 @@
 		1EB522E1E135E38C317E0E7E /* AmbientBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientBackground.swift; sourceTree = "<group>"; };
 		21ED29007C2BB868777F0645 /* PersonaColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonaColors.swift; sourceTree = "<group>"; };
 		2B1582471584CB74EE96FF2C /* AccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountView.swift; sourceTree = "<group>"; };
-		2E794BD4867F64B050C15319 /* StoreKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitManager.swift; sourceTree = "<group>"; };
 		344EE1C5E6B2515B03742E6C /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		558AE6CB426801861C0885BC /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		604235767F397EB0E4E333B6 /* AgeBlockedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgeBlockedView.swift; sourceTree = "<group>"; };
@@ -57,17 +59,31 @@
 		6C95C9F5DEE1C40DE271CBC0 /* VoiceActivityDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceActivityDetector.swift; sourceTree = "<group>"; };
 		6E3590ACD31C8F6DB1BA9EEE /* AudioSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSessionManager.swift; sourceTree = "<group>"; };
 		74FAF615F76F22005FB0978E /* VMateApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VMateApp.swift; sourceTree = "<group>"; };
+		769A3424B6CABD6F3265B110 /* RevenueCatManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RevenueCatManager.swift; sourceTree = "<group>"; };
 		89588DD2BCB0B1628454234B /* VoiceActivityDetectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceActivityDetectorTests.swift; sourceTree = "<group>"; };
 		8D590B18853AE01E38AE6A30 /* CompanionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionViewModel.swift; sourceTree = "<group>"; };
 		933F65D829A8A9996CE40018 /* VRMAvatarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VRMAvatarView.swift; sourceTree = "<group>"; };
 		94DF2FE0B766B214BE732B0F /* DiaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiaryView.swift; sourceTree = "<group>"; };
+		B0B9892D3C4C61FA6924F9E6 /* FirstMeetingStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstMeetingStep.swift; sourceTree = "<group>"; };
 		B7C5707F31A1E4C4C73FAED4 /* SentenceSplitter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SentenceSplitter.swift; sourceTree = "<group>"; };
 		B88BE9409D8285B3B8DFD2CC /* SpeechQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechQueue.swift; sourceTree = "<group>"; };
 		C47781B2A06612BF80E4D5EC /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		CAC0B91A2F4CA30F9E64A53E /* SpeechRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechRecognizer.swift; sourceTree = "<group>"; };
 		D17698B27B19C1BF08468D4F /* VMate.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = VMate.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		DB5AFF7333EE389CB6FAF195 /* FirstMeetingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstMeetingViewModel.swift; sourceTree = "<group>"; };
 		F85A2C14BCFC1EE04EA3C92E /* ConversationOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationOverlay.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		1AD07E4AD2FCB0057BBAAA8E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FB52FE0ADCFBA85A8F4AD90E /* RevenueCat in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		0B7E94977FE4AFCEA4472BE2 /* Sources */ = {
@@ -115,6 +131,7 @@
 			isa = PBXGroup;
 			children = (
 				8D590B18853AE01E38AE6A30 /* CompanionViewModel.swift */,
+				DB5AFF7333EE389CB6FAF195 /* FirstMeetingViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -122,7 +139,7 @@
 		50128832E48414E166EC4C9F /* Store */ = {
 			isa = PBXGroup;
 			children = (
-				2E794BD4867F64B050C15319 /* StoreKitManager.swift */,
+				769A3424B6CABD6F3265B110 /* RevenueCatManager.swift */,
 			);
 			path = Store;
 			sourceTree = "<group>";
@@ -152,6 +169,7 @@
 				19C829075B174B8C436FC3DA /* AvatarView.swift */,
 				F85A2C14BCFC1EE04EA3C92E /* ConversationOverlay.swift */,
 				94DF2FE0B766B214BE732B0F /* DiaryView.swift */,
+				B0B9892D3C4C61FA6924F9E6 /* FirstMeetingStep.swift */,
 				344EE1C5E6B2515B03742E6C /* OnboardingView.swift */,
 				21ED29007C2BB868777F0645 /* PersonaColors.swift */,
 				558AE6CB426801861C0885BC /* RootView.swift */,
@@ -223,6 +241,7 @@
 			buildConfigurationList = ADB4C02ED852165D3DEA9892 /* Build configuration list for PBXNativeTarget "VMate" */;
 			buildPhases = (
 				9F17E7C9D6C3E33052F06DF8 /* Sources */,
+				1AD07E4AD2FCB0057BBAAA8E /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -230,6 +249,7 @@
 			);
 			name = VMate;
 			packageProductDependencies = (
+				DEB628E10977746256BB08BA /* RevenueCat */,
 			);
 			productName = VMate;
 			productReference = D17698B27B19C1BF08468D4F /* VMate.app */;
@@ -259,6 +279,9 @@
 			);
 			mainGroup = 30B15DDA9F59A49F16ED7E31;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				63D0DBC1213583DAED8F371F /* XCRemoteSwiftPackageReference "purchases-ios" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = FA921EBACE2CBDC45ED8F61C /* Products */;
 			projectDirPath = "";
@@ -284,14 +307,16 @@
 				A790AC8EC600EFF254AF3C34 /* CompanionViewModel.swift in Sources */,
 				0179681B5236B507FEF3CCC5 /* ConversationOverlay.swift in Sources */,
 				F157BF2D376E4C8A75E47304 /* DiaryView.swift in Sources */,
+				8BED92CE56D3A218E39D6A2B /* FirstMeetingStep.swift in Sources */,
+				290224B49B116CC62943FD41 /* FirstMeetingViewModel.swift in Sources */,
 				375BEE64A4A15871B5D1B6CD /* Models.swift in Sources */,
 				4A57CA77DE4D2D45336AA8D0 /* OnboardingView.swift in Sources */,
 				760C42C0B596D46C631BD941 /* PersonaColors.swift in Sources */,
+				47D2A693C2B1D774C13C5947 /* RevenueCatManager.swift in Sources */,
 				B9F0E31D043BE931467DC900 /* RootView.swift in Sources */,
 				A628D7243C100424BB38A19A /* SentenceSplitter.swift in Sources */,
 				F5D60551FEBE3DBD8F453370 /* SpeechQueue.swift in Sources */,
 				179D99AAED52D526A52C016E /* SpeechRecognizer.swift in Sources */,
-				BF529AB0CBFFF63017B48EBC /* StoreKitManager.swift in Sources */,
 				2652A4CD6E1984665C1F8763 /* StoreView.swift in Sources */,
 				C495EE1ADA4B65683FFDC067 /* VMateApp.swift in Sources */,
 				907ABF8A351B6015BD323EB3 /* VRMAvatarView.swift in Sources */,
@@ -552,6 +577,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		63D0DBC1213583DAED8F371F /* XCRemoteSwiftPackageReference "purchases-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/RevenueCat/purchases-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		DEB628E10977746256BB08BA /* RevenueCat */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 63D0DBC1213583DAED8F371F /* XCRemoteSwiftPackageReference "purchases-ios" */;
+			productName = RevenueCat;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 99F4FF2E5565B6C7A76C2E16 /* Project object */;
 }

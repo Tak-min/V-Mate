@@ -58,6 +58,15 @@ struct NudgeResponse: Codable {
     var days_away: Int?
 }
 
+/// 音声オンボーディング(初対面)で、聞き取った発話から名前を抽出した結果。
+/// name が nil のときは聞き取れなかった/名乗っていないことを意味し、
+/// text にはやり直しを促す優しい返事が入る(空文字にはならない)。
+struct IntroNameResponse: Codable {
+    var name: String?
+    var text: String
+    var emotion: Emotion
+}
+
 enum APIError: Error, LocalizedError {
     case server(String, Int)
     case decoding

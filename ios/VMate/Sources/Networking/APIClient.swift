@@ -90,17 +90,11 @@ final class APIClient {
         try tokenStore.delete()
     }
 
-    func verifyApplePurchase(signedTransaction: String) async throws {
-        struct VerifyResponse: Codable { let ok: Bool }
-        let _: VerifyResponse = try await post("/api/purchase/apple/verify", body: ["signed_transaction": signedTransaction])
-    }
+    struct MeResponse: Codable { let authenticated: Bool; let email: String?; let user_id: String? }
 
-    /// StoreKit2 の appAccountToken に使う、このアカウント専用の安定UUID(サーバ側で発行・永続化)。
-    /// App Store Server Notifications が持つ originalTransactionId をアカウントへ紐付ける鍵になる。
-    func fetchAppAccountToken() async throws -> String {
-        struct TokenResponse2: Codable { let app_account_token: String }
-        let response: TokenResponse2 = try await get("/api/store/account-token")
-        return response.app_account_token
+    /// RevenueCat の appUserID(Purchases.shared.logIn の引数)に使うサーバ側の安定ユーザーID。
+    func fetchMe() async throws -> MeResponse {
+        try await get("/api/auth/me")
     }
 
     func trackEvent(_ event: String) {
@@ -173,6 +167,13 @@ final class APIClient {
 
     func requestNudge(reason: String) async throws -> NudgeResponse {
         try await post("/api/nudge", body: ["reason": reason])
+    }
+
+    // --- 音声オンボーディング(初対面) ---
+
+    /// 聞き取った発話(自由文)からシロが名前を抽出し、温かい返事を生成する。DBには書き込まない。
+    func requestIntroName(transcript: String) async throws -> IntroNameResponse {
+        try await post("/api/onboarding/intro-name", body: ["transcript": transcript])
     }
 
     // --- TTS ---

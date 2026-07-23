@@ -100,6 +100,12 @@ final class CompanionViewModel: ObservableObject {
         if let history = await historyTask { messages = history }
         ageBand = await ageTask?.age_band
 
+        // 端末に永続化されたトークンで再起動したユーザー(AccountViewのSign in with Appleを経由しない
+        // 復帰経路)も、RevenueCatの匿名IDをアカウントへ紐付ける。
+        if APIClient.shared.isAuthenticated, let me = try? await APIClient.shared.fetchMe(), let userId = me.user_id {
+            await RevenueCatManager.shared.logIn(userId)
+        }
+
         // 初回ユーザーは OnboardingView 経由で fireGreeting() が呼ばれる。
         // 2回目以降のユーザーのみここで挨拶。
         if !isFirstRun, ageBand == "minor" || ageBand == "adult", !greeted {
@@ -254,6 +260,11 @@ final class CompanionViewModel: ObservableObject {
         }
         resumeWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + resumeListeningDelay, execute: work)
+    }
+
+    /// 音声の初対面で既に挨拶が済んでいる場合に、独白挨拶(fireGreeting)の二重発火を防ぐためのマーカー。
+    func markGreeted() {
+        greeted = true
     }
 
     /// オンボーディング完了後に呼び出される挨拶トリガー。
