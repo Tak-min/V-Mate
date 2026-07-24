@@ -132,6 +132,50 @@ Cloudflare Worker配信アセットへの影響を避けるため):
   読み飛ばすと、車輪の再発明(またはこのケースのように不正確な代替指標での妥協)をしてしまう。
   Web/ネイティブ間でアセットを共有する構成では、両側のコメント・TODOを横断的に確認すること。
 
+## 追記(同日): シミュレータ目視QAで見つけた追加の問題点
+
+ユーザーから「もっと粗探ししていい」との指示を受け、`UITEST_ONBOARDING_STEP`デバッグフック
+(OnboardingView.init)でシミュレータの各ステップを強制ジャンプ表示し、スクリーンショットで
+目視確認するQAパスを実施。以下3点を発見・修正(git commit時点でまとめて1コミット):
+
+1. **初回起動時の一瞬のUIフラッシュ**: `showOnboarding`の判定は`bootstrap()`完了後の非同期処理
+   (state/history/age取得)を経て決まるが、`viewModel.ready`自体はbootstrap冒頭で早々にtrueになる。
+   この間、`showOnboarding`はデフォルト値`false`のままレンダリングされるため、本来オンボーディング
+   行きの初回ユーザーにも一瞬だけメインのチャットUI+アバターが見えてしまっていた。
+   → `onboardingDecided`フラグを追加し、判定完了(`showOnboarding`確定)まで
+   「シロを起こしてる…」表示を継続するよう修正(RootView.swift)。
+
+2. **年齢確認のDatePickerが端末ロケール依存**: アプリ全体が日本語固定UIなのに、`DatePicker`だけ
+   端末のシステム地域設定に従うため、地域設定次第で月名が"July"等の英語表記になり浮いていた。
+   → `.environment(\.locale, Locale(identifier: "ja_JP"))`を明示指定(OnboardingView.swift)。
+   スクリーンショットで「2010年7月24日」のように正しく日本語表記されることを確認済み。
+
+3. **reveal画面のタップ領域にアクセシビリティラベルが無い**: `stepDots`等の既存インタラクティブ要素
+   にはVoiceOver用のラベルがあるのに、新設のreveal画面のタップ領域だけ未対応だった。
+   → `.accessibilityElement(children: .ignore)` + `.accessibilityLabel("シロに会いにいく")` +
+   `.accessibilityHint("ダブルタップして進む")` + `.accessibilityAddTraits(.isButton)`を追加。
+
+4. **(追加で発見・修正) nameStep(音声不可時の手入力フォールバック)のTextFieldが浮いていた**:
+   標準の`.textFieldStyle(.roundedBorder)`は`.preferredColorScheme(.dark)`下で無地の黒い箱に
+   なり、このウィザードの他要素(ガラス調カード・ピンク系グラデーション)から視覚的に浮いていた。
+   → `ConversationOverlay`のチャット入力欄と同じガラス調カプセルスタイル(`.textFieldStyle(.plain)`
+   + `Capsule` + `.ultraThinMaterial`)に統一。スクリーンショットで確認済み。
+
+### QAの副産物(バグではないが記録): シミュレータでのstep強制ジャンプの罠
+
+`SIMCTL_CHILD_UITEST_ONBOARDING_STEP=N xcrun simctl launch <device> <bundle-id>` で
+アプリが**既に起動中**の場合、`simctl launch`は既存プロセスをフォアグラウンドに戻すだけで
+環境変数を反映した再起動をしない(=`UITEST_ONBOARDING_STEP`が無視され、直前の画面のまま)。
+必ず`xcrun simctl terminate <device> <bundle-id>`で一度終了させてから`launch`すること。
+これに気づかずステップを切り替えたつもりで同じ画面を繰り返し確認してしまうと、時間を浪費する
+(このQAパスの前段で実施した自動化フォーク実行がこれに起因してと思われる原因不明の停止に
+陥った可能性がある)。
+
+また、FirstMeetingStep(音声初対面)→nameStep(手入力フォールバック)への切り替わり直後の
+スクリーンショットで、前の画面の吹き出しが下部に薄く残って見えることがあるが、これは
+`.transition(.opacity)`のクロスフェード中の正常な中間フレームであり、数秒待てば消える
+(バグではない)。
+
 ## 関連
 
 - `ios/dev-notes/xcodegen_new_file_gotcha_2026-07-20.md` — 新規ファイル追加時のxcodegen再生成

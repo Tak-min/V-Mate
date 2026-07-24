@@ -238,6 +238,10 @@ struct OnboardingView: View {
                 .datePickerStyle(.wheel)
                 .labelsHidden()
                 .frame(maxHeight: 160)
+                // 端末のシステム地域設定に関わらず月名等を日本語で表示する。アプリ全体が日本語
+                // 固定UIのため、DatePickerだけ端末ロケール依存で"July"等の英語表記になり
+                // 浮いてしまう問題への対応(2026-07-24 reveal演出QAで発見)。
+                .environment(\.locale, Locale(identifier: "ja_JP"))
 
             if let ageError {
                 Text(ageError)
@@ -321,6 +325,14 @@ struct OnboardingView: View {
             }
             .opacity(isRevealing ? 0 : 1)
             .animation(.easeOut(duration: 0.6), value: isRevealing)
+            // アイコン/スピナーは装飾でありテキストと意味が重複するため、まとめて1つの
+            // アクセシビリティ要素にしてVoiceOverが要素ごとにバラバラ読み上げないようにする
+            // (2026-07-24 reveal演出QAで発見: stepDots等の既存インタラクティブ要素には
+            // ラベルがあるのに、この新設タップ領域にだけ何も無かった)。
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("シロに会いにいく")
+            .accessibilityHint("ダブルタップして進む")
+            .accessibilityAddTraits(.isButton)
         }
         .contentShape(Rectangle())
         .onAppear {
@@ -366,9 +378,21 @@ struct OnboardingView: View {
                     .lineSpacing(3)
             }
 
+            // 標準の.roundedBorderは.preferredColorScheme(.dark)下で無地の黒い箱になり、
+            // このウィザードの他要素(ガラス調カード・ピンク系グラデーション)から浮いていた
+            // (2026-07-24 reveal演出QAで発見)。ConversationOverlayの入力欄と同じガラス調
+            // スタイルに統一する。
             TextField("なまえをいれてね", text: $name)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(.plain)
                 .multilineTextAlignment(.center)
+                .padding(.vertical, 12)
+                .background {
+                    Capsule()
+                        .fill(Color.black.opacity(0.2))
+                        .overlay(Capsule().fill(.ultraThinMaterial.opacity(0.5)))
+                        .overlay(Capsule().strokeBorder(Color.white.opacity(0.15), lineWidth: 1))
+                }
+                .foregroundStyle(.white)
                 .submitLabel(.continue)
                 .focused($nameFieldFocused)
                 .onSubmit { advance() }

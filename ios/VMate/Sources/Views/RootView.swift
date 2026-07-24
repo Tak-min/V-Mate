@@ -28,6 +28,12 @@ struct RootView: View {
     /// 3D(WKWebView+three-vrm)読み込みに失敗したら v1 のシンプルアバターへ自動フォールバックする。
     @State private var vrmFailed = false
     @State private var showOnboarding = false
+    /// `showOnboarding`はbootstrap()完了後まで決まらないため、その初期値(false)のまま
+    /// 判定前のレンダリングが走ると「本来はオンボーディング行きの初回ユーザーなのに、
+    /// 判定が終わるまでの一瞬だけヘッダー/会話UIとアバターが見えてしまう」チラつきが
+    /// 起きていた(2026-07-24 reveal演出QAで発見)。判定完了までは`!viewModel.ready`と
+    /// 同じ「起こしてる…」表示のまま待たせることでこれを防ぐ。
+    @State private var onboardingDecided = false
     @State private var isStageUp = false
     @State private var previousStage: String? = nil
     @State private var accountOpen = false
@@ -36,7 +42,7 @@ struct RootView: View {
         ZStack {
             AmbientBackground(emotion: viewModel.currentEmotion)
 
-            if !viewModel.ready {
+            if !viewModel.ready || !onboardingDecided {
                 ProgressView("シロを起こしてる…")
                     .tint(.white)
                     .foregroundStyle(.white)
@@ -62,6 +68,7 @@ struct RootView: View {
         .task {
             await viewModel.bootstrap()
             showOnboarding = viewModel.isFirstRun || viewModel.ageBand == nil || viewModel.ageBand == "under13"
+            onboardingDecided = true
             if showOnboarding { APIClient.shared.trackEvent("onboarding_started") }
         }
         .onChangeOf(viewModel.state?.stage) { newStage in
