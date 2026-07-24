@@ -78,8 +78,63 @@
       エージェント側では自動検証していない。ユーザー本人による実機確認が必要)
 - [ ] SEを専用音源にする場合のアセット追加(v1はシステムサウンドのプレースホルダー)
 
+## 追記(同日): 「キャラクターが見える前に音声が流れる」不具合の修正
+
+実機確認でユーザーから、reveal演出後に音声(「はじめまして…」)がキャラクターの見える前に
+流れてしまう不具合が報告された。
+
+### 根本原因
+
+`VRMAvatarView`の「読み込み完了」シグナルに`WKNavigationDelegate.didFinish`
+(ページのナビゲーション完了)を使っていたが、これは avatar.html が three.js を初期化し
+VRMモデルをfetch/パースして実際に画面へ描画するタイミングより**大幅に早く**発火する
+(スクリプトタグの読み込み・実行が終わった時点で発火するだけで、その後の非同期モデル
+読み込みは含まれない)。そのため reveal画面のタップが有効になった時点では「ページは
+読み込めているが3Dモデルはまだ見えていない」状態になり得て、タップ→advance()→
+音声再生開始、という一連の流れがキャラクターの実際の表示より先に進んでしまっていた。
+
+調査の結果、Web版と共有の `frontend/src/ios-avatar/entry.ts` には**既にこの目的のための
+シグナルが用意されていた**ことが判明: `viewer.load()`(実際のモデル読み込み)完了時に
+`document.dispatchEvent(new Event('vmate-ready'))` を発火する設計(コメントに
+「将来 WKScriptMessageHandler を足す際に備え」と明記されていた)。しかしSwift側は
+これを一度も購読しておらず、`didFinish`を代用シグナルとして使い続けていた。
+
+### 修正
+
+`VRMAvatarView.swift`のみの変更で完結(avatar.html/entry.tsは無変更 — Web版と共有の
+Cloudflare Worker配信アセットへの影響を避けるため):
+
+1. `WKUserContentController`に`atDocumentStart`で `vmate-ready` イベントを購読し
+   `window.webkit.messageHandlers.vmateReady.postMessage(...)` へ橋渡しする
+   `WKUserScript`を注入。
+2. `Coordinator`が`WKScriptMessageHandler`に準拠し、メッセージ受信で`onLoadFinished`
+   (`viewModel.isAvatarLoaded = true`)を発火。`didFinish`ベースの旧シグナルは削除。
+3. ついでに見つけた別の穴も修正: `entry.ts`はモデル読み込み**失敗**時に
+   `document.title = "load-error:..."` を設定するだけで、これはネットワークレベルの
+   `didFail`では検知できない(ページ自体は正常に読み込まれるため)。`webView.title`を
+   KVO監視し、`load-error:`プレフィックスを検知したら`vrmFailed`と同様に扱うよう追加。
+   このパスが無いと、モデル自体の破損等の失敗時に(2Dプレースホルダー撤去後は)
+   永久に何も表示されない画面になり得た。
+4. `OnboardingView`のreveal画面タップ判定を`avatarReady`単独から
+   `avatarReady || avatarFailed`(＝「決着がついたか」)に変更。失敗時は2D
+   フォールバックが確定するので、成功を待たず即タップ可能にする。
+5. タップ猶予の最終セーフティネット(どちらのシグナルも届かない異常系用)を3秒→6秒に延長、
+   暗幕とプロンプトのフェードアウト時間の食い違い(0.6s vs 0.4s)を0.6sに統一。
+
+### 教訓
+
+- **「ページの読み込み完了」と「コンテンツの表示完了」は別物**。特にWebGL/3D/画像等の
+  非同期後処理があるページをWKWebViewで扱う場合、`didFinish`を「見える」の代理指標に
+  してはいけない。JS側に真の完了シグナル(カスタムイベント等)を用意し
+  `WKScriptMessageHandler`で受け取るのが正攻法。
+- **JS側に「将来のブリッジ用」として用意されていたフックを見落としていた**。
+  設計時のコメント(entry.tsの「将来 WKScriptMessageHandler を足す際に備え」)を
+  読み飛ばすと、車輪の再発明(またはこのケースのように不正確な代替指標での妥協)をしてしまう。
+  Web/ネイティブ間でアセットを共有する構成では、両側のコメント・TODOを横断的に確認すること。
+
 ## 関連
 
 - `ios/dev-notes/xcodegen_new_file_gotcha_2026-07-20.md` — 新規ファイル追加時のxcodegen再生成
 - `ios/dev-notes/wireless_debug_real_device_2026-06-19.md` — ワイヤレス実機デバッグ手順
 - `~/.claude/projects/-Users-taku8/memory/sourcekit-diagnostics-not-authoritative.md`
+- `frontend/src/ios-avatar/entry.ts` — `vmate-ready`イベントの発火元(Web版と共有)

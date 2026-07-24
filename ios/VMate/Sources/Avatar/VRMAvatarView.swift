@@ -8,21 +8,42 @@ struct VRMAvatarView: UIViewRepresentable {
     @ObservedObject var viewModel: CompanionViewModel
     /// 読み込み失敗時に true。RootView 側でこれを見て v1 の AvatarView にフォールバックする。
     @Binding var failed: Bool
-    /// ページの読み込み完了(didFinish)時に呼ばれる。3Dモデル自体の描画完了までの厳密な保証はないが、
-    /// オンボーディングのreveal画面で事前読み込みしてから読む猶予(タップまでの数秒)があるため十分な近似値とする。
+    /// 3Dモデルの読み込みが実際に完了した(=画面に描画される状態になった)時に呼ばれる。
+    /// avatar.html(frontend/src/ios-avatar/entry.ts)は viewer.load() 完了時に
+    /// `document.dispatchEvent(new Event('vmate-ready'))` を発火する設計で既に用意されていたが、
+    /// Swift側でこれを購読していなかった(2026-07-24発覚)。didFinish(ページのナビゲーション完了)は
+    /// three.jsの初期化・VRMモデルのfetch/パース完了より大幅に早く発火するため、「読み込み完了」の
+    /// シグナルとしては不正確だった — これがオンボーディングのreveal演出で「キャラクターが実際に
+    /// 見える前に音声が流れる」不具合の根本原因。
     var onLoadFinished: (() -> Void)? = nil
 
     private static let avatarURL = URL(string: "https://aikata.taku810616.workers.dev/ios-avatar/avatar")!
+    private static let readyMessageName = "vmateReady"
 
     func makeUIView(context: Context) -> WKWebView {
+        let contentController = WKUserContentController()
+        // ページ本体(avatar.bundle.js)が実行されevent発火するより前に確実にリスナーを仕込むため
+        // atDocumentStartで注入する(順序が逆だとイベントを取りこぼす)。avatar.html/entry.tsは
+        // 一切変更しない(Web版と共有のCloudflare Worker配信アセットへの影響を避けるため、
+        // 既存のカスタムイベントを購読するだけに留める)。
+        let readyScript = WKUserScript(
+            source: "document.addEventListener('vmate-ready', function() { window.webkit.messageHandlers.\(Self.readyMessageName).postMessage('ready'); });",
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        )
+        contentController.addUserScript(readyScript)
+        contentController.add(context.coordinator, name: Self.readyMessageName)
+
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
+        config.userContentController = contentController
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.isOpaque = false
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
         webView.scrollView.isScrollEnabled = false
         webView.navigationDelegate = context.coordinator
+        context.coordinator.observeLoadErrorTitle(on: webView)
         webView.load(URLRequest(url: Self.avatarURL))
         context.coordinator.webView = webView
         return webView
@@ -37,12 +58,13 @@ struct VRMAvatarView: UIViewRepresentable {
     }
 
     @MainActor
-    final class Coordinator: NSObject, WKNavigationDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         weak var webView: WKWebView?
         private var lastEmotion: Emotion?
         private var lastMouthLevel: Double = -1
         private let onFailure: () -> Void
         private let onFinish: () -> Void
+        private var titleObservation: NSKeyValueObservation?
 
         init(onFailure: @escaping () -> Void, onFinish: @escaping () -> Void) {
             self.onFailure = onFailure
@@ -62,7 +84,19 @@ struct VRMAvatarView: UIViewRepresentable {
             }
         }
 
-        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        /// entry.ts は viewer.load() 失敗時に `document.title = "load-error:..."` を設定するのみで
+        /// (avatar.htmlはネットワークレベルでは正常に読み込まれるため didFail は発火しない)、
+        /// これを検知する手段がSwift側になかった。KVOでtitleの変化を監視し、モデル自体の
+        /// 読み込み失敗(壊れたVRMファイル・404等)もdidFail同様にフォールバック対象として扱う。
+        func observeLoadErrorTitle(on webView: WKWebView) {
+            titleObservation = webView.observe(\.title, options: [.new]) { [weak self] _, change in
+                guard let title = change.newValue ?? nil, title.hasPrefix("load-error:") else { return }
+                DispatchQueue.main.async { self?.onFailure() }
+            }
+        }
+
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard message.name == VRMAvatarView.readyMessageName else { return }
             onFinish()
         }
 

@@ -89,6 +89,7 @@ struct RootView: View {
                     onReachReveal: { viewModel.isReadyToReveal = true },
                     onRevealCharacter: { viewModel.isCharacterRevealed = true },
                     avatarReady: viewModel.isAvatarLoaded,
+                    avatarFailed: vrmFailed,
                     onIntroEmotion: { viewModel.currentEmotion = $0 },
                     onIntroMouthLevel: { viewModel.avatarMouthLevel = $0 }
                 ) { name, alreadyGreeted in

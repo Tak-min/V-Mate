@@ -10,6 +10,9 @@ struct OnboardingView: View {
     let onRevealCharacter: () -> Void
     /// RootView側のVRM読み込みが完了しているか。reveal画面のタップ操作の有効化に使う。
     let avatarReady: Bool
+    /// RootView側のVRM読み込みが失敗しているか。失敗時は2Dフォールバックへ切り替わることが
+    /// 確定しているので、成功を待たずタップを有効化してよい(無限に待たせない)。
+    let avatarFailed: Bool
     /// 第2引数は「音声の初対面で既にシロが名前へ反応済み(=はじめましての挨拶は済んでいる)か」。
     /// trueならRootView側は独白挨拶(fireGreeting)を重ねて呼ばない。
     let onComplete: (String?, Bool) -> Void
@@ -51,6 +54,7 @@ struct OnboardingView: View {
         onReachReveal: @escaping () -> Void = {},
         onRevealCharacter: @escaping () -> Void = {},
         avatarReady: Bool = false,
+        avatarFailed: Bool = false,
         onIntroEmotion: @escaping (Emotion) -> Void = { _ in },
         onIntroMouthLevel: @escaping (Double) -> Void = { _ in },
         onComplete: @escaping (String?, Bool) -> Void
@@ -59,6 +63,7 @@ struct OnboardingView: View {
         self.onReachReveal = onReachReveal
         self.onRevealCharacter = onRevealCharacter
         self.avatarReady = avatarReady
+        self.avatarFailed = avatarFailed
         self.onIntroEmotion = onIntroEmotion
         self.onIntroMouthLevel = onIntroMouthLevel
         self.onComplete = onComplete
@@ -284,6 +289,11 @@ struct OnboardingView: View {
     /// 年齢確認直後の「タップして会う」画面。この時点でRootView側は裏でVRMの先読みを開始しているが、
     /// 画面上には一切キャラクターを出さない(暗幕で完全に覆う)。タップでSE+ハプティクスを鳴らし、
     /// 暗幕をフェードアウトさせながらキャラクターの登場をRootViewへ伝える。
+    /// 3Dモデルの読み込みが「決着」した(成功 or 失敗のどちらかが判明した)か。
+    /// 失敗時はどのみち2Dフォールバックへ切り替わることが確定しているので、成功を待たずタップを
+    /// 有効化してよい(=いつまでもぐるぐる待たせない)。
+    private var avatarSettled: Bool { avatarReady || avatarFailed }
+
     private var revealStep: some View {
         ZStack {
             Color.black.opacity(isRevealing ? 0 : 0.92)
@@ -298,7 +308,7 @@ struct OnboardingView: View {
                     .font(.callout)
                     .foregroundStyle(.white.opacity(0.75))
 
-                if !avatarReady && !revealTapFallbackElapsed {
+                if !avatarSettled && !revealTapFallbackElapsed {
                     ProgressView()
                         .tint(.white)
                         .padding(.top, 4)
@@ -310,7 +320,7 @@ struct OnboardingView: View {
                 }
             }
             .opacity(isRevealing ? 0 : 1)
-            .animation(.easeOut(duration: 0.4), value: isRevealing)
+            .animation(.easeOut(duration: 0.6), value: isRevealing)
         }
         .contentShape(Rectangle())
         .onAppear {
@@ -320,10 +330,14 @@ struct OnboardingView: View {
             isRevealing = false
             revealTapFallbackElapsed = false
             onReachReveal()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { revealTapFallbackElapsed = true }
+            // 通常は数秒以内に vmate-ready(成功) か load-error(失敗) のどちらかが届く。
+            // 万一どちらも届かない(ブリッジ自体の異常等)場合の最終セーフティネットとして、
+            // 少し長めに待ってからタップを解放する(このパス自体は「決着」を待てていないので、
+            // タップ後にまだ見えていない可能性は残るが、無限に足止めするよりはよい)。
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) { revealTapFallbackElapsed = true }
         }
         .onTapGesture {
-            guard avatarReady || revealTapFallbackElapsed else { return }
+            guard avatarSettled || revealTapFallbackElapsed else { return }
             performReveal()
         }
     }
