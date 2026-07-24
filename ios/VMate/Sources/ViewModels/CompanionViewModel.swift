@@ -26,6 +26,14 @@ final class CompanionViewModel: ObservableObject {
     @Published var currentEmotion: Emotion = .neutral
     @Published var ageBand: String?
 
+    // --- オンボーディング「初対面演出」のキャラクター表示ゲーティング ---
+    // 年齢確認が済み、演出用のタップ画面(reveal)に到達したらtrue → 裏でVRM読み込みを開始してよい。
+    @Published var isReadyToReveal = false
+    // ユーザーがreveal画面をタップしたらtrue → キャラクターをフェードイン表示する。
+    @Published var isCharacterRevealed = false
+    // VRM WebViewの読み込み(didFinish)が完了したらtrue → revealのタップ操作を有効化する。
+    @Published var isAvatarLoaded = false
+
     @Published var daysAway: Int? = nil
 
     // --- ハンズフリー音声会話 ---

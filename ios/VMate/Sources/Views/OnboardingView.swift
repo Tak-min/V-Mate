@@ -1,20 +1,41 @@
 import SwiftUI
+import AudioToolbox
 
 struct OnboardingView: View {
     let onAgeVerified: (String) -> Void
+    /// reveal画面(タップでキャラクターを迎える演出)に到達した瞬間に一度だけ呼ぶ。
+    /// RootView側はこれを合図に裏でVRMの読み込みを開始する(タップ時点では手遅れなので先読みが必要)。
+    let onReachReveal: () -> Void
+    /// reveal画面をユーザーがタップした瞬間に呼ぶ。RootView側はこれでキャラクターをフェードインさせる。
+    let onRevealCharacter: () -> Void
+    /// RootView側のVRM読み込みが完了しているか。reveal画面のタップ操作の有効化に使う。
+    let avatarReady: Bool
     /// 第2引数は「音声の初対面で既にシロが名前へ反応済み(=はじめましての挨拶は済んでいる)か」。
     /// trueならRootView側は独白挨拶(fireGreeting)を重ねて呼ばない。
     let onComplete: (String?, Bool) -> Void
+    /// 音声の初対面ステップの間、RootView側の本物のアバターへ感情/リップシンクを転送する。
+    let onIntroEmotion: (Emotion) -> Void
+    let onIntroMouthLevel: (Double) -> Void
 
-    // ステップ: 0=welcome, 1=年齢確認(新規), 2=name(音声の初対面。失敗時は手入力), 3=hint
+    // ステップ: 0=welcome, 1=年齢確認, 2=reveal(新規: タップでキャラクター登場),
+    // 3=name(音声の初対面。失敗時は手入力), 4=hint
     @State private var step: Int
     @State private var name = ""
     @State private var goingForward = true
     @FocusState private var nameFieldFocused: Bool
     @StateObject private var firstMeeting = FirstMeetingViewModel()
-    /// step2の見せ方。音声の初対面を既定とし、権限拒否・聞き取り失敗の繰り返し・通信エラー等で
+    /// step3の見せ方。音声の初対面を既定とし、権限拒否・聞き取り失敗の繰り返し・通信エラー等で
     /// 自動的にtrueへ切り替わる(FirstMeetingStepのonTextFallback経由)。
     @State private var nameCaptureFallbackToText = false
+    /// reveal画面: タップ後のカーテン/プロンプトのフェードアウト演出中フラグ(多重タップ防止も兼ねる)。
+    @State private var isRevealing = false
+    /// reveal画面: 読み込みが数秒経っても終わらない場合のフォールバック有効化(ハングでタップ不能にしない)。
+    @State private var revealTapFallbackElapsed = false
+
+    /// 音声の初対面中はウィザードのカード/ドット/暗幕を消し、RootViewの本物のアバターを
+    /// 全画面で見せる(プロジェクトセカイ的な「キャラクターとの初対面」の没入感を優先)。
+    /// それ以外のステップ(年齢確認・ヒント等)は従来通りカード型ウィザードのまま。
+    private var isImmersiveFirstMeeting: Bool { step == 3 && !nameCaptureFallbackToText }
 
     // --- 年齢ゲート ---
     // 13歳未満/18歳ちょうどを挟んだ判定が誤らないよう、デフォルトは意図的に「12歳」寄りに
@@ -25,11 +46,21 @@ struct OnboardingView: View {
     @State private var isAgeBlocked = false
 
     init(
-        startAtAge: Bool = false,
+        initialStep: Int = 0,
         onAgeVerified: @escaping (String) -> Void = { _ in },
+        onReachReveal: @escaping () -> Void = {},
+        onRevealCharacter: @escaping () -> Void = {},
+        avatarReady: Bool = false,
+        onIntroEmotion: @escaping (Emotion) -> Void = { _ in },
+        onIntroMouthLevel: @escaping (Double) -> Void = { _ in },
         onComplete: @escaping (String?, Bool) -> Void
     ) {
         self.onAgeVerified = onAgeVerified
+        self.onReachReveal = onReachReveal
+        self.onRevealCharacter = onRevealCharacter
+        self.avatarReady = avatarReady
+        self.onIntroEmotion = onIntroEmotion
+        self.onIntroMouthLevel = onIntroMouthLevel
         self.onComplete = onComplete
         #if DEBUG
         // UX目視レビュー用: 実機/シミュレータでタップ操作なしに任意ステップへ直接ジャンプする。
@@ -37,10 +68,10 @@ struct OnboardingView: View {
         if let forced = ProcessInfo.processInfo.environment["UITEST_ONBOARDING_STEP"].flatMap(Int.init) {
             _step = State(initialValue: forced)
         } else {
-            _step = State(initialValue: startAtAge ? 1 : 0)
+            _step = State(initialValue: initialStep)
         }
         #else
-        _step = State(initialValue: startAtAge ? 1 : 0)
+        _step = State(initialValue: initialStep)
         #endif
     }
 
@@ -49,6 +80,27 @@ struct OnboardingView: View {
             // 13歳未満と判定された場合、以降のオンボーディングには一切進めない
             // (onComplete も呼ばない。COPPA/Apple 1.3対応)。
             AgeBlockedView()
+        } else if isImmersiveFirstMeeting {
+            // 音声の初対面: ウィザードの暗幕/カード/ドットを一切出さず、RootViewが裏で
+            // 描画し続けている本物のアバターをそのまま全画面で見せる。
+            FirstMeetingStep(
+                viewModel: firstMeeting,
+                onTextFallback: {
+                    withAnimation(.easeInOut(duration: 0.4)) { nameCaptureFallbackToText = true }
+                },
+                onDone: { resolvedName in
+                    name = resolvedName
+                    advance()
+                },
+                onEmotionChange: onIntroEmotion,
+                onMouthLevelChange: onIntroMouthLevel
+            )
+            .transition(.opacity)
+        } else if step == 2 {
+            // reveal: 年齢確認直後、キャラクターはまだ一切マウントされていない(RootView側でゲート済み)。
+            // タップされた瞬間に先読み済みのVRMをフェードインさせつつ次のstepへ進む。
+            revealStep
+                .transition(.opacity)
         } else {
             ZStack {
                 // RootView側でヘッダー/チャットUIは隠しているため、ここではアバターの気配を
@@ -66,23 +118,11 @@ struct OnboardingView: View {
                         } else if step == 1 {
                             ageStep
                                 .transition(slideTransition)
-                        } else if step == 2 {
-                            Group {
-                                if nameCaptureFallbackToText {
-                                    nameStep
-                                } else {
-                                    FirstMeetingStep(
-                                        viewModel: firstMeeting,
-                                        onTextFallback: { nameCaptureFallbackToText = true },
-                                        onDone: { resolvedName in
-                                            name = resolvedName
-                                            advance()
-                                        }
-                                    )
-                                }
-                            }
-                            .transition(slideTransition)
                         } else if step == 3 {
+                            // 音声が使えず手入力へ切り替わった場合のみここに来る。
+                            nameStep
+                                .transition(slideTransition)
+                        } else if step == 4 {
                             hintStep
                                 .transition(slideTransition)
                         }
@@ -129,7 +169,7 @@ struct OnboardingView: View {
 
     private var stepDots: some View {
         HStack(spacing: 8) {
-            ForEach(0..<4, id: \.self) { i in
+            ForEach(0..<5, id: \.self) { i in
                 Capsule()
                     .fill(i == step ? Color.accentPink : Color.white.opacity(0.35))
                     .frame(width: i == step ? 20 : 9, height: 9)
@@ -138,7 +178,7 @@ struct OnboardingView: View {
         }
         .accessibilityElement()
         .accessibilityLabel("オンボーディングの進み具合")
-        .accessibilityValue("ステップ \(step + 1) / 4")
+        .accessibilityValue("ステップ \(step + 1) / 5")
     }
 
     // MARK: - Step 0: Welcome
@@ -239,7 +279,65 @@ struct OnboardingView: View {
         return formatter
     }()
 
-    // MARK: - Step 2: Name
+    // MARK: - Step 2: Reveal(タップでキャラクター登場)
+
+    /// 年齢確認直後の「タップして会う」画面。この時点でRootView側は裏でVRMの先読みを開始しているが、
+    /// 画面上には一切キャラクターを出さない(暗幕で完全に覆う)。タップでSE+ハプティクスを鳴らし、
+    /// 暗幕をフェードアウトさせながらキャラクターの登場をRootViewへ伝える。
+    private var revealStep: some View {
+        ZStack {
+            Color.black.opacity(isRevealing ? 0 : 0.92)
+                .ignoresSafeArea()
+                .animation(.easeOut(duration: 0.6), value: isRevealing)
+
+            VStack(spacing: 14) {
+                Text("シロに会いにいく")
+                    .font(.title2.bold())
+                    .foregroundStyle(Color.accentPink)
+                Text("画面をタップしてね")
+                    .font(.callout)
+                    .foregroundStyle(.white.opacity(0.75))
+
+                if !avatarReady && !revealTapFallbackElapsed {
+                    ProgressView()
+                        .tint(.white)
+                        .padding(.top, 4)
+                } else {
+                    Image(systemName: "hand.tap.fill")
+                        .font(.system(size: 28))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .padding(.top, 4)
+                }
+            }
+            .opacity(isRevealing ? 0 : 1)
+            .animation(.easeOut(duration: 0.4), value: isRevealing)
+        }
+        .contentShape(Rectangle())
+        .onAppear {
+            // nameStepの「もどる」で一度タップ済みのこの画面へ再訪した場合も、暗幕が晴れたままの
+            // 空白画面にならないよう毎回フレッシュな状態から始める(RootView側のisCharacterRevealedは
+            // 意図的にリセットしない — 既に登場済みのキャラクターを再び隠す必要はない)。
+            isRevealing = false
+            revealTapFallbackElapsed = false
+            onReachReveal()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { revealTapFallbackElapsed = true }
+        }
+        .onTapGesture {
+            guard avatarReady || revealTapFallbackElapsed else { return }
+            performReveal()
+        }
+    }
+
+    private func performReveal() {
+        guard !isRevealing else { return }
+        isRevealing = true
+        AudioServicesPlaySystemSound(1519)
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        onRevealCharacter()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { advance() }
+    }
+
+    // MARK: - Step 3: Name
 
     private var nameStep: some View {
         VStack(spacing: 16) {
@@ -268,7 +366,7 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: - Step 3: Hint
+    // MARK: - Step 4: Hint
 
     private var hintStep: some View {
         VStack(spacing: 16) {

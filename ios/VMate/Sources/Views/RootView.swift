@@ -84,8 +84,13 @@ struct RootView: View {
                 AgeBlockedView()
             } else {
                 OnboardingView(
-                    startAtAge: !viewModel.isFirstRun,
-                    onAgeVerified: { viewModel.updateAgeBand($0) }
+                    initialStep: onboardingInitialStep,
+                    onAgeVerified: { viewModel.updateAgeBand($0) },
+                    onReachReveal: { viewModel.isReadyToReveal = true },
+                    onRevealCharacter: { viewModel.isCharacterRevealed = true },
+                    avatarReady: viewModel.isAvatarLoaded,
+                    onIntroEmotion: { viewModel.currentEmotion = $0 },
+                    onIntroMouthLevel: { viewModel.avatarMouthLevel = $0 }
                 ) { name, alreadyGreeted in
                     if let name = name {
                         viewModel.saveName(name)
@@ -107,6 +112,16 @@ struct RootView: View {
         .preferredColorScheme(.dark)
     }
 
+    /// アプリがオンボーディング途中(年齢確認後〜reveal演出前)で強制終了→再起動された場合に、
+    /// 最初(welcome)からやり直させず正しい位置から再開させる。ageBandはサーバ側に永続化済みなので、
+    /// これが minor/adult ということは(showOnboardingがtrueの時点で)年齢確認は既に完了している。
+    private var onboardingInitialStep: Int {
+        if viewModel.ageBand == "minor" || viewModel.ageBand == "adult" {
+            return 2
+        }
+        return viewModel.isFirstRun ? 0 : 1
+    }
+
     private var micIconName: String {
         switch viewModel.voiceMode {
         case .off: return "mic.slash.fill"
@@ -126,19 +141,30 @@ struct RootView: View {
         }
     }
 
+    /// オンボーディング中はreveal画面(年齢確認後のタップ演出)に到達するまでアバターを一切マウントしない
+    /// (=読み込みも開始しない)。完了済みユーザーはshowOnboardingが最初からfalseなので即座にtrueになる。
+    private var avatarMounted: Bool { !showOnboarding || viewModel.isReadyToReveal }
+    /// タップでreveal演出が発火するまでキャラクターを不可視にする(マウント自体は先読みのため先に行う)。
+    private var characterVisible: Bool { !showOnboarding || viewModel.isCharacterRevealed }
+
     @ViewBuilder
     private var avatar: some View {
-        if vrmFailed {
+        if !avatarMounted {
+            Color.clear
+        } else if vrmFailed {
+            // 実際のVRM読み込み失敗(通信断・パースエラー等)時のみ v1 アバターへフォールバックする。
+            // reveal演出の可視状態とは無関係の、独立したエラー救済経路。
             AvatarView(emotion: viewModel.currentEmotion, mouthLevel: viewModel.avatarMouthLevel)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            ZStack {
-                // VRM WebView は読み込み中は透明なため、その間 v1 アバターをプレースホルダーとして表示する。
-                // VRM 描画が開始されると 3D コンテンツが手前に重なり、このビューは隠れる。
-                AvatarView(emotion: viewModel.currentEmotion, mouthLevel: viewModel.avatarMouthLevel)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                VRMAvatarView(viewModel: viewModel, failed: $vrmFailed)
-            }
+            VRMAvatarView(
+                viewModel: viewModel,
+                failed: $vrmFailed,
+                onLoadFinished: { viewModel.isAvatarLoaded = true }
+            )
+            .opacity(characterVisible ? 1 : 0)
+            .scaleEffect(characterVisible ? 1 : 0.92)
+            .animation(.easeOut(duration: 0.6), value: characterVisible)
         }
     }
 
@@ -162,91 +188,16 @@ struct RootView: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("シロ")
-                        .font(.headline)
-                        .foregroundStyle(Color.accentPink)
-                    if let state = viewModel.state {
-                        // ステージアップ通知 or 通常の親密度表示
-                        if isStageUp {
-                            Text("『\(state.stage)』になったよ ✨")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(Color.accentPink)
-                                .transition(.opacity.combined(with: .scale(scale: 0.9)))
-                        } else {
-                            VStack(alignment: .leading, spacing: 3) {
-                                HStack(spacing: 6) {
-                                    Text(state.stage)
-                                        .font(.caption)
-                                        .foregroundStyle(.white.opacity(0.75))
-                                    Text("♡ \(state.affinity)")
-                                        .font(.caption)
-                                        .foregroundStyle(Color.accentPink.opacity(0.9))
-                                    if let next = nextStageName(nextStageAt: state.next_stage_at),
-                                       let remain = state.next_stage_at.map({ max($0 - state.affinity, 0) }) {
-                                        Text("あと\(remain)で『\(next)』")
-                                            .font(.caption2)
-                                            .foregroundStyle(.white.opacity(0.45))
-                                            .lineLimit(1)
-                                            .minimumScaleFactor(0.8)
-                                    }
-                                }
-                                // 親密度プログレスバー
-                                GeometryReader { geo in
-                                    ZStack(alignment: .leading) {
-                                        RoundedRectangle(cornerRadius: 2)
-                                            .fill(Color.white.opacity(0.12))
-                                        RoundedRectangle(cornerRadius: 2)
-                                            .fill(LinearGradient.pinkLavender)
-                                            .frame(width: geo.size.width * stageProgress(affinity: state.affinity, nextStageAt: state.next_stage_at))
-                                            .animation(.spring(response: 0.6, dampingFraction: 0.8), value: state.affinity)
-                                    }
-                                }
-                                .frame(height: 4)
-                            }
-                        }
-                    }
-                }
-                .animation(.easeInOut(duration: 0.3), value: isStageUp)
-                Spacer(minLength: 8)
-                // 狭い画面(iPhone SE等 375pt)でも操作ボタン行が潰れないよう優先度を上げる。
-                HStack(spacing: 8) {
-                    HeaderControlButton(
-                        icon: micIconName,
-                        label: micLabel,
-                        isActive: viewModel.voiceMode != .off,
-                        accessibilityLabel: "音声会話。\(viewModel.voiceMode == .off ? "オフ。タップで開始" : "オン。\(micLabel)。タップで停止")"
-                    ) {
-                        Task { await viewModel.toggleHandsFree() }
-                    }
-                    HeaderControlButton(
-                        icon: viewModel.voiceEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill",
-                        label: "シロの声",
-                        isActive: viewModel.voiceEnabled,
-                        accessibilityLabel: "シロの声。\(viewModel.voiceEnabled ? "オン。タップでミュート" : "ミュート中。タップでオン")"
-                    ) {
-                        viewModel.toggleVoice()
-                    }
-                    HeaderControlButton(
-                        icon: "book.closed.fill",
-                        label: "日記",
-                        isActive: false,
-                        accessibilityLabel: "シロの日記を開く"
-                    ) {
-                        diaryOpen = true
-                    }
-                    HeaderControlButton(
-                        icon: "person.crop.circle",
-                        label: "アカウント",
-                        isActive: APIClient.shared.isAuthenticated,
-                        accessibilityLabel: "アカウントを開く"
-                    ) {
-                        accountOpen = true
-                    }
-                }
-                .layoutPriority(1)
+            // Row 1: 操作ボタン(右寄せ・独立行)。身元情報と幅を奪い合わないよう別行にする
+            // (2026-07-23: 同じHStack内で.layoutPriority(1)を与えていたため、画面幅に関わらず
+            // 身元VStackが実質幅ゼロまで潰れ「はじめまして」が1文字ずつ縦に折り返されるバグがあった)。
+            HStack(spacing: Space.sm) {
+                Spacer(minLength: 0)
+                controlCluster
             }
+            // Row 2: 身元+親密度(フル幅)
+            identityColumn
+                .frame(maxWidth: .infinity, alignment: .leading)
             if let voiceError = viewModel.voiceError {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.circle.fill")
@@ -276,6 +227,92 @@ struct RootView: View {
             LinearGradient(colors: [.black.opacity(0.4), .clear], startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea(edges: .top)
         )
+    }
+
+    private var identityColumn: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("シロ")
+                .font(.brandHeading)
+                .foregroundStyle(Color.accentPink)
+            if let state = viewModel.state {
+                // ステージアップ通知 or 通常の親密度表示
+                if isStageUp {
+                    Text("『\(state.stage)』になったよ ✨")
+                        .font(.brandCaption.weight(.semibold))
+                        .foregroundStyle(Color.accentPink)
+                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                } else {
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(state.stage)
+                                .font(.brandCaption)
+                                .foregroundStyle(.textSecondary)
+                            Text("♡ \(state.affinity)")
+                                .font(.brandCaption)
+                                .foregroundStyle(Color.accentPink.opacity(0.9))
+                            if let next = nextStageName(nextStageAt: state.next_stage_at),
+                               let remain = state.next_stage_at.map({ max($0 - state.affinity, 0) }) {
+                                Text("あと\(remain)で『\(next)』")
+                                    .font(.caption2)
+                                    .foregroundStyle(.textTertiary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
+                            }
+                        }
+                        // 親密度プログレスバー
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(Color.white.opacity(0.12))
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(LinearGradient.pinkLavender)
+                                    .frame(width: geo.size.width * stageProgress(affinity: state.affinity, nextStageAt: state.next_stage_at))
+                                    .animation(.spring(response: 0.6, dampingFraction: 0.8), value: state.affinity)
+                            }
+                        }
+                        .frame(height: 4)
+                    }
+                }
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: isStageUp)
+    }
+
+    private var controlCluster: some View {
+        HStack(spacing: 8) {
+            HeaderControlButton(
+                icon: micIconName,
+                label: micLabel,
+                isActive: viewModel.voiceMode != .off,
+                accessibilityLabel: "音声会話。\(viewModel.voiceMode == .off ? "オフ。タップで開始" : "オン。\(micLabel)。タップで停止")"
+            ) {
+                Task { await viewModel.toggleHandsFree() }
+            }
+            HeaderControlButton(
+                icon: viewModel.voiceEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill",
+                label: "シロの声",
+                isActive: viewModel.voiceEnabled,
+                accessibilityLabel: "シロの声。\(viewModel.voiceEnabled ? "オン。タップでミュート" : "ミュート中。タップでオン")"
+            ) {
+                viewModel.toggleVoice()
+            }
+            HeaderControlButton(
+                icon: "book.closed.fill",
+                label: "日記",
+                isActive: false,
+                accessibilityLabel: "シロの日記を開く"
+            ) {
+                diaryOpen = true
+            }
+            HeaderControlButton(
+                icon: "person.crop.circle",
+                label: "アカウント",
+                isActive: APIClient.shared.isAuthenticated,
+                accessibilityLabel: "アカウントを開く"
+            ) {
+                accountOpen = true
+            }
+        }
     }
 }
 
