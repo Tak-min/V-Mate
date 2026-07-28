@@ -1,8 +1,9 @@
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, useState } from 'react';
 import type { CompanionState } from '../features/chat/types';
 
 interface Props {
   state: CompanionState | null;
+  isStageUp: boolean;
   onSaveName: (name: string) => Promise<void>;
 }
 
@@ -24,25 +25,9 @@ function nextStageName(nextStageAt: number | null): string | null {
   return index >= 0 ? STAGE_NAMES[index] : null;
 }
 
-const STAGE_UP_DURATION_MS = 2400;
-
-export function StatusBar({ state, onSaveName }: Props) {
+export function StatusBar({ state, isStageUp, onSaveName }: Props) {
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
-  const [isStageUp, setIsStageUp] = useState(false);
-  const previousStageRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (!state) return;
-    const previousStage = previousStageRef.current;
-    if (previousStage !== null && previousStage !== state.stage) {
-      setIsStageUp(true);
-      const timer = setTimeout(() => setIsStageUp(false), STAGE_UP_DURATION_MS);
-      previousStageRef.current = state.stage;
-      return () => clearTimeout(timer);
-    }
-    previousStageRef.current = state.stage;
-  }, [state?.stage]);
 
   const progress = state ? stageProgress(state.affinity, state.next_stage_at) : 1;
   const remainingToNext =

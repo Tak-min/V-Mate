@@ -21,6 +21,7 @@ export default function App() {
     loadError,
     voiceEnabled,
     daysAway,
+    stageUp,
     voiceMode,
     partialTranscript,
     voiceSupported,
@@ -33,6 +34,7 @@ export default function App() {
     toggleVoiceMode,
     interrupt,
     fireGreeting,
+    capturePhoto,
   } = useCompanion(ageBand === 'minor' || ageBand === 'adult');
   const [diaryOpen, setDiaryOpen] = useState(false);
   // Capture firstVisit at mount time BEFORE onboarding can mark it via completeOnboarding().
@@ -50,6 +52,27 @@ export default function App() {
     setOnboardingDone(true);
     fireGreeting(wasFirstVisit);
   }, [saveName, fireGreeting, wasFirstVisit]);
+
+  const handleCapture = useCallback(async () => {
+    const blob = await capturePhoto();
+    if (!blob) return;
+    const file = new File([blob], `シロ_${Date.now()}.png`, { type: 'image/png' });
+    try {
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'シロ' });
+        return;
+      }
+    } catch {
+      // ユーザーがシェアをキャンセルした場合(AbortError)は何もしない。
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = file.name;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [capturePhoto]);
 
   return (
     <div className="app">
@@ -87,7 +110,7 @@ export default function App() {
         />
       )}
       <AuthBar />
-      <StatusBar state={state} onSaveName={saveName} />
+      <StatusBar state={state} isStageUp={stageUp} onSaveName={saveName} />
 
       <div className="toolbar">
         <VoiceControl
@@ -116,6 +139,14 @@ export default function App() {
           title={diaryOpen ? '日記を閉じる' : 'シロの日記を読む'}
         >
           📔
+        </button>
+        <button
+          type="button"
+          className="icon-button"
+          onClick={handleCapture}
+          title="写真を撮る"
+        >
+          📷
         </button>
       </div>
 

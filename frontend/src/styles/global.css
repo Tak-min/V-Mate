@@ -96,6 +96,11 @@ body {
   width: 100%;
   height: 100%;
   display: block;
+  /* タップ反応(poke)を長押しコールアウトや選択・ダブルタップズームに奪われないように。 */
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .loading {

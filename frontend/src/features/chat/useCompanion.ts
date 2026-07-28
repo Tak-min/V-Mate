@@ -23,6 +23,8 @@ const RELAX_AFTER_MS = 6_000;
 const LISTENING_NOTICE_S = 6;
 // 発話し終えてからマイクを開け直すまでの待ち。スピーカー残響の拾い込みを防ぐ。
 const RESUME_DELAY_MS = 500;
+// StatusBar のステージアップ・テキストトースト表示時間(3Dモデル側の演出時間とは独立)。
+const STAGE_UP_TOAST_MS = 2400;
 
 /** ハンズフリー音声会話の状態。off=テキストのみ / listening=聞き取り中 / thinking=応答待ち / speaking=発話中 */
 export type VoiceMode = 'off' | 'listening' | 'thinking' | 'speaking';
@@ -72,6 +74,8 @@ export function useCompanion(interactionEnabled = true) {
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [userTurns, setUserTurns] = useState(0);
   const [daysAway, setDaysAway] = useState<number | null>(null);
+  const [stageUp, setStageUp] = useState(false);
+  const previousStageRef = useRef<string | null>(null);
 
   // --- ハンズフリー音声会話 ---
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('off');
@@ -257,6 +261,12 @@ export function useCompanion(interactionEnabled = true) {
     setState(next);
   }, []);
 
+  /** フォトモード: 現在の画面をPNGとして取得する(モデル未ロード時は null)。 */
+  const capturePhoto = useCallback(
+    () => viewerRef.current?.capturePhoto() ?? Promise.resolve(null),
+    [],
+  );
+
   const toggleVoice = useCallback(() => {
     setVoiceEnabled((prev) => {
       speech.setEnabled(!prev);
@@ -390,14 +400,32 @@ export function useCompanion(interactionEnabled = true) {
     if (state) viewerRef.current?.setAffinity(state.affinity);
   }, [state]);
 
+  // ステージ境界を超えたら、モデル自体を反応させる(StatusBar のテキストトーストだけに留めない)。
+  // 検出はここに一本化し、StatusBar 側では previousStage を二重管理しない。
+  useEffect(() => {
+    if (!state) return;
+    const previousStage = previousStageRef.current;
+    if (previousStage !== null && previousStage !== state.stage) {
+      viewerRef.current?.celebrateStageUp();
+      setStageUp(true);
+      const timer = window.setTimeout(() => setStageUp(false), STAGE_UP_TOAST_MS);
+      previousStageRef.current = state.stage;
+      return () => window.clearTimeout(timer);
+    }
+    previousStageRef.current = state.stage;
+  }, [state?.stage]);
+
   // オンボーディング完了後に呼び出せる挨拶トリガー。
   const fireGreeting = useCallback((firstVisit = false) => {
     if (greeted.current) return;
     greeted.current = true;
     requestNudge('greeting', { firstVisit })
       .then(({ text, emotion, days_away }) => {
+        const away = typeof days_away === 'number' && days_away >= 2 ? days_away : null;
+        setDaysAway(away);
+        // 挨拶テキストより先に身体で「待ってたよ」を表現する(お帰り演出)。
+        if (away) viewerRef.current?.welcomeBack(away);
         if (text) pushAssistant(text, emotion);
-        setDaysAway(typeof days_away === 'number' && days_away >= 2 ? days_away : null);
         resetIdleTimer();
       })
       .catch(() => {})
@@ -436,6 +464,7 @@ export function useCompanion(interactionEnabled = true) {
     voiceEnabled,
     userTurns,
     daysAway,
+    stageUp,
     voiceMode,
     partialTranscript,
     voiceSupported,
@@ -448,5 +477,6 @@ export function useCompanion(interactionEnabled = true) {
     toggleVoiceMode,
     interrupt,
     fireGreeting,
+    capturePhoto,
   };
 }

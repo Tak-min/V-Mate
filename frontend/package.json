@@ -8,7 +8,8 @@
     "build:ios-avatar": "esbuild src/ios-avatar/entry.ts --bundle --format=iife --target=es2019 --minify --outfile=public/ios-avatar/avatar.bundle.js",
     "build:harness": "esbuild src/harness/spring-debug.ts --bundle --format=iife --target=es2019 --outfile=public/harness/spring-debug.bundle.js",
     "build": "npm run build:ios-avatar && tsc -b && vite build && rm -f ../backend/static/models/realistic.vrm && rm -rf ../backend/static/harness",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
@@ -25,6 +26,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "esbuild": "^0.25.12",
     "typescript": "~5.6.3",
-    "vite": "^6.0.0"
+    "vite": "^6.0.0",
+    "vitest": "^4.1.10"
   }
 }

@@ -18,6 +18,15 @@ import {
   createVRMAnimationClip,
 } from '@pixiv/three-vrm-animation';
 import type { Emotion } from '../chat/types';
+import {
+  chooseReaction,
+  poolForRegion,
+  reactionEnvelope,
+  REACTION_PRESETS,
+  scalePreset,
+  type ReactionPreset,
+  type ReactionRegion,
+} from './reactions';
 
 const MODEL_URL = '/models/shiro.vrm';
 
@@ -164,6 +173,22 @@ export class CompanionViewer {
    *  OrbitControls がカメラを所有できるようにする(多角度から貫通/コライダー配置を確認するため)。 */
   private debugFreeCamera: boolean;
 
+  // タップ反応/ステージアップ演出/お帰り演出が共有する「反応」状態。表情・カメラ・姿勢への
+  // 加算値として updateExpressions/updateRelationship/updatePresence から読まれるだけで、
+  // 各メソッドの本来の書き込み(単一責務)は一切奪わない。
+  private raycaster = new THREE.Raycaster();
+  private hitProxies: THREE.Mesh[] = [];
+  private reactionPreset: ReactionPreset | null = null;
+  private reactionStartedAt = -Infinity;
+  private reactionActiveUntil = 0;
+  private reactionCooldownUntil = 0;
+  private lastReactionId: string | null = null;
+  private reactionEnv = 0;
+
+  // フォトモード: renderLoop が実フレームを描画した直後に1回だけ捕捉する(preserveDrawingBuffer
+  // を常時有効にするコスト(60fps常時描画するアバターでは無視できない)を避けるため)。
+  private pendingCapture: ((blob: Blob | null) => void) | null = null;
+
   constructor(
     private canvas: HTMLCanvasElement,
     private options: {
@@ -218,6 +243,7 @@ export class CompanionViewer {
     window.addEventListener('resize', this.resize);
     this.canvas.addEventListener('pointermove', this.onPointerMove);
     this.canvas.addEventListener('pointerleave', this.onPointerLeave);
+    this.canvas.addEventListener('pointerdown', this.onPointerDown);
   }
 
   async load(onProgress?: (ratio: number) => void): Promise<void> {
@@ -254,6 +280,7 @@ export class CompanionViewer {
     this.scene.add(vrm.scene);
     this.vrm = vrm;
     this.setupHairPhysics(vrm);
+    this.setupHitProxies(vrm);
     this.addContactShadow(vrm.scene);
     this.mixer = new THREE.AnimationMixer(vrm.scene);
     this.modelBaseY = vrm.scene.position.y;
@@ -393,6 +420,137 @@ export class CompanionViewer {
   }
 
   /**
+   * タップ判定用の透明な当たり判定球を主要ボーンへ追従させる(buildTorsoColliders と同じ
+   * humanoid.getRawBoneNode() パターン)。three.js の Raycaster は object.layers のみを見て
+   * visible は見ないため、visible=false のプロキシでも判定できる(描画コストはゼロ)。
+   * ジオメトリ/マテリアルは全プロキシで共有し、破棄は dispose() の VRMUtils.deepDispose に委ねる
+   * (プロキシは vrm.scene 配下のボーンの子として追加されるため、そこで一括破棄される)。
+   */
+  private setupHitProxies(vrm: VRM): void {
+    const humanoid = vrm.humanoid;
+    if (!humanoid) return;
+    const specs: { bone: VRMHumanBoneName; region: ReactionRegion; radius: number }[] = [
+      { bone: 'head', region: 'head', radius: 0.14 },
+      { bone: 'upperChest', region: 'body', radius: 0.22 },
+      { bone: 'hips', region: 'body', radius: 0.2 },
+    ];
+    const geometry = new THREE.SphereGeometry(1, 8, 8);
+    const material = new THREE.MeshBasicMaterial({ visible: false });
+    for (const spec of specs) {
+      const node = humanoid.getRawBoneNode(spec.bone) ?? humanoid.getNormalizedBoneNode(spec.bone);
+      if (!node) continue;
+      const proxy = new THREE.Mesh(geometry, material);
+      proxy.scale.setScalar(spec.radius);
+      proxy.userData.region = spec.region;
+      proxy.name = `vmate-hit-${spec.bone}`;
+      node.add(proxy);
+      this.hitProxies.push(proxy);
+    }
+  }
+
+  /** NDC座標(-1..1)からタップ部位("head"/"body")を判定する。何にも当たらなければ null。 */
+  private hitTestRegion(ndc: THREE.Vector2): ReactionRegion | null {
+    if (this.hitProxies.length === 0) return null;
+    this.raycaster.setFromCamera(ndc, this.camera);
+    const hit = this.raycaster.intersectObjects(this.hitProxies, false)[0];
+    return (hit?.object.userData.region as ReactionRegion | undefined) ?? null;
+  }
+
+  private onPointerDown = (event: PointerEvent): void => {
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const ndc = new THREE.Vector2(
+      ((event.clientX - rect.left) / rect.width - 0.5) * 2,
+      -((event.clientY - rect.top) / rect.height - 0.5) * 2,
+    );
+    const region = this.hitTestRegion(ndc);
+    // 何にも当たらなかった(空中をタップした)場合は反応しない。
+    if (region) this.poke(region);
+  };
+
+  /** モデルへのタップ/クリック反応。ヒットした部位に応じたプリセットを短く加算演出として返す。 */
+  poke(region: ReactionRegion = 'body'): void {
+    this.triggerReactionPreset(chooseReaction(poolForRegion(region), this.lastReactionId));
+  }
+
+  /** 親密度がステージ境界を超えた瞬間、モデル自体が反応する(テキストトーストだけに留めない)。 */
+  celebrateStageUp(): void {
+    const preset = chooseReaction(REACTION_PRESETS.celebrate, this.lastReactionId);
+    this.triggerReactionPreset(preset, true);
+    this.playMotion(MOTIONS.happy);
+    this.emotionLockUntil = this.elapsed + preset.duration + 1.0;
+    this.nextIdleSwitch = rand(14, 26);
+  }
+
+  /** 一定期間ぶりの再訪時、挨拶テキストに先立って身体で「待ってたよ」を表現する。 */
+  welcomeBack(daysAway: number): void {
+    const intensity = clamp01((daysAway - 2) / 12);
+    const scale = 0.6 + intensity * 0.7;
+    const preset = chooseReaction(REACTION_PRESETS.welcome, this.lastReactionId);
+    this.triggerReactionPreset(scalePreset(preset, scale), true);
+  }
+
+  /**
+   * 反応(タップ/ステージアップ/お帰り)を開始する共通経路。連打対策のクールダウンを持つが、
+   * ステージアップ/お帰りのような「システム起因」の演出は ignoreCooldown で連打対策を無視する。
+   */
+  private triggerReactionPreset(preset: ReactionPreset, ignoreCooldown = false): void {
+    if (!ignoreCooldown && this.elapsed < this.reactionCooldownUntil) return;
+    this.reactionPreset = preset;
+    this.reactionStartedAt = this.elapsed;
+    this.reactionActiveUntil = this.elapsed + preset.duration;
+    this.reactionCooldownUntil = this.elapsed + preset.duration * 0.6 + 0.3;
+    this.lastReactionId = preset.id;
+    this.lastInteractionAt = this.elapsed; // まどろみ判定をリセット
+    if (preset.blinkCluster) this.pendingBlinkCluster = true;
+    this.notice('listening', Math.max(1.4, preset.duration)); // 集中した視線・口パクなし
+    // アイドルローテーションが横取りしないよう、setEmotion と同じ要領でロックを延ばす。
+    this.emotionLockUntil = Math.max(this.emotionLockUntil, this.reactionActiveUntil);
+  }
+
+  /** 反応の進行度から強度(0..1)を毎フレーム更新する。書き込みはここだけ、消費は各 update* 側。 */
+  private updateReaction(): void {
+    if (!this.reactionPreset || this.elapsed >= this.reactionActiveUntil) {
+      this.reactionEnv = 0;
+      return;
+    }
+    const progress = (this.elapsed - this.reactionStartedAt) / this.reactionPreset.duration;
+    this.reactionEnv = reactionEnvelope(progress);
+  }
+
+  /** 現在のフレームをスナップショットとして取得する。次に描画される1フレームで捕捉して解決する。 */
+  capturePhoto(): Promise<Blob | null> {
+    return new Promise((resolve) => {
+      this.pendingCapture = resolve;
+    });
+  }
+
+  /**
+   * WebGLの描画バッファは preserveDrawingBuffer:false だと通常フレーム後に破棄されるが、
+   * render() 呼び出しと同じ同期的なJS実行内であれば内容はまだ有効なので、renderLoop が
+   * render() した直後にこれを呼べば安全にキャプチャできる(常時 preserveDrawingBuffer を
+   * 有効にする常時描画コストを避けられる)。背景色はCSS変数のグラデーションと揃える。
+   */
+  private composeAndCapture(resolve: (blob: Blob | null) => void): void {
+    const out = document.createElement('canvas');
+    out.width = this.canvas.width;
+    out.height = this.canvas.height;
+    const ctx = out.getContext('2d');
+    if (!ctx) {
+      resolve(null);
+      return;
+    }
+    const rootStyle = getComputedStyle(document.documentElement);
+    const gradient = ctx.createLinearGradient(0, 0, 0, out.height);
+    gradient.addColorStop(0, rootStyle.getPropertyValue('--color-bg-top').trim() || '#ffe9d6');
+    gradient.addColorStop(1, rootStyle.getPropertyValue('--color-bg-low').trim() || '#f6c9d8');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, out.width, out.height);
+    ctx.drawImage(this.canvas, 0, 0);
+    out.toBlob((blob) => resolve(blob), 'image/png');
+  }
+
+  /**
    * 検証ハーネス専用: シーン/カメラ/レンダラ/VRMと、トラックCで割り当てた関節・コライダーを返す。
    * ハーネス側が OrbitControls とスプリングボーンHelperを取り付けて多角度確認するために使う。
    */
@@ -512,7 +670,9 @@ export class CompanionViewer {
       const current = this.currentWeights[name] ?? 0;
       const value = damp(current, target, EXPRESSION_FADE, delta);
       this.currentWeights[name] = value;
-      manager.setValue(name, value);
+      // タップ反応等の加算パルス。currentWeights には書き込まない(反応が終われば自動的に消える)。
+      const reactionPulse = this.reactionEnv * (this.reactionPreset?.expr[name] ?? 0);
+      manager.setValue(name, Math.min(value + reactionPulse, 1));
     }
 
     this.updateBlink(delta, manager);
@@ -782,9 +942,15 @@ export class CompanionViewer {
           : 0;
     this.updateSettle(delta);
     const breathDepth = this.breathDepth();
+    // タップ反応等の加算パルス(バウンス・前傾)。反応が終われば reactionEnv が0に戻り自動的に消える。
+    const reactionBounce = this.reactionEnv * (this.reactionPreset?.bounceY ?? 0);
+    const reactionLean = this.reactionEnv * (this.reactionPreset?.leanX ?? 0);
     scene.position.y =
-      this.modelBaseY + Math.sin(this.elapsed * 1.05) * 0.004 * breathDepth + this.settleOffset.y;
-    scene.rotation.x = damp(scene.rotation.x, this.modelBaseRotationX + lean, 3.2, delta);
+      this.modelBaseY +
+      Math.sin(this.elapsed * 1.05) * 0.004 * breathDepth +
+      this.settleOffset.y +
+      reactionBounce;
+    scene.rotation.x = damp(scene.rotation.x, this.modelBaseRotationX + lean + reactionLean, 3.2, delta);
     scene.rotation.y =
       this.modelBaseRotationY + Math.sin(this.elapsed * 0.42 + 0.5) * 0.012 + this.gazeCurrent.x * 0.01;
     scene.rotation.z =
@@ -808,10 +974,12 @@ export class CompanionViewer {
 
     // 検証ハーネスでは外部のOrbitControlsがカメラを所有するため、ここでは上書きしない。
     if (!this.debugFreeCamera) {
+      // タップ反応/ステージアップ演出の「カメラが少し寄る」加算パルス。
+      const reactionDolly = this.reactionEnv * (this.reactionPreset?.cameraDolly ?? 0);
       this.camera.position.set(
         0,
         cameraY - this.relationshipWarmth * 0.025,
-        baseZ - this.relationshipWarmth * closeOffset,
+        baseZ - this.relationshipWarmth * closeOffset - reactionDolly,
       );
       this.camera.lookAt(0, lookY + this.relationshipWarmth * 0.025, 0);
     }
@@ -828,6 +996,7 @@ export class CompanionViewer {
     const delta = this.clock.getDelta();
     this.elapsed += delta;
     this.mixer?.update(delta);
+    this.updateReaction();
     this.updateRelationship(delta);
     this.updateGaze(delta);
     this.updateIdleMotion(delta);
@@ -835,6 +1004,12 @@ export class CompanionViewer {
     this.updateExpressions(delta);
     this.vrm?.update(delta);
     this.renderer.render(this.scene, this.camera);
+    // preserveDrawingBuffer:false でも render() と同じ同期区間内なら描画バッファはまだ有効。
+    if (this.pendingCapture) {
+      const resolve = this.pendingCapture;
+      this.pendingCapture = null;
+      this.composeAndCapture(resolve);
+    }
   };
 
   private resize = (): void => {
@@ -874,6 +1049,8 @@ export class CompanionViewer {
     window.removeEventListener('resize', this.resize);
     this.canvas.removeEventListener('pointermove', this.onPointerMove);
     this.canvas.removeEventListener('pointerleave', this.onPointerLeave);
+    this.canvas.removeEventListener('pointerdown', this.onPointerDown);
+    this.hitProxies = [];
     if (this.vrm) {
       this.scene.remove(this.vrm.scene);
       VRMUtils.deepDispose(this.vrm.scene);

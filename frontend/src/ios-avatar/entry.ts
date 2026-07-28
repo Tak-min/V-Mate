@@ -17,8 +17,20 @@ declare global {
       notice(mode: 'idle' | 'typing' | 'listening' | 'thinking' | 'speaking', seconds?: number): void;
       setAffinity(affinity: number): void;
       relax(): void;
+      // 実際のネイティブ共有UIはまだ無い(Swift↔JSブリッジはSwift→JS一方向)。
+      // 将来 WKScriptMessageHandler を足す際に備え、フォトモードの入口だけ先に用意しておく。
+      capturePhoto(): Promise<string | null>;
     };
   }
+}
+
+function blobToDataURL(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
 }
 
 function boot(): void {
@@ -48,6 +60,7 @@ function boot(): void {
     notice: (mode, seconds) => viewer.notice(mode, seconds),
     setAffinity: (affinity) => viewer.setAffinity(affinity),
     relax: () => viewer.relax(),
+    capturePhoto: () => viewer.capturePhoto().then((blob) => (blob ? blobToDataURL(blob) : null)),
   };
 
   viewer.load().then(() => {
