@@ -320,7 +320,20 @@ async function postChat(c: Ctx, body: { message?: unknown }): Promise<Response> 
   return handleChat(c.env, c.store, c.execCtx, uid, message, minor);
 }
 
-const ANALYTICS_EVENTS = new Set(["onboarding_started", "onboarding_age_verified", "onboarding_completed", "voice_mode_started", "diary_opened"]);
+const ANALYTICS_EVENTS = new Set([
+  "onboarding_started",
+  "onboarding_age_verified",
+  "onboarding_completed",
+  "voice_mode_started",
+  "diary_opened",
+  "paywall_viewed",
+  "purchase_started",
+  "purchase_completed",
+  "purchase_cancelled",
+  "restore_tapped",
+  "restore_succeeded",
+  "manage_subscription_opened",
+]);
 
 function clientPlatform(request: Request): string {
   const ua = request.headers.get("User-Agent") ?? "";

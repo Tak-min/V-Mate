@@ -13,7 +13,21 @@ function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
 
 const jsonHeaders = { 'Content-Type': 'application/json' };
 
-export function trackEvent(event: 'onboarding_started' | 'onboarding_age_verified' | 'onboarding_completed' | 'voice_mode_started' | 'diary_opened'): void {
+export function trackEvent(
+  event:
+    | 'onboarding_started'
+    | 'onboarding_age_verified'
+    | 'onboarding_completed'
+    | 'voice_mode_started'
+    | 'diary_opened'
+    | 'paywall_viewed'
+    | 'purchase_started'
+    | 'purchase_completed'
+    | 'purchase_cancelled'
+    | 'restore_tapped'
+    | 'restore_succeeded'
+    | 'manage_subscription_opened',
+): void {
   void apiFetch('/api/analytics/event', {
     method: 'POST',
     headers: jsonHeaders,
