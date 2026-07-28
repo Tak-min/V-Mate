@@ -6,7 +6,13 @@
  * プラン(CPU上限 30s)に上げてから反復回数を増やすこと。 */
 
 import type { Store } from "./db";
-import type { AppleIdentity } from "./apple_auth";
+import type { AuthProvider, FederatedIdentity } from "./federated";
+
+const PROVIDER_LABEL: Record<AuthProvider, string> = {
+  apple: "Apple ID",
+  google: "Google アカウント",
+  line: "LINE アカウント",
+};
 
 const JWT_ALG = "HS256";
 const JWT_TTL = 60 * 60 * 24 * 30; // 30日
@@ -173,22 +179,23 @@ export async function login(store: Store, secret: string, email: string, passwor
   return createToken(user.id, secret);
 }
 
-/** Apple の subject にのみ紐付ける。既存 identity へのログインで匿名データを再移管しない。 */
-export async function loginWithApple(
+/** プロバイダの subject にのみ紐付ける。既存 identity へのログインで匿名データを再移管しない。
+ * email は識別子として使わず、既存アカウントとの自動リンクもしない(乗っ取り防止)。 */
+export async function loginWithProvider(
   store: Store,
   secret: string,
-  identity: AppleIdentity,
+  identity: FederatedIdentity,
   anonUid: string | null,
 ): Promise<string> {
-  const existing = await store.getIdentity("apple", identity.subject);
+  const existing = await store.getIdentity(identity.provider, identity.subject);
   if (existing) return createToken(existing.user_id, secret);
 
   const userId = crypto.randomUUID().replace(/-/g, "");
   try {
-    await store.createAppleUser(userId, identity.subject, identity.email);
+    await store.createFederatedUser(userId, identity.provider, identity.subject, identity.email);
   } catch {
     // email を既存アカウントと照合・自動統合しない。メール再利用による乗っ取りを防ぐ。
-    throw new ValueError("この Apple ID は現在連携できません。別の方法でログインしてください");
+    throw new ValueError(`この${PROVIDER_LABEL[identity.provider]}は現在連携できません。別の方法でログインしてください`);
   }
   if (anonUid && anonUid !== userId && !(await store.getUserById(anonUid))) {
     await store.reassignUserData(anonUid, userId);

@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
-import { loginWithApple } from "../src/auth";
+import { loginWithProvider } from "../src/auth";
 import { Store } from "../src/db";
 
 const secret = "this-is-a-test-secret-with-at-least-32-bytes";
@@ -32,7 +32,7 @@ describe("Apple identity account lifecycle", () => {
     await env.DB.prepare("INSERT INTO kv (user_id, key, value) VALUES (?, 'affinity', '1')").bind(anon).run();
     await env.DB.prepare("INSERT INTO user_age VALUES (?, '2000-01-01', 'adult', 'self_declared', 'now')").bind(anon).run();
 
-    await loginWithApple(store, secret, { subject: "apple-subject", email: null }, anon);
+    await loginWithProvider(store, secret, { provider: "apple", subject: "apple-subject", email: null }, anon);
     const identity = await store.getIdentity("apple", "apple-subject");
     expect(identity?.user_id).toBeTruthy();
     for (const table of ["messages", "facts", "diary", "kv", "user_age"]) {
@@ -42,17 +42,17 @@ describe("Apple identity account lifecycle", () => {
   });
 
   it("does not reassign a later anonymous user when the Apple identity already exists", async () => {
-    await loginWithApple(store, secret, { subject: "apple-subject", email: null }, "first-anon");
+    await loginWithProvider(store, secret, { provider: "apple", subject: "apple-subject", email: null }, "first-anon");
     const existing = (await store.getIdentity("apple", "apple-subject"))!.user_id;
     await env.DB.prepare("INSERT INTO kv (user_id, key, value) VALUES ('later-anon', 'affinity', '99')").run();
 
-    await loginWithApple(store, secret, { subject: "apple-subject", email: null }, "later-anon");
+    await loginWithProvider(store, secret, { provider: "apple", subject: "apple-subject", email: null }, "later-anon");
     expect((await store.getIdentity("apple", "apple-subject"))?.user_id).toBe(existing);
     expect(await store.getKv("later-anon", "affinity")).toBe("99");
   });
 
   it("deletes all account-scoped records", async () => {
-    await loginWithApple(store, secret, { subject: "apple-subject", email: null }, null);
+    await loginWithProvider(store, secret, { provider: "apple", subject: "apple-subject", email: null }, null);
     const userId = (await store.getIdentity("apple", "apple-subject"))!.user_id;
     await env.DB.prepare("INSERT INTO reports (user_id, reason, status, created_at) VALUES (?, 'test', 'open', 'now')").bind(userId).run();
     await store.deleteAccount(userId);

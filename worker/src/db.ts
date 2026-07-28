@@ -223,15 +223,29 @@ export class Store {
       .first<{ user_id: string }>();
   }
 
-  async createAppleUser(userId: string, externalId: string, email: string | null): Promise<void> {
+  /** フェデレーションユーザー(Apple/Google/LINE)を作成する。
+   * users.email は常に NULL にする — フェデレーションのメールは identities.email にのみ保存する。
+   * users.email は UNIQUE のため、ここに書くと「同じメールで2つ目のプロバイダ」が
+   * UNIQUE 違反で登録不能になる(プロバイダが増えるほど発生確率が上がる構造的バグ)。
+   * users.email は email+password アカウント専用の列として役割を固定する。 */
+  async createFederatedUser(userId: string, provider: string, externalId: string, email: string | null): Promise<void> {
     await this.db.batch([
       this.db
-        .prepare("INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, NULL, ?)")
-        .bind(userId, email, jstIso()),
+        .prepare("INSERT INTO users (id, email, password_hash, created_at) VALUES (?, NULL, NULL, ?)")
+        .bind(userId, jstIso()),
       this.db
-        .prepare("INSERT INTO identities (provider, external_id, user_id, email, created_at) VALUES ('apple', ?, ?, ?, ?)")
-        .bind(externalId, userId, email, jstIso()),
+        .prepare("INSERT INTO identities (provider, external_id, user_id, email, created_at) VALUES (?, ?, ?, ?, ?)")
+        .bind(provider, externalId, userId, email, jstIso()),
     ]);
+  }
+
+  /** 表示用。users.email が NULL なフェデレーションアカウントで「何で連携中か」を出すため。 */
+  async listIdentityProviders(userId: string): Promise<Array<{ provider: string; email: string | null }>> {
+    const { results } = await this.db
+      .prepare("SELECT provider, email FROM identities WHERE user_id = ? ORDER BY created_at")
+      .bind(userId)
+      .all<{ provider: string; email: string | null }>();
+    return results;
   }
 
   async deleteAccount(userId: string): Promise<void> {

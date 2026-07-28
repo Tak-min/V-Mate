@@ -6,7 +6,8 @@
 import type { Env } from "./env";
 import { Store } from "./db";
 import * as auth from "./auth";
-import { AppleTokenError, verifyAppleIdentityToken } from "./apple_auth";
+import { verifyAppleIdentityToken } from "./apple_auth";
+import { JwksVerifyError } from "./jwks";
 import { applyRevenueCatEntitlements, fetchSubscriber, parseRevenueCatWebhookEvent, timingSafeEqual } from "./revenuecat";
 import { synthesize } from "./tts";
 import { complete } from "./llm";
@@ -128,10 +129,10 @@ async function authApple(c: Ctx, body: { identity_token?: unknown; nonce?: unkno
   }
   try {
     const identity = await verifyAppleIdentityToken(body.identity_token, c.env.APPLE_BUNDLE_ID ?? "com.takmin.vmate", body.nonce);
-    const token = await auth.loginWithApple(c.store, auth.jwtSecret(c.env.JWT_SECRET), identity, c.uid);
+    const token = await auth.loginWithProvider(c.store, auth.jwtSecret(c.env.JWT_SECRET), identity, c.uid);
     return json({ token });
   } catch (error) {
-    if (error instanceof AppleTokenError || error instanceof auth.ValueError) return errorDetail(error.message, 401);
+    if (error instanceof JwksVerifyError || error instanceof auth.ValueError) return errorDetail(error.message, 401);
     throw error;
   }
 }
@@ -234,7 +235,14 @@ async function authMe(c: Ctx): Promise<Response> {
   const user = await c.store.getUserById(uid);
   // user_id は RevenueCat の appUserID として使う(Purchases.shared.logIn の引数)。
   // 匿名Cookieユーザーには実アカウントが無いため null。
-  return json({ authenticated: user != null, email: user ? user.email : null, user_id: user ? user.id : null });
+  // フェデレーションユーザーは users.email が常に NULL なので、連携先の表示は
+  // identities 由来の providers を見る(email はパスワードアカウントのみ非null)。
+  return json({
+    authenticated: user != null,
+    email: user ? user.email : null,
+    user_id: user ? user.id : null,
+    providers: user ? await c.store.listIdentityProviders(user.id) : [],
+  });
 }
 
 async function getState(c: Ctx): Promise<Response> {
