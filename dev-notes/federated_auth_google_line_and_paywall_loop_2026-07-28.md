@@ -76,34 +76,43 @@ architectのブループリント全文はこのセッションの会話ログ�
      読んでおらずWeb版ログイン自体が壊れている既知バグ(`dev-notes/web_auth_broken_finding_2026-07-20.md`)
      があるため、Web側のGoogle/LINE追加はこのバグ修正が先行タスクとして必要。
 
-## 依頼2: Paywall/アカウントUI自律改善ループ
+## 依頼2: Paywall/アカウントUI自律改善ループ — DoD達成(2026-07-28)
 
-`.loop/PAYWALL_VISION.md`が正本。DoD・優先順位ルール・検証コマンド・TODOリスト(重大度別)を
-定義済み。**再開時はまずこのファイルとPAYWALL_state.jsonを読むこと。**
+`.loop/PAYWALL_VISION.md`が正本(gitignore対象、詳細な進捗ログ・file:line付きTODOあり)。
+**DoD必須11件(P-C1..C3, P-H1..H6, P-M3, P-M4)が全てresolved**。8イテレーションで完了
+(上限14に対し余裕あり)。build_sim/test_sim(24 passed)/worker npm test(80 passed)/
+worker typecheck、全て緑。
 
-### 解消済み(このセッション、2026-07-28)
+### 解消済み一覧
 | 項目 | 内容 | commit |
 |---|---|---|
 | P-C1 | Proサブスクが何もアンロックしない致命的バグ。サーバ側クォータ(チャット500/日・TTS300/日・日記毎日、無料はそれぞれ50/30/週2)を実装し、StoreViewの訴求コピーも実装値に一致させた | 29cb14c |
 | P-C2 | 利用規約/プライバシーポリシーの実URLが存在しなかった。Worker内蔵の静的ページとして`/terms` `/privacy`を新規実装・本番デプロイ | 368e476 |
 | P-C3 | 未サインインユーザーがPaywallに到達できなかった(購入導線がisAuthenticated内側にあった) | e3a5701 |
 | P-H6 | `isAuthenticated`が非Observableで再描画に暗黙依存していた問題 | 48f07d0 |
+| P-H1 | 年齢取得失敗が「年齢制限」と誤表示される問題。`AgeLoadState` enumで区別+再試行ボタン | 553f192 |
+| P-H2〜P-H5 | 購入/復元メッセージの誠実性(無反応・嘘の成功表示の解消)、RevenueCatManagerのエラー握り潰し撤廃、バッジ重複解消。security-reviewer(opus)が初回実装のno-opバグ(refreshCustomerInfoの既定fetchPolicyが購入直後は同一キャッシュを返すだけ)・エラー状態の競合・purchase/restoreの相互排他漏れを発見し修正 | 10dba86 |
+| P-M3 | Paywall計測イベント(paywall_viewed等7種)追加 | 353c3e8 |
+| P-M4 | サインアウト追加。security-reviewerが3件発見し修正: RevenueCatManager.logOut()のawait漏れ、匿名Cookie未クリアによる次ユーザーへの会話混入、サインアウト後も前アカウントの会話が画面に残る問題 | 9cd4ac4 |
 | (付随) | 2026-07-23の別セッションで検証済みながら未コミットのままだったiOSデザインシステム統一(Theme.swift等)を発見・回収してコミット | ed57293 |
 
 本番URL: `https://aikata.taku810616.workers.dev/terms` , `/privacy`(WebFetchで表示確認済み)。
 
-### 未解消(優先順位順、`.loop/PAYWALL_VISION.md`にfile:line付きで詳細あり)
-- P-H1: `StoreView.swift`の`try? fetchAge()`が失敗を握り潰し「年齢制限」と誤表示
-- P-H2: 購入成功時にRevenueCatの反映待ちで無反応になりうる
-- P-H3: 復元が対象ゼロでも常に成功表示
-- P-H4: `RevenueCatManager`が`loadOfferings`/`refreshCustomerInfo`等のエラーを全て`try?`で握り潰す
-- P-H5: サブスク中に「ご利用中」バッジがパッケージ数だけ重複描画されうる
-- P-M3(DoD必須): Paywallの計測イベント(`paywall_viewed`等)がゼロ
-- P-M4(DoD必須): AccountViewにサインアウトが無い(削除しかない)
-- P-M1/P-M2/P-M5〜M8、P-L2/L3/L5: MEDIUM/LOW、DoD外だが余力があれば
+### 新規発見・未修正(P-H7、DoD外、次の作業に持ち越し)
+security-reviewer(opus)がP-H2レビュー中に発見: `RevenueCatManager.logIn(_:)`が失敗すると
+購入がRevenueCatの匿名IDに紐づいたままになり、worker側webhook(`index.ts:219-220`)が
+該当ユーザーを見つけられず**課金されたのに権利が付与されない**がサイレントに起きうる。
+`CompanionViewModel.bootstrap()`が起動毎にlogInを再試行するため後続起動で自己修復しうるが、
+RevenueCatのTRANSFER webhookのpayloadがこれをカバーするかは未検証。修正には設計判断が要る
+(購入前にRevenueCat識別を強制/再試行するか、失敗をUIで可視化してブロックするか)ため、
+着手前に方針を決めること。詳細は`.loop/PAYWALL_VISION.md`のP-H7参照。
+
+### 残るMEDIUM/LOW(DoD外、任意)
+P-M1/P-M2/P-M5〜M8、P-L2/L3/L5。P-M5は依頼1(Google/LINE)のStep 1b完了に依存してblocked。
 
 ### 再開方法
-1. `.loop/PAYWALL_VISION.md`と`PAYWALL_state.json`を読み、`resolved`/`blocked`を確認。
-2. `.loop/PAYWALL_PROMPT.md`の手順(優先順位に従い未resolvedの最上位を1つ選び、最小差分で実装→
-   build_sim/test_sim or worker npm test→state.json更新→commit)に従って1イテレーションずつ進める。
-3. Google/LINEの外部アカウント設定(上記「依頼1」節)が完了していれば、そちらも並行して着手可能。
+1. Google/LINEログイン拡張(上記「依頼1」節、外部アカウント設定待ち)に着手するか、
+   P-H7(新規発見の課金権利付与バグ)の設計方針を決めるかのいずれかから始めるのが妥当。
+2. MEDIUM/LOW項目を続ける場合は`.loop/PAYWALL_VISION.md`と`PAYWALL_state.json`を読み、
+   `.loop/PAYWALL_PROMPT.md`の手順(1イテレーション=最小差分→verify→state.json更新→commit)
+   に従う。
