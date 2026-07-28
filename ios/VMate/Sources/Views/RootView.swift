@@ -72,6 +72,13 @@ struct RootView: View {
             onboardingDecided = true
             if showOnboarding { APIClient.shared.trackEvent("onboarding_started") }
         }
+        // サインアウト/削除/(再)サインインでアイデンティティが切り替わった際、表示中の会話が
+        // 前のアイデンティティのまま残ってしまう問題への対応(security-reviewer指摘、2026-07-28)。
+        // 初回のbootstrap()完了時にも変化として発火するが、onChangeOfは初期値では発火しない
+        // (SwiftUIのonChange仕様)ため、実際に値が変わった時にだけ再読み込みが走る。
+        .onChangeOf(authState.isAuthenticated) {
+            Task { await viewModel.reloadForIdentityChange() }
+        }
         .onChangeOf(viewModel.state?.stage) { newStage in
             guard let prev = previousStage, let next = newStage, prev != next else {
                 previousStage = viewModel.state?.stage

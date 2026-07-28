@@ -51,6 +51,12 @@ struct AccountView: View {
                     Text("機種変更後も会話の記憶と、今後の購入を復元できるようになっています。")
                         .font(.brandCaption)
                         .foregroundStyle(.textSecondary)
+                    // 「削除」(dataSection、破壊的操作)とは明確に区別: サインアウトはこの端末の
+                    // セッションを終えるだけで、会話やサブスクリプションは失われない。
+                    Button("サインアウト") { signOut() }
+                        .font(.brandCaption.weight(.semibold))
+                        .foregroundStyle(.textSecondary)
+                        .disabled(busy)
                 } else {
                     Text("連携すると、機種変更後も会話の記憶を引き継げます。")
                         .font(.brandCaption)
@@ -137,6 +143,25 @@ struct AccountView: View {
             } catch {
                 message = "連携できませんでした。時間をおいて再試行してください。"
             }
+        }
+    }
+
+    private func signOut() {
+        busy = true
+        Task {
+            defer { busy = false }
+            do {
+                try APIClient.shared.signOut()
+            } catch {
+                message = "サインアウトできませんでした。"
+                return
+            }
+            // deleteAccount()と同じ順序: RevenueCatのログアウトを待ってから
+            // authStateを更新する(未awaitのdetached Taskだと、直後の再サインインと
+            // 順序が競合してcustomerInfoが古い匿名状態で上書きされうる)。
+            await RevenueCatManager.shared.logOut()
+            authState.refresh()
+            message = "サインアウトしました。"
         }
     }
 

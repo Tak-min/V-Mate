@@ -88,6 +88,28 @@ final class APIClient {
         struct DeleteResponse: Codable { let ok: Bool }
         let _: DeleteResponse = try await post("/api/auth/delete", body: [:])
         try tokenStore.delete()
+        clearAnonymousSession()
+    }
+
+    /// アカウント自体は残したまま、この端末のセッションだけを終了する。
+    /// トークンはstateless JWT(worker/src/auth.ts、30日TTL)でサーバ側にセッション状態が
+    /// 無いため、サーバ呼び出しは不要でローカルのKeychain破棄のみで完結する。
+    func signOut() throws {
+        try tokenStore.delete()
+        clearAnonymousSession()
+    }
+
+    /// 匿名Cookie(aikata_uid)を破棄する。サインアウト/削除後もこのCookieを残すと、
+    /// 同じ端末で別アカウントが後からサインインした際にworker側のreassignUserData
+    /// (worker/src/auth.ts loginWithProvider)が、その間の匿名会話を新アカウントへ
+    /// 統合してしまう(= 元ユーザーの離脱後の会話が他人のアカウントに混入する)。
+    /// HttpOnlyだがWKWebView/JS用の制約であり、ネイティブのHTTPCookieStorageからは
+    /// 削除できる。
+    private func clearAnonymousSession() {
+        let storage = session.configuration.httpCookieStorage ?? HTTPCookieStorage.shared
+        for cookie in storage.cookies(for: baseURL) ?? [] where cookie.name == "aikata_uid" {
+            storage.deleteCookie(cookie)
+        }
     }
 
     struct MeResponse: Codable { let authenticated: Bool; let email: String?; let user_id: String? }

@@ -101,12 +101,7 @@ final class CompanionViewModel: ObservableObject {
         setupAudioNotifications()
         ready = true
 
-        async let stateTask: CompanionState? = try? APIClient.shared.fetchState()
-        async let historyTask: [ChatMessage]? = try? APIClient.shared.fetchHistory()
-        async let ageTask: APIClient.AgeResponse? = try? APIClient.shared.fetchAge()
-        state = await stateTask
-        if let history = await historyTask { messages = history }
-        ageBand = await ageTask?.age_band
+        await loadIdentityState()
 
         // 端末に永続化されたトークンで再起動したユーザー(AccountViewのSign in with Appleを経由しない
         // 復帰経路)も、RevenueCatの匿名IDをアカウントへ紐付ける。
@@ -121,6 +116,29 @@ final class CompanionViewModel: ObservableObject {
             await requestNudge(reason: "greeting")
             resetIdleTimer()
         }
+    }
+
+    /// サインアウト/アカウント削除の直後にRootViewから呼ぶ。表示中の会話・親密度・年齢帯は
+    /// 直前のアイデンティティのものが残ったままになる(bootstrap()はアプリ起動時に1度しか
+    /// 呼ばれないため)。bootstrap()を丸ごと再実行するとsetupAudioNotifications()が
+    /// NotificationCenterへの購読を積み増してリークするため、データの再取得だけを行う
+    /// 専用メソッドとして分離している。
+    func reloadForIdentityChange() async {
+        messages = []
+        state = nil
+        ageBand = nil
+        daysAway = nil
+        greeted = false
+        await loadIdentityState()
+    }
+
+    private func loadIdentityState() async {
+        async let stateTask: CompanionState? = try? APIClient.shared.fetchState()
+        async let historyTask: [ChatMessage]? = try? APIClient.shared.fetchHistory()
+        async let ageTask: APIClient.AgeResponse? = try? APIClient.shared.fetchAge()
+        state = await stateTask
+        if let history = await historyTask { messages = history }
+        ageBand = await ageTask?.age_band
     }
 
     func updateAgeBand(_ band: String) {
