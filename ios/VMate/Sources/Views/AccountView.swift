@@ -6,6 +6,7 @@ import SwiftUI
 struct AccountView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var authState = AuthState.shared
+    @ObservedObject private var store = RevenueCatManager.shared
     @State private var rawNonce = ""
     @State private var busy = false
     @State private var message: String?
@@ -57,6 +58,11 @@ struct AccountView: View {
                         .font(.brandCaption.weight(.semibold))
                         .foregroundStyle(.textSecondary)
                         .disabled(busy)
+                    // P-H7: サインイン済みなのに購入導線がブロックされている状態をここでも説明する
+                    // (StoreView側の専用noticeだけだと、購入シートを開くまで気づけない)。
+                    if store.identity == .unbound {
+                        identityUnboundNotice
+                    }
                 } else {
                     Text("連携すると、機種変更後も会話の記憶を引き継げます。")
                         .font(.brandCaption)
@@ -78,6 +84,21 @@ struct AccountView: View {
             .padding(Space.lg)
             .frame(maxWidth: .infinity, alignment: .leading)
             .glassCard()
+        }
+    }
+
+    private var identityUnboundNotice: some View {
+        HStack(alignment: .top, spacing: Space.sm) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("購入の準備ができていません").font(.brandCaption.weight(.semibold)).foregroundStyle(.textPrimary)
+                Text("通信環境を確認し、再試行してください。").font(.brandCaption).foregroundStyle(.textSecondary)
+            }
+            Spacer()
+            Button("再試行") { Task { await store.syncIdentity() } }
+                .font(.brandCaption.weight(.semibold))
+                .foregroundStyle(Color.accentPink)
         }
     }
 
@@ -134,11 +155,12 @@ struct AccountView: View {
             do {
                 try await APIClient.shared.signInWithApple(identityToken: token, nonce: Self.sha256(rawNonce))
                 authState.refresh()
-                message = "Apple ID と連携しました。"
                 // RevenueCat の匿名IDをこのアカウントへ紐付ける(worker側 webhook が app_user_id で
-                // アカウントを束縛するため、ここで実 user_id を渡しておく必要がある)。
-                if let me = try? await APIClient.shared.fetchMe(), let userId = me.user_id {
-                    await RevenueCatManager.shared.logIn(userId)
+                // アカウントを束縛するため、束縛確認込みのsyncIdentity()で実user_idを渡す。P-H7)。
+                if await RevenueCatManager.shared.syncIdentity().isBound {
+                    message = "Apple ID と連携しました。"
+                } else {
+                    message = "Apple ID と連携しましたが、購入の準備が完了していません。通信環境を確認して、もう一度お試しください。"
                 }
             } catch {
                 message = "連携できませんでした。時間をおいて再試行してください。"

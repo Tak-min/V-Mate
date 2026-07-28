@@ -18,11 +18,12 @@ beforeEach(async () => {
   mutableEnv.REVENUECAT_WEBHOOK_AUTH = WEBHOOK_SECRET;
   mutableEnv.REVENUECAT_SECRET_API_KEY = "test-rc-secret-api-key";
   await env.DB.exec(`
-    DROP TABLE IF EXISTS users; DROP TABLE IF EXISTS entitlements; DROP TABLE IF EXISTS purchases; DROP TABLE IF EXISTS usage;
+    DROP TABLE IF EXISTS users; DROP TABLE IF EXISTS entitlements; DROP TABLE IF EXISTS purchases; DROP TABLE IF EXISTS usage; DROP TABLE IF EXISTS daily_metrics;
     CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT UNIQUE, password_hash TEXT, created_at TEXT NOT NULL);
     CREATE TABLE entitlements (user_id TEXT NOT NULL, entitlement_key TEXT NOT NULL, status TEXT NOT NULL, source TEXT NOT NULL, expires_at TEXT, updated_at TEXT NOT NULL, PRIMARY KEY(user_id, entitlement_key));
     CREATE TABLE purchases (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, provider TEXT NOT NULL, external_id TEXT NOT NULL, original_external_id TEXT, product_id TEXT NOT NULL, kind TEXT NOT NULL, status TEXT NOT NULL, occurred_at TEXT NOT NULL, expires_at TEXT, created_at TEXT NOT NULL, UNIQUE(provider, external_id));
     CREATE TABLE usage (scope TEXT NOT NULL, day TEXT NOT NULL, count INTEGER NOT NULL, PRIMARY KEY(scope, day));
+    CREATE TABLE daily_metrics (day TEXT NOT NULL, metric TEXT NOT NULL, dimension TEXT NOT NULL, count INTEGER NOT NULL DEFAULT 0, total_ms INTEGER NOT NULL DEFAULT 0, total_bytes INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(day, metric, dimension));
     INSERT INTO users VALUES ('${boundUserId}', NULL, NULL, 'now');
   `);
 });
@@ -84,12 +85,26 @@ describe("POST /api/webhooks/revenuecat", () => {
     expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM entitlements").first<{ n: number }>())!.n).toBe(0);
   });
 
-  it("REGRESSION: a webhook for an unknown app_user_id (not bound to any account) writes no entitlement/purchase", async () => {
+  it("REGRESSION: a webhook for an unbound anonymous app_user_id writes no entitlement/purchase, and records an observable metric (P-H7)", async () => {
     stubSubscriberFetch({ pro: { product_identifier: "vmate.pro", is_active: true, expires_date: "2026-08-21T00:00:00Z" } });
     const response = await postWebhook(webhookEvent({ app_user_id: "$RCAnonymousID:unbound-nobody-owns-this" }));
     expect(response.status).toBe(200);
     expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM entitlements").first<{ n: number }>())!.n).toBe(0);
     expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM purchases").first<{ n: number }>())!.n).toBe(0);
+    // P-H7: 権利は依然として付与しない(fail-closedは不変)が、クライアント側の束縛バグが本番で
+    // 発火していることを運用側が検知できるよう、anonymousディメンションで計測が残ること。
+    const metric = await env.DB.prepare("SELECT dimension, count FROM daily_metrics WHERE metric = 'revenuecat_webhook_unbound'").first<{ dimension: string; count: number }>();
+    expect(metric).toEqual({ dimension: "anonymous", count: 1 });
+  });
+
+  it("P-H7: a webhook for an unbound non-anonymous app_user_id (e.g. a deleted account) records the unknown_user dimension", async () => {
+    stubSubscriberFetch({ pro: { product_identifier: "vmate.pro", is_active: true, expires_date: "2026-08-21T00:00:00Z" } });
+    const response = await postWebhook(webhookEvent({ app_user_id: "deleted-user-id" }));
+    expect(response.status).toBe(200);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM entitlements").first<{ n: number }>())!.n).toBe(0);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM purchases").first<{ n: number }>())!.n).toBe(0);
+    const metric = await env.DB.prepare("SELECT dimension, count FROM daily_metrics WHERE metric = 'revenuecat_webhook_unbound'").first<{ dimension: string; count: number }>();
+    expect(metric).toEqual({ dimension: "unknown_user", count: 1 });
   });
 
   it("grants an entitlement for a valid, bound, Production webhook", async () => {

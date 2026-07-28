@@ -104,10 +104,8 @@ final class CompanionViewModel: ObservableObject {
         await loadIdentityState()
 
         // 端末に永続化されたトークンで再起動したユーザー(AccountViewのSign in with Appleを経由しない
-        // 復帰経路)も、RevenueCatの匿名IDをアカウントへ紐付ける。
-        if APIClient.shared.isAuthenticated, let me = try? await APIClient.shared.fetchMe(), let userId = me.user_id {
-            await RevenueCatManager.shared.logIn(userId)
-        }
+        // 復帰経路)も、RevenueCatの匿名IDをアカウントへ紐付ける(P-H7: 束縛確認込みのsyncIdentity)。
+        await RevenueCatManager.shared.syncIdentity()
 
         // 初回ユーザーは OnboardingView 経由で fireGreeting() が呼ばれる。
         // 2回目以降のユーザーのみここで挨拶。

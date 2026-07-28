@@ -50,7 +50,7 @@ struct StoreView: View {
     var body: some View {
         BrandScreen(title: "シロ Pro") {
             Group {
-                if !authState.isAuthenticated {
+                if !authState.isAuthenticated || store.identity == .signedOut {
                     signInRequiredNotice
                 } else {
                     switch ageState {
@@ -59,10 +59,16 @@ struct StoreView: View {
                     case .unknownError:
                         ageErrorNotice
                     case .band:
-                        if isAdult {
+                        if !isAdult {
+                            notAdultNotice
+                        } else if store.identity == .unbound {
+                            // P-H7: RevenueCatのappUserIDがサーバのuser_idと束縛できていない状態。
+                            // ここで購入導線を開くと、課金されても権利が付与されない事故になりうる。
+                            identityUnboundNotice
+                        } else if store.identity.isBound {
                             paywall
                         } else {
-                            notAdultNotice
+                            ProgressView().tint(.white).padding(.top, 80)
                         }
                     }
                 }
@@ -72,9 +78,11 @@ struct StoreView: View {
         .task {
             async let _offerings: Void = store.loadOfferings()
             async let _info: Void = store.refreshCustomerInfo()
+            async let _identity: StoreIdentityState = store.syncIdentity()
             await loadAge()
             _ = await _offerings
             _ = await _info
+            _ = await _identity
         }
         .manageSubscriptionsSheet(isPresented: $showManageSubscriptions)
     }
@@ -100,6 +108,17 @@ struct StoreView: View {
 
     private var notAdultNotice: some View {
         notice(icon: "hand.raised.fill", title: "ご利用いただけません", description: "この機能は年齢確認が完了した成人の方のみご利用いただけます。")
+    }
+
+    /// P-H7: RevenueCatのappUserIDがサーバのuser_idと束縛できていない状態専用。
+    /// 「押せないボタン」ではなく理由と再試行導線を出す(P-H1/P-H4と同じ規約)。
+    private var identityUnboundNotice: some View {
+        VStack(spacing: Space.md) {
+            notice(icon: "person.crop.circle.badge.exclamationmark", title: "購入の準備ができていません", description: "アカウントとの連携を確認できませんでした。通信環境を確認して、再試行してください。")
+            Button("再試行") { Task { await store.syncIdentity() } }
+                .buttonStyle(BrandPrimaryButtonStyle())
+                .padding(.horizontal, Space.xxl)
+        }
     }
 
     private var ageErrorNotice: some View {
@@ -222,7 +241,7 @@ struct StoreView: View {
                 }
             }
             .buttonStyle(BrandPrimaryButtonStyle())
-            .disabled(busyOperation != nil)
+            .disabled(busyOperation != nil || !store.identity.isBound)
 
             // Apple 3.1.2: 自動更新サブスクの価格・期間・自動更新である旨の開示。
             if let period = product.subscriptionPeriod {
@@ -287,6 +306,12 @@ struct StoreView: View {
         busyOperation = .purchasing(package.identifier)
         message = nil
         defer { busyOperation = nil }
+        // P-H7: ボタンのdisabled条件はここまでに束縛済みのはずだが、タップの瞬間にサインアウト等で
+        // ズレていないかここでも確定させる(多層防御)。既に束縛済みならネットワークI/Oなしで即返る。
+        guard await store.syncIdentity().isBound else {
+            message = "アカウントとの連携を確認できませんでした。通信環境を確認して、もう一度お試しください。"
+            return
+        }
         APIClient.shared.trackEvent("purchase_started")
         do {
             let cancelled = try await store.purchase(package)

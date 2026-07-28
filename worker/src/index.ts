@@ -217,7 +217,20 @@ async function postRevenueCatWebhook(c: Ctx, body: Record<string, unknown>): Pro
   // 200 を返して RevenueCat のリトライを止めつつ、権利は付与しない(以下いずれも fail-closed)。
   if (event.environment !== (c.env.REVENUECAT_ENVIRONMENT ?? "Production")) return json({ ok: true });
   const user = await c.store.getUserById(event.appUserId);
-  if (!user) return json({ ok: true });
+  if (!user) {
+    // P-H7: この分岐はiOS側のRevenueCatログイン(app_user_id束縛)が失敗したまま課金された
+    // ケースを示しうる(=実際に課金されたのに権利が付与されない事故)。fail-closedの挙動自体は
+    // 変えず、運用側が検知できるよう観測だけ追加する。app_user_idが匿名ID形式かどうかで
+    // 「クライアント側の束縛バグ」と「削除済みアカウント宛など概ね良性」を区別する。
+    const anonymous = event.appUserId.startsWith("$RCAnonymousID:");
+    console.warn(
+      `revenuecat webhook: app_user_id not bound to any account type=${event.type} event_id=${event.id} app_user_id=${event.appUserId} anonymous=${anonymous}`,
+    );
+    c.execCtx.waitUntil(
+      c.store.recordDailyMetric(jstToday(), "revenuecat_webhook_unbound", anonymous ? "anonymous" : "unknown_user").catch(() => undefined),
+    );
+    return json({ ok: true });
+  }
 
   let subscriber;
   try {
