@@ -15,9 +15,11 @@ struct AccountView: View {
         BrandScreen(title: "アカウント") {
             VStack(alignment: .leading, spacing: Space.xl) {
                 accountSection
+                // 購入導線はサインイン前でも見せる(StoreView側でサインイン要求を出す)。
+                // ここで隠すとPaywallに一切到達できず、新規ユーザーが購入できない(P-C3)。
+                proSection
 
                 if APIClient.shared.isAuthenticated {
-                    proSection
                     dataSection
                 }
 

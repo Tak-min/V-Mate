@@ -56,7 +56,12 @@ struct StoreView: View {
     }
 
     private var signInRequiredNotice: some View {
-        notice(icon: "person.crop.circle.badge.questionmark", title: "サインインが必要です", description: "購入と復元には、前の画面の「Apple ID と連携」が必要です。")
+        VStack(spacing: Space.md) {
+            notice(icon: "person.crop.circle.badge.questionmark", title: "サインインが必要です", description: "購入と復元には、アカウントとの連携が必要です。")
+            Button("閉じてサインインする") { dismiss() }
+                .buttonStyle(BrandPrimaryButtonStyle())
+                .padding(.horizontal, Space.xxl)
+        }
     }
 
     private var notAdultNotice: some View {
