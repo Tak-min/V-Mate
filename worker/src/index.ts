@@ -17,6 +17,7 @@ import { handleChat, statePayload } from "./chat";
 import { computeAgeBand } from "./agegate";
 import { assertPurchasable } from "./agegate";
 import { CATALOG } from "./catalog";
+import { privacyPolicyHtml, termsOfServiceHtml } from "./legal";
 import {
   json,
   errorDetail,
@@ -527,6 +528,17 @@ const R2_MODEL_KEYS: Record<string, string> = {
   "/models/realistic.vrm": "models/realistic.vrm",
 };
 
+// 利用規約/プライバシーポリシー。frontend(Vite)のビルド出力(backend/static、emptyOutDir:true)に
+// 置くと次回ビルドで消えるため、Worker側で直接返す。App Store審査・Paywallの法定リンク先。
+const LEGAL_PAGES: Record<string, () => string> = {
+  "/terms": termsOfServiceHtml,
+  "/privacy": privacyPolicyHtml,
+};
+
+function serveLegalPage(render: () => string): Response {
+  return new Response(render(), { headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+
 async function serveR2Model(env: Env, request: Request, key: string): Promise<Response> {
   const object = await env.MODELS.get(key, { range: request.headers });
   if (!object) return new Response("Not Found", { status: 404 });
@@ -545,6 +557,10 @@ export default {
 
     const r2Key = R2_MODEL_KEYS[url.pathname];
     if (r2Key) return serveR2Model(env, request, r2Key);
+
+    if (request.method === "GET" && url.pathname in LEGAL_PAGES) {
+      return serveLegalPage(LEGAL_PAGES[url.pathname]);
+    }
 
     // /api 以外は静的アセット(ビルド済みフロント)へ。run_worker_first で /api/* のみ Worker が先行。
     if (!url.pathname.startsWith("/api/")) {

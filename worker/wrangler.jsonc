@@ -7,13 +7,14 @@
   "compatibility_date": "2025-06-01",
 
   // 静的フロント(Vite ビルド成果物)を同一オリジンで配信する。
-  // /api/* と /models/realistic.vrm(R2配信、25MiB超のため静的アセットに置けない)は
-  // 必ず Worker を先に実行し、それ以外は静的アセット→SPAフォールバック。
+  // /api/*、/models/realistic.vrm(R2配信、25MiB超のため静的アセットに置けない)、
+  // /terms・/privacy(Worker内蔵の利用規約/プライバシーポリシー。frontendビルドで消えないよう
+  // ここに置いている)は必ず Worker を先に実行し、それ以外は静的アセット→SPAフォールバック。
   "assets": {
     "directory": "../backend/static",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/models/realistic.vrm"]
+    "run_worker_first": ["/api/*", "/models/realistic.vrm", "/terms", "/privacy"]
   },
 
   // R2(オブジェクトストレージ)。Workers静的アセットは1ファイル25MiB上限のため、
