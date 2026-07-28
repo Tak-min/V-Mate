@@ -10,7 +10,7 @@ struct DiaryView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        NavigationStack {
+        BrandScreen(title: "シロの日記") {
             Group {
                 if loading {
                     loadingView
@@ -20,56 +20,58 @@ struct DiaryView: View {
                     entryList
                 }
             }
-            .navigationTitle("シロの日記")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("閉じる") { dismiss() }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    if canGenerateToday {
-                        Button {
-                            Task { await generate() }
-                        } label: {
-                            if generating {
-                                HStack(spacing: 4) {
-                                    ProgressView().scaleEffect(0.8)
-                                    Text("書いてる…")
-                                }
-                            } else {
-                                Label("今日の日記", systemImage: "pencil.and.scribble")
-                            }
+            .padding(.bottom, Space.xl)
+        }
+        .overlay(alignment: .topTrailing) {
+            if canGenerateToday {
+                Button {
+                    Task { await generate() }
+                } label: {
+                    if generating {
+                        HStack(spacing: 4) {
+                            ProgressView().scaleEffect(0.8).tint(.white)
+                            Text("書いてる…")
                         }
-                        .disabled(generating)
+                    } else {
+                        Label("今日の日記", systemImage: "pencil.and.scribble")
                     }
                 }
+                .font(.brandCaption.weight(.semibold))
+                .foregroundStyle(Color.accentPink)
+                .disabled(generating)
+                .padding(.top, 54)
+                .padding(.trailing, Space.lg)
             }
-            .task {
-                APIClient.shared.trackEvent("diary_opened")
-                await load()
-            }
+        }
+        .task {
+            APIClient.shared.trackEvent("diary_opened")
+            await load()
         }
     }
 
     // MARK: - Sub-views
 
     private var loadingView: some View {
-        VStack(spacing: 12) {
-            ProgressView()
+        VStack(spacing: Space.md) {
+            ProgressView().tint(.white)
             Text("シロの日記を読んでるよ…")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(.brandBody)
+                .foregroundStyle(.textSecondary)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.top, Space.xxl)
     }
 
     private var emptyView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: Space.lg) {
             Text("📓")
                 .font(.system(size: 52))
             Text("まだ日記はないみたい")
-                .font(.headline)
+                .font(.brandHeading)
+                .foregroundStyle(.textPrimary)
             Text("シロともっとたくさん話すと、\nシロが日記を書いてくれるよ。")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(.brandBody)
+                .foregroundStyle(.textSecondary)
                 .multilineTextAlignment(.center)
                 .lineSpacing(4)
             if canGenerateToday {
@@ -77,38 +79,28 @@ struct DiaryView: View {
                     Task { await generate() }
                 } label: {
                     Label("今日の日記を書いてもらう", systemImage: "pencil.and.scribble")
-                        .font(.body.bold())
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 10)
-                        .background(Color.accentPink.opacity(0.15))
-                        .foregroundStyle(Color.accentPink)
-                        .clipShape(Capsule())
                 }
+                .buttonStyle(BrandPrimaryButtonStyle())
                 .disabled(generating)
             }
         }
-        .padding()
+        .frame(maxWidth: .infinity)
+        .padding(.top, Space.xxl)
     }
 
     private var entryList: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                if let error = errorMessage {
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.circle")
-                        Text(error)
-                    }
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .padding()
+        LazyVStack(spacing: Space.md) {
+            if let error = errorMessage {
+                HStack(spacing: Space.sm) {
+                    Image(systemName: "exclamationmark.circle")
+                    Text(error)
                 }
+                .font(.brandBody)
+                .foregroundStyle(.textSecondary)
+            }
 
-                ForEach(entries) { entry in
-                    DiaryEntryCard(entry: entry)
-                    if entry.id != entries.last?.id {
-                        Divider().padding(.leading, 20)
-                    }
-                }
+            ForEach(entries) { entry in
+                DiaryEntryCard(entry: entry)
             }
         }
     }
@@ -157,19 +149,19 @@ private struct DiaryEntryCard: View {
                 Text("🐾")
                     .font(.system(size: 14))
                 Text(formattedDate)
-                    .font(.caption.bold())
+                    .font(.brandCaption.weight(.bold))
                     .foregroundStyle(Color.accentPink)
                 Spacer()
             }
 
             Text(entry.content)
-                .font(.callout)
-                .foregroundStyle(.primary)
+                .font(.brandBody)
+                .foregroundStyle(.textPrimary)
                 .lineSpacing(5)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
+        .padding(Space.lg)
+        .glassCard()
     }
 
     /// "2026-07-02" → "2026年7月2日" に変換

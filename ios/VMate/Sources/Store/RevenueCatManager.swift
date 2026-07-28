@@ -10,10 +10,9 @@ final class RevenueCatManager: ObservableObject {
     static let shared = RevenueCatManager()
 
     /// RevenueCat ダッシュボードで発行される公開SDKキー(秘密鍵ではなくクライアント同梱が前提の設計)。
-    /// Apple Developer Program 加入待ちで RevenueCat アカウント・プロジェクトを未作成のため、
-    /// 現状はプレースホルダー。発行され次第この値を置き換える
-    /// (dev-notes/revenuecat_migration_2026-07-22.md 参照)。
-    private static let apiKey = "REVENUECAT_PUBLIC_SDK_KEY_PLACEHOLDER"
+    /// V-Mateプロジェクト(appa02c5d1a67)のiOS公開SDKキー
+    /// (dev-notes/revenuecat_asc_appstore_setup_2026-07-23.md 参照)。
+    private static let apiKey = "appl_scYDhqkoqtTMWYdUUAGtaBBYYIW"
     static let proEntitlementID = "pro"
 
     @Published private(set) var offerings: Offerings?
@@ -26,10 +25,9 @@ final class RevenueCatManager: ObservableObject {
         customerInfo?.entitlements[Self.proEntitlementID]?.isActive == true
     }
 
-    /// アプリ起動時に1度だけ呼ぶ(匿名で configure)。プレースホルダーキーのままなら何もしない
-    /// (RevenueCatプロジェクト未発行の間もアプリがcrashせず、購入導線だけが空のまま動く)。
+    /// アプリ起動時に1度だけ呼ぶ(匿名で configure)。
     func configureIfNeeded() {
-        guard !isConfigured, Self.apiKey != "REVENUECAT_PUBLIC_SDK_KEY_PLACEHOLDER" else { return }
+        guard !isConfigured else { return }
         Purchases.configure(withAPIKey: Self.apiKey)
         isConfigured = true
     }

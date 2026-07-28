@@ -24,10 +24,15 @@ final class FirstMeetingViewModel: ObservableObject {
     @Published private(set) var caption: String = ""
     @Published private(set) var partialTranscript: String = ""
     @Published private(set) var resolvedName: String?
+    /// このステップの間、RootView側の本物のアバター(VRM/2D)へ転送する感情とリップシンク値。
+    /// このViewModel自身はアバターを描画しない。
+    @Published private(set) var currentEmotion: Emotion = .neutral
+    @Published private(set) var mouthLevel: Double = 0
 
     private let recognizer = SpeechRecognizer()
     private let speech = SpeechQueue()
     private var isSpeakingCancellable: AnyCancellable?
+    private var mouthLevelCancellable: AnyCancellable?
     private var retryCount = 0
     private let maxRetries = 2
 
@@ -59,10 +64,12 @@ final class FirstMeetingViewModel: ObservableObject {
     /// オンボーディングのこのステップを離れる際に必ず呼ぶ(音声エンジンの後始末)。
     func teardown() {
         isSpeakingCancellable?.cancel()
+        mouthLevelCancellable?.cancel()
         speech.stop()
         recognizer.endSession()
         speech.detachFromEngine()
         try? AudioSessionManager.shared.configureForPlaybackOnly()
+        mouthLevel = 0
     }
 
     // MARK: - 発話
@@ -71,11 +78,16 @@ final class FirstMeetingViewModel: ObservableObject {
         isSpeakingCancellable = speech.$isSpeaking
             .receive(on: DispatchQueue.main)
             .sink { _ in }
+        mouthLevelCancellable = speech.$mouthLevel
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] level in self?.mouthLevel = level }
     }
 
     /// 台詞を再生し、再生完了(isSpeaking: true→false)まで一時停止する。
+    /// emotion は吹き出しの声色だけでなく、RootView側の本物のアバターの表情にも転送される。
     private func speakAndWait(_ text: String, emotion: Emotion) async {
         caption = text
+        currentEmotion = emotion
         speech.enqueue(text, emotion: emotion)
         await waitUntilSpeechQueueDrains()
     }

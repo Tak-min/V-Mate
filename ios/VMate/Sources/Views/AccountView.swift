@@ -12,61 +12,102 @@ struct AccountView: View {
     @State private var storeOpen = false
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("アカウント") {
-                    if APIClient.shared.isAuthenticated {
-                        Label("Apple ID と連携済み", systemImage: "checkmark.seal.fill")
-                            .foregroundStyle(.green)
-                        Text("機種変更後も会話の記憶と、今後の購入を復元できるようになっています。")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("連携すると、機種変更後も会話の記憶を引き継げます。")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        SignInWithAppleButton(.continue) { request in
-                            let nonce = Self.randomNonce()
-                            rawNonce = nonce
-                            request.requestedScopes = [.email]
-                            request.nonce = Self.sha256(nonce)
-                        } onCompletion: { result in
-                            handleAppleResult(result)
-                        }
-                        .signInWithAppleButtonStyle(.black)
-                        .frame(height: 48)
-                        .disabled(busy)
-                    }
-                }
+        BrandScreen(title: "アカウント") {
+            VStack(alignment: .leading, spacing: Space.xl) {
+                accountSection
 
                 if APIClient.shared.isAuthenticated {
-                    Section("シロ Pro") {
-                        Button("購入・復元を見る") { storeOpen = true }
-                    }
-
-                    Section("データ") {
-                        Button("アカウントとデータを削除", role: .destructive) {
-                            showDeleteConfirmation = true
-                        }
-                        Text("会話、記憶、日記、年齢確認情報を削除します。サブスクリプションの解約は App Store で別途行ってください。")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+                    proSection
+                    dataSection
                 }
 
                 if let message {
-                    Section { Text(message).foregroundStyle(.secondary) }
+                    Text(message)
+                        .font(.brandCaption)
+                        .foregroundStyle(.textSecondary)
                 }
             }
-            .navigationTitle("アカウント")
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("閉じる") { dismiss() } } }
-            .sheet(isPresented: $storeOpen) { StoreView() }
-            .confirmationDialog("アカウントを削除しますか？", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
-                Button("削除する", role: .destructive) { deleteAccount() }
-            } message: {
-                Text("この操作は取り消せません。App Store のサブスクリプションは別途解約してください。")
-            }
+            .padding(.bottom, Space.xl)
         }
+        .sheet(isPresented: $storeOpen) { StoreView() }
+        .confirmationDialog("アカウントを削除しますか？", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
+            Button("削除する", role: .destructive) { deleteAccount() }
+        } message: {
+            Text("この操作は取り消せません。App Store のサブスクリプションは別途解約してください。")
+        }
+    }
+
+    private var accountSection: some View {
+        VStack(alignment: .leading, spacing: Space.md) {
+            sectionHeader("アカウント")
+            VStack(alignment: .leading, spacing: Space.md) {
+                if APIClient.shared.isAuthenticated {
+                    Label("Apple ID と連携済み", systemImage: "checkmark.seal.fill")
+                        .font(.brandBodyStrong)
+                        .foregroundStyle(.green)
+                    Text("機種変更後も会話の記憶と、今後の購入を復元できるようになっています。")
+                        .font(.brandCaption)
+                        .foregroundStyle(.textSecondary)
+                } else {
+                    Text("連携すると、機種変更後も会話の記憶を引き継げます。")
+                        .font(.brandCaption)
+                        .foregroundStyle(.textSecondary)
+                    SignInWithAppleButton(.continue) { request in
+                        let nonce = Self.randomNonce()
+                        rawNonce = nonce
+                        request.requestedScopes = [.email]
+                        request.nonce = Self.sha256(nonce)
+                    } onCompletion: { result in
+                        handleAppleResult(result)
+                    }
+                    .signInWithAppleButtonStyle(.white)
+                    .frame(height: 48)
+                    .clipShape(RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
+                    .disabled(busy)
+                }
+            }
+            .padding(Space.lg)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassCard()
+        }
+    }
+
+    private var proSection: some View {
+        VStack(alignment: .leading, spacing: Space.md) {
+            sectionHeader("シロ Pro")
+            Button("購入・復元を見る") { storeOpen = true }
+                .font(.brandBodyStrong)
+                .foregroundStyle(Color.accentPink)
+                .padding(Space.lg)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .glassCard()
+        }
+    }
+
+    private var dataSection: some View {
+        VStack(alignment: .leading, spacing: Space.md) {
+            sectionHeader("データ")
+            VStack(alignment: .leading, spacing: Space.md) {
+                Button("アカウントとデータを削除", role: .destructive) {
+                    showDeleteConfirmation = true
+                }
+                .font(.brandBodyStrong)
+                .foregroundStyle(.red)
+                Text("会話、記憶、日記、年齢確認情報を削除します。サブスクリプションの解約は App Store で別途行ってください。")
+                    .font(.brandCaption)
+                    .foregroundStyle(.textSecondary)
+            }
+            .padding(Space.lg)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassCard()
+        }
+    }
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.brandCaption.weight(.semibold))
+            .foregroundStyle(.textTertiary)
+            .textCase(.uppercase)
     }
 
     private func handleAppleResult(_ result: Result<ASAuthorization, Error>) {
