@@ -23,6 +23,7 @@ private func nextStageName(nextStageAt: Int?) -> String? {
 
 struct RootView: View {
     @StateObject private var viewModel = CompanionViewModel()
+    @ObservedObject private var authState = AuthState.shared
     @State private var diaryOpen = false
     @State private var nameDraft = ""
     /// 3D(WKWebView+three-vrm)読み込みに失敗したら v1 のシンプルアバターへ自動フォールバックする。
@@ -315,7 +316,7 @@ struct RootView: View {
             HeaderControlButton(
                 icon: "person.crop.circle",
                 label: "アカウント",
-                isActive: APIClient.shared.isAuthenticated,
+                isActive: authState.isAuthenticated,
                 accessibilityLabel: "アカウントを開く"
             ) {
                 accountOpen = true

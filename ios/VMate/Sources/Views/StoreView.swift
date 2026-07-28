@@ -7,6 +7,7 @@ import SwiftUI
 /// クライアント側も「買えない購入を煽らない」ための多層防御として同じ方針を守る)。
 struct StoreView: View {
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var authState = AuthState.shared
     @StateObject private var store = RevenueCatManager.shared
     @State private var ageBand: String?
     @State private var loadingAge = true
@@ -31,7 +32,7 @@ struct StoreView: View {
     var body: some View {
         BrandScreen(title: "シロ Pro") {
             Group {
-                if !APIClient.shared.isAuthenticated {
+                if !authState.isAuthenticated {
                     signInRequiredNotice
                 } else if loadingAge {
                     ProgressView().tint(.white).padding(.top, 80)

@@ -5,6 +5,7 @@ import SwiftUI
 /// 購入復元の前提となる安定アカウント。購入機能自体はここに置かない。
 struct AccountView: View {
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var authState = AuthState.shared
     @State private var rawNonce = ""
     @State private var busy = false
     @State private var message: String?
@@ -19,7 +20,7 @@ struct AccountView: View {
                 // ここで隠すとPaywallに一切到達できず、新規ユーザーが購入できない(P-C3)。
                 proSection
 
-                if APIClient.shared.isAuthenticated {
+                if authState.isAuthenticated {
                     dataSection
                 }
 
@@ -43,7 +44,7 @@ struct AccountView: View {
         VStack(alignment: .leading, spacing: Space.md) {
             sectionHeader("アカウント")
             VStack(alignment: .leading, spacing: Space.md) {
-                if APIClient.shared.isAuthenticated {
+                if authState.isAuthenticated {
                     Label("Apple ID と連携済み", systemImage: "checkmark.seal.fill")
                         .font(.brandBodyStrong)
                         .foregroundStyle(.green)
@@ -126,6 +127,7 @@ struct AccountView: View {
             defer { busy = false }
             do {
                 try await APIClient.shared.signInWithApple(identityToken: token, nonce: Self.sha256(rawNonce))
+                authState.refresh()
                 message = "Apple ID と連携しました。"
                 // RevenueCat の匿名IDをこのアカウントへ紐付ける(worker側 webhook が app_user_id で
                 // アカウントを束縛するため、ここで実 user_id を渡しておく必要がある)。
@@ -145,6 +147,7 @@ struct AccountView: View {
             do {
                 try await APIClient.shared.deleteAccount()
                 await RevenueCatManager.shared.logOut()
+                authState.refresh()
                 dismiss()
             } catch {
                 message = "削除できませんでした。時間をおいて再試行してください。"
