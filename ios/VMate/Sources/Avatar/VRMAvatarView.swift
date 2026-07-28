@@ -1,6 +1,17 @@
 import SwiftUI
 import WebKit
 
+/// window.vmate.capturePhoto()(frontend/src/features/vrm/viewer.ts の capturePhoto()経由)が
+/// 返す data URL(`data:image/png;base64,...`)を共有可能な Data に変換する純粋関数。
+/// WKWebView自体を必要としないため単体テスト可能(VMateTests/PhotoCaptureTests.swift)。
+enum PhotoCapture {
+    static func decodeDataURL(_ dataURL: String) -> Data? {
+        guard let commaIndex = dataURL.firstIndex(of: ",") else { return nil }
+        let base64Part = dataURL[dataURL.index(after: commaIndex)...]
+        return Data(base64Encoded: String(base64Part))
+    }
+}
+
 /// 本番Worker上で配信される avatar.html(three-vrm の調整済みビューアをそのまま再利用)を
 /// 読み込む WKWebView。Web版とアニメーションロジックを共有するため、視線/まばたき/リップシンクの
 /// チューニングをSwiftで二重管理しない方針(詳細は ios/dev-notes/vrm_avatar_architecture_2026-06-19.md)。
@@ -51,10 +62,15 @@ struct VRMAvatarView: UIViewRepresentable {
 
     func updateUIView(_ webView: WKWebView, context: Context) {
         context.coordinator.sync(emotion: viewModel.currentEmotion, mouthLevel: viewModel.avatarMouthLevel)
+        context.coordinator.handlePhotoCaptureRequest(viewModel.pendingPhotoCaptureID)
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onFailure: { failed = true }, onFinish: { onLoadFinished?() })
+        Coordinator(
+            onFailure: { failed = true },
+            onFinish: { onLoadFinished?() },
+            onPhotoCaptured: { [weak viewModel] data in viewModel?.capturedPhotoData = data }
+        )
     }
 
     @MainActor
@@ -62,13 +78,41 @@ struct VRMAvatarView: UIViewRepresentable {
         weak var webView: WKWebView?
         private var lastEmotion: Emotion?
         private var lastMouthLevel: Double = -1
+        private var lastCaptureRequestID: UUID?
         private let onFailure: () -> Void
         private let onFinish: () -> Void
+        private let onPhotoCaptured: (Data?) -> Void
         private var titleObservation: NSKeyValueObservation?
 
-        init(onFailure: @escaping () -> Void, onFinish: @escaping () -> Void) {
+        init(onFailure: @escaping () -> Void, onFinish: @escaping () -> Void, onPhotoCaptured: @escaping (Data?) -> Void) {
             self.onFailure = onFailure
             self.onFinish = onFinish
+            self.onPhotoCaptured = onPhotoCaptured
+        }
+
+        /// requestIDが前回観測値から変化した時だけキャプチャを1回実行する(SwiftUIの再描画で
+        /// updateUIViewが何度呼ばれても多重発火しないようにするガード)。
+        func handlePhotoCaptureRequest(_ requestID: UUID?) {
+            guard let requestID, requestID != lastCaptureRequestID else { return }
+            lastCaptureRequestID = requestID
+            capturePhoto()
+        }
+
+        /// window.vmate.capturePhoto()(frontend/src/ios-avatar/entry.ts)はPromise<string|null>を返す。
+        /// WKWebViewはiOS 14+でPromiseの解決を自動的に待ってからcompletionHandlerに値を渡すため、
+        /// Swift→JSの新しい双方向ブリッジを増設せず既存のevaluateJavaScriptだけで完結する。
+        private func capturePhoto() {
+            guard let webView else {
+                onPhotoCaptured(nil)
+                return
+            }
+            webView.evaluateJavaScript("window.vmate && window.vmate.capturePhoto ? window.vmate.capturePhoto() : null") { [onPhotoCaptured] result, _ in
+                guard let dataURLString = result as? String else {
+                    onPhotoCaptured(nil)
+                    return
+                }
+                onPhotoCaptured(PhotoCapture.decodeDataURL(dataURLString))
+            }
         }
 
         func sync(emotion: Emotion, mouthLevel: Double) {

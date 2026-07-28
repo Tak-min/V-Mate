@@ -36,6 +36,17 @@ final class CompanionViewModel: ObservableObject {
 
     @Published var daysAway: Int? = nil
 
+    // --- フォトモード ---
+    // requestPhotoCapture()のたびに新しいUUIDを積むトリガー。VRMAvatarView.updateUIViewが
+    // 前回値との差分で検知し、WKWebView側のcapturePhoto()を1回だけ叩く(値そのものは無意味)。
+    @Published var pendingPhotoCaptureID: UUID?
+    // キャプチャ結果(PNG Data)。RootViewはこれをnilから非nilへの変化でシェアシートを開く。
+    @Published var capturedPhotoData: Data?
+
+    func requestPhotoCapture() {
+        pendingPhotoCaptureID = UUID()
+    }
+
     // --- ハンズフリー音声会話 ---
     @Published var voiceMode: VoiceMode = .off
     @Published var partialTranscript: String = ""

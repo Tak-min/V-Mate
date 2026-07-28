@@ -94,6 +94,11 @@ struct RootView: View {
         }
         .sheet(isPresented: $diaryOpen) { DiaryView() }
         .sheet(isPresented: $accountOpen) { AccountView() }
+        .sheet(isPresented: capturedPhotoPresented) {
+            if let data = viewModel.capturedPhotoData, let image = UIImage(data: data) {
+                PhotoShareSheet(activityItems: [image])
+            }
+        }
         .fullScreenCover(isPresented: $showOnboarding) {
             if viewModel.ageBand == "under13" {
                 AgeBlockedView()
@@ -155,6 +160,15 @@ struct RootView: View {
         case .thinking: return "考え中"
         case .speaking: return "お話し中"
         }
+    }
+
+    /// capturedPhotoDataのnil⇔非nilをシート表示のisPresentedとして扱う。dismiss時(false→true)は
+    /// データを都度クリアし、次回撮影が確実に新しいシート表示をトリガーできるようにする。
+    private var capturedPhotoPresented: Binding<Bool> {
+        Binding(
+            get: { viewModel.capturedPhotoData != nil },
+            set: { presented in if !presented { viewModel.capturedPhotoData = nil } }
+        )
     }
 
     /// オンボーディング中はreveal画面(年齢確認後のタップ演出)に到達するまでアバターを一切マウントしない
@@ -321,6 +335,14 @@ struct RootView: View {
                 diaryOpen = true
             }
             HeaderControlButton(
+                icon: "camera.fill",
+                label: "写真",
+                isActive: false,
+                accessibilityLabel: "シロを撮影してシェアする"
+            ) {
+                viewModel.requestPhotoCapture()
+            }
+            HeaderControlButton(
                 icon: "person.crop.circle",
                 label: "アカウント",
                 isActive: authState.isAuthenticated,
@@ -370,6 +392,18 @@ private struct HeaderControlButton: View {
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel)
     }
+}
+
+/// フォトモード撮影結果(UIImage)をネイティブの共有シート(UIActivityViewController)で
+/// 共有するための最小ラッパー。Web版(App.tsx handleCapture)の navigator.share 相当。
+private struct PhotoShareSheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 /// fullScreenCover のデフォルト背景色(白/黒)を透明にするヘルパー。
