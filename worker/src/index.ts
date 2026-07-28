@@ -25,10 +25,14 @@ import {
   stripEmotion,
   timeContext,
   jstToday,
+  jstWeek,
   jstNow,
   daysSince,
   secondsSince,
 } from "./util";
+
+// カタログ上の唯一のサブスクリプション商品(vmate.pro)のentitlement_keyを単一の情報源として使う。
+const PRO_ENTITLEMENT_KEY = CATALOG.find((item) => item.id === "vmate.pro")!.entitlementKey;
 
 const COOKIE_NAME = "aikata_uid";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365 * 2; // 2年
@@ -65,10 +69,18 @@ function envInt(value: string | undefined, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+// --- Pro判定 ---
+// 匿名Cookieユーザーにentitlements検索のD1読み取りを無駄打ちしないよう、
+// Authorizationヘッダ(JWT)がある場合のみisEntitledを引く。
+async function resolveProEntitlement(c: Ctx, uid: string): Promise<boolean> {
+  if (!(c.request.headers.get("Authorization") ?? "").startsWith("Bearer ")) return false;
+  return c.store.isEntitled(uid, PRO_ENTITLEMENT_KEY);
+}
+
 // --- レート制限(チャット)---
-async function enforceRateLimit(c: Ctx, uid: string): Promise<Response | null> {
+async function enforceRateLimit(c: Ctx, uid: string, pro: boolean): Promise<Response | null> {
   const day = jstToday();
-  const perUser = envInt(c.env.RATE_PER_USER_PER_DAY, 50);
+  const perUser = pro ? envInt(c.env.RATE_PRO_PER_USER_PER_DAY, 500) : envInt(c.env.RATE_PER_USER_PER_DAY, 50);
   const perGlobal = envInt(c.env.RATE_GLOBAL_PER_DAY, 800);
   if ((await c.store.bumpUsage(`user:${uid}`, day)) > perUser) {
     return errorDetail("今日はたくさん話したね。また明日ゆっくり話そう。", 429);
@@ -296,7 +308,7 @@ async function postChat(c: Ctx, body: { message?: unknown }): Promise<Response> 
   const uid = await resolveUid(c);
   const ageBlocked = await requireInteractionAge(c, uid);
   if (ageBlocked) return ageBlocked;
-  const limited = await enforceRateLimit(c, uid);
+  const limited = await enforceRateLimit(c, uid, await resolveProEntitlement(c, uid));
   if (limited) return limited;
   // 年齢帯: 13-17歳は minor 用モデレーション・system prompt を適用する。
   const age = await c.store.getUserAge(uid);
@@ -434,6 +446,16 @@ async function generateDiary(c: Ctx): Promise<Response> {
   const today = jstToday();
   const msgs = await c.store.messagesOn(uid, today);
   if (msgs.length < 4) return json({ ok: false, reason: "今日はまだ会話が少ないみたい。" });
+
+  // 無料は週2回まで。生成失敗(LLMエラー等)でも消費するのは、チャットのenforceRateLimitと
+  // 同じ「先に枠を消費する」設計に合わせるため(TOCTOUを避ける原子的incrementの利点を優先)。
+  if (!(await resolveProEntitlement(c, uid))) {
+    const weekLimit = envInt(c.env.RATE_DIARY_FREE_PER_WEEK, 2);
+    if ((await c.store.bumpUsage(`diary:${uid}`, jstWeek())) > weekLimit) {
+      return json({ ok: false, reason: "今週の日記はもう書いたよ。Proにすると毎日書けるようになるよ。" });
+    }
+  }
+
   const conversation = msgs
     .slice(-60)
     .map((m) => `${m.role === "user" ? "ユーザー" : "シロ"}: ${m.content}`)
@@ -460,6 +482,12 @@ async function getTts(c: Ctx): Promise<Response> {
   if (!enabled) {
     c.execCtx.waitUntil(c.store.recordDailyMetric(jstToday(), "tts_request", "disabled").catch(() => undefined));
     return new Response(null, { status: 204 });
+  }
+  const pro = await resolveProEntitlement(c, uid);
+  const ttsLimit = pro ? envInt(c.env.RATE_TTS_PRO_PER_USER_PER_DAY, 300) : envInt(c.env.RATE_TTS_PER_USER_PER_DAY, 30);
+  if ((await c.store.bumpUsage(`tts:${uid}`, jstToday())) > ttsLimit) {
+    c.execCtx.waitUntil(c.store.recordDailyMetric(jstToday(), "tts_request", "rate_limited").catch(() => undefined));
+    return errorDetail("本日の音声再生回数の上限に達しました。明日また試してね。", 429);
   }
   const url = new URL(c.request.url);
   const text = url.searchParams.get("text") ?? "";

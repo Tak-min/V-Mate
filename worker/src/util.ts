@@ -16,6 +16,17 @@ export function jstToday(): string {
   return jstNow().toISOString().slice(0, 10);
 }
 
+/** JST の週バケット "YYYY-Www"(ISO週番号)。週次レート制限のスコープ用。 */
+export function jstWeek(): string {
+  const now = jstNow();
+  const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const weekNum = Math.ceil(((date.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
+  return `${date.getUTCFullYear()}-W${String(weekNum).padStart(2, "0")}`;
+}
+
 /** JST の現在時刻を秒精度の ISO ("YYYY-MM-DDTHH:MM:SS") で。created_at / last_seen 用。 */
 export function jstIso(): string {
   return jstNow().toISOString().slice(0, 19);

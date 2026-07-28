@@ -51,7 +51,13 @@
     // RevenueCat の Sandbox 購入は誰でも無料で作れるため、本番Workerは webhook の environment が
     // "Production" と厳密一致しない限り権利を付与しない(fail-closed、revenuecat.ts)。
     // TestFlight/Sandbox の end-to-end 検証時のみ、そのデプロイで一時的に "Sandbox" へ差し替える。
-    "REVENUECAT_ENVIRONMENT": "Production"
+    "REVENUECAT_ENVIRONMENT": "Production",
+    // Pro(subscription:pro)エンタイトルメント保持者のクォータ。事業判断で調整可能な値であり、
+    // ここを変える以外のコード変更は不要(index.ts の enforceRateLimit/getTts/generateDiary参照)。
+    "RATE_PRO_PER_USER_PER_DAY": "500",
+    "RATE_TTS_PER_USER_PER_DAY": "30",
+    "RATE_TTS_PRO_PER_USER_PER_DAY": "300",
+    "RATE_DIARY_FREE_PER_WEEK": "2"
   },
 
   "observability": {

@@ -14,6 +14,11 @@ export interface Env {
   RATE_LOGIN_PER_IP_PER_DAY: string;
   APPLE_BUNDLE_ID?: string;
   REVENUECAT_ENVIRONMENT?: string;
+  // Pro(subscription:pro)エンタイトルメントを持つユーザーのクォータ。未設定時はデフォルト値。
+  RATE_PRO_PER_USER_PER_DAY?: string;
+  RATE_TTS_PER_USER_PER_DAY?: string;
+  RATE_TTS_PRO_PER_USER_PER_DAY?: string;
+  RATE_DIARY_FREE_PER_WEEK?: string;
 
   // secrets(wrangler secret put)。未設定なら undefined。
   LLM_API_KEY?: string;
