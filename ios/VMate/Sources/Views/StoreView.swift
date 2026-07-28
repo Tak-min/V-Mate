@@ -10,7 +10,7 @@ struct StoreView: View {
     @ObservedObject private var authState = AuthState.shared
     @StateObject private var store = RevenueCatManager.shared
     @State private var ageState: AgeLoadState = .loading
-    @State private var busyPackageID: String?
+    @State private var busyOperation: BusyOperation?
     @State private var message: String?
     @State private var showManageSubscriptions = false
 
@@ -19,6 +19,15 @@ struct StoreView: View {
         case unknownError
         /// 取得成功時のage_band。サーバは年齢確認未完了のユーザーにnilを返しうる(通信エラーとは区別)。
         case band(String?)
+    }
+
+    /// purchase()とrestore()は同じRevenueCat SDK状態(customerInfo)を書き換えるため、
+    /// 独立したフラグ2本(旧busyPackageID)だと互いの完了が相手のロックを解除してしまい、
+    /// 片方が進行中でももう片方のボタンが押せてしまう競合があった(P-H2/P-H3で顕在化)。
+    /// 1つの状態に統合して相互排他にする。
+    private enum BusyOperation: Equatable {
+        case purchasing(String)
+        case restoring
     }
 
     private var isAdult: Bool {
@@ -119,13 +128,15 @@ struct StoreView: View {
     private var paywall: some View {
         VStack(spacing: Space.xl) {
             heroSection
+                .onAppear { APIClient.shared.trackEvent("paywall_viewed") }
             benefitList
 
-            if availablePackages.isEmpty {
-                Text("現在ご購入いただける商品がありません。時間をおいて再度お試しください。")
-                    .font(.brandBody)
-                    .foregroundStyle(.textSecondary)
-                    .multilineTextAlignment(.center)
+            // 「ご利用中」はプラン単位ではなくアカウント単位の状態なので、パッケージ数だけ
+            // 重複描画しないようここ(paywallレベル)で一度だけ出す(P-H5)。
+            if store.isProActive {
+                subscriptionManagementCard
+            } else if availablePackages.isEmpty {
+                offeringsUnavailableNotice
             } else {
                 ForEach(availablePackages, id: \.identifier) { package in
                     packageCard(package)
@@ -135,6 +146,23 @@ struct StoreView: View {
             legalFooter
         }
         .padding(.top, Space.md)
+    }
+
+    private var subscriptionManagementCard: some View {
+        HStack {
+            Label("ご利用中", systemImage: "checkmark.seal.fill")
+                .font(.brandBodyStrong)
+                .foregroundStyle(.green)
+            Spacer()
+            Button("サブスクを管理") {
+                APIClient.shared.trackEvent("manage_subscription_opened")
+                showManageSubscriptions = true
+            }
+                .font(.brandCaption)
+                .foregroundStyle(Color.accentPink)
+        }
+        .padding(Space.lg)
+        .glassCard()
     }
 
     private var heroSection: some View {
@@ -179,34 +207,22 @@ struct StoreView: View {
         }
     }
 
-    @ViewBuilder
+    /// 呼び出し元(paywall)がstore.isProActiveをすでに分岐しているため、ここは未購読状態専用。
     private func packageCard(_ package: Package) -> some View {
         let product = package.storeProduct
-        VStack(alignment: .leading, spacing: Space.sm) {
-            if store.isProActive {
+        return VStack(alignment: .leading, spacing: Space.sm) {
+            Button {
+                Task { await purchase(package) }
+            } label: {
                 HStack {
-                    Label("ご利用中", systemImage: "checkmark.seal.fill")
-                        .font(.brandBodyStrong)
-                        .foregroundStyle(.green)
-                    Spacer()
-                    Button("サブスクを管理") { showManageSubscriptions = true }
-                        .font(.brandCaption)
-                        .foregroundStyle(Color.accentPink)
-                }
-            } else {
-                Button {
-                    Task { await purchase(package) }
-                } label: {
-                    HStack {
-                        Text("シロ Pro をはじめる・\(product.localizedPriceString)")
-                        if busyPackageID == package.identifier {
-                            ProgressView().tint(.white).padding(.leading, 4)
-                        }
+                    Text("シロ Pro をはじめる・\(product.localizedPriceString)")
+                    if busyOperation == .purchasing(package.identifier) {
+                        ProgressView().tint(.white).padding(.leading, 4)
                     }
                 }
-                .buttonStyle(BrandPrimaryButtonStyle())
-                .disabled(busyPackageID != nil)
             }
+            .buttonStyle(BrandPrimaryButtonStyle())
+            .disabled(busyOperation != nil)
 
             // Apple 3.1.2: 自動更新サブスクの価格・期間・自動更新である旨の開示。
             if let period = product.subscriptionPeriod {
@@ -219,11 +235,29 @@ struct StoreView: View {
         .glassCard()
     }
 
+    /// 商品が0件の状態には「商品自体が存在しない」と「取得に失敗した」の2通りがある(P-H4)。
+    /// 後者はRevenueCatManager.offeringsErrorで判別でき、再試行の余地があるため専用ボタンを出す。
+    private var offeringsUnavailableNotice: some View {
+        VStack(spacing: Space.sm) {
+            Text(store.offeringsError != nil
+                 ? "商品情報を取得できませんでした。通信環境を確認してください。"
+                 : "現在ご購入いただける商品がありません。時間をおいて再度お試しください。")
+                .font(.brandBody)
+                .foregroundStyle(.textSecondary)
+                .multilineTextAlignment(.center)
+            if store.offeringsError != nil {
+                Button("再試行") { Task { await store.loadOfferings() } }
+                    .buttonStyle(BrandPrimaryButtonStyle())
+            }
+        }
+    }
+
     private var legalFooter: some View {
         VStack(spacing: Space.sm) {
             Button("購入を復元") { Task { await restore() } }
                 .font(.brandCaption.weight(.semibold))
                 .foregroundStyle(Color.accentPink)
+                .disabled(busyOperation != nil)
             // Apple 3.1.2: 自動更新サブスクの購入UI内には利用規約/プライバシーポリシーへの
             // 機能するリンクが必須。
             HStack(spacing: Space.md) {
@@ -249,13 +283,25 @@ struct StoreView: View {
     }
 
     private func purchase(_ package: Package) async {
-        busyPackageID = package.identifier
+        guard busyOperation == nil else { return }
+        busyOperation = .purchasing(package.identifier)
         message = nil
-        defer { busyPackageID = nil }
+        defer { busyOperation = nil }
+        APIClient.shared.trackEvent("purchase_started")
         do {
             let cancelled = try await store.purchase(package)
-            if !cancelled {
-                message = store.isProActive ? "ご購入ありがとうございます。" : nil
+            guard !cancelled else {
+                APIClient.shared.trackEvent("purchase_cancelled")
+                return
+            }
+            // purchase()が返すcustomerInfoはRevenueCatのキャッシュ経由で即座に反映されているとは
+            // 限らないため、force: trueで確定判定前に必ずサーバへ問い合わせ直す(P-H2対策)。
+            await store.refreshCustomerInfo(force: true)
+            if store.isProActive {
+                message = "ご購入ありがとうございます。"
+                APIClient.shared.trackEvent("purchase_completed")
+            } else {
+                message = "購入を受け付けました。反映まで少し時間がかかることがあります。"
             }
         } catch {
             message = "購入を完了できませんでした。時間をおいて再度お試しください。"
@@ -263,12 +309,19 @@ struct StoreView: View {
     }
 
     private func restore() async {
-        busyPackageID = "__restore__"
+        guard busyOperation == nil else { return }
+        busyOperation = .restoring
         message = nil
-        defer { busyPackageID = nil }
+        defer { busyOperation = nil }
+        APIClient.shared.trackEvent("restore_tapped")
         do {
             try await store.restorePurchases()
-            message = "復元が完了しました。"
+            if store.isProActive {
+                message = "復元しました。"
+                APIClient.shared.trackEvent("restore_succeeded")
+            } else {
+                message = "復元できる購入が見つかりませんでした。"
+            }
         } catch {
             message = "復元できませんでした。時間をおいて再度お試しください。"
         }
