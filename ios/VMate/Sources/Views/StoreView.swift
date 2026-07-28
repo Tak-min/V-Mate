@@ -9,13 +9,22 @@ struct StoreView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var authState = AuthState.shared
     @StateObject private var store = RevenueCatManager.shared
-    @State private var ageBand: String?
-    @State private var loadingAge = true
+    @State private var ageState: AgeLoadState = .loading
     @State private var busyPackageID: String?
     @State private var message: String?
     @State private var showManageSubscriptions = false
 
-    private var isAdult: Bool { ageBand == "adult" }
+    private enum AgeLoadState: Equatable {
+        case loading
+        case unknownError
+        /// 取得成功時のage_band。サーバは年齢確認未完了のユーザーにnilを返しうる(通信エラーとは区別)。
+        case band(String?)
+    }
+
+    private var isAdult: Bool {
+        if case .band(let band) = ageState { return band == "adult" }
+        return false
+    }
 
     private var availablePackages: [Package] {
         store.offerings?.current?.availablePackages ?? []
@@ -34,26 +43,41 @@ struct StoreView: View {
             Group {
                 if !authState.isAuthenticated {
                     signInRequiredNotice
-                } else if loadingAge {
-                    ProgressView().tint(.white).padding(.top, 80)
-                } else if !isAdult {
-                    notAdultNotice
                 } else {
-                    paywall
+                    switch ageState {
+                    case .loading:
+                        ProgressView().tint(.white).padding(.top, 80)
+                    case .unknownError:
+                        ageErrorNotice
+                    case .band:
+                        if isAdult {
+                            paywall
+                        } else {
+                            notAdultNotice
+                        }
+                    }
                 }
             }
             .padding(.bottom, Space.xl)
         }
         .task {
-            async let age: APIClient.AgeResponse? = try? APIClient.shared.fetchAge()
             async let _offerings: Void = store.loadOfferings()
             async let _info: Void = store.refreshCustomerInfo()
-            ageBand = await age?.age_band
+            await loadAge()
             _ = await _offerings
             _ = await _info
-            loadingAge = false
         }
         .manageSubscriptionsSheet(isPresented: $showManageSubscriptions)
+    }
+
+    private func loadAge() async {
+        ageState = .loading
+        do {
+            let response = try await APIClient.shared.fetchAge()
+            ageState = .band(response.age_band)
+        } catch {
+            ageState = .unknownError
+        }
     }
 
     private var signInRequiredNotice: some View {
@@ -67,6 +91,15 @@ struct StoreView: View {
 
     private var notAdultNotice: some View {
         notice(icon: "hand.raised.fill", title: "ご利用いただけません", description: "この機能は年齢確認が完了した成人の方のみご利用いただけます。")
+    }
+
+    private var ageErrorNotice: some View {
+        VStack(spacing: Space.md) {
+            notice(icon: "wifi.exclamationmark", title: "年齢情報を確認できませんでした", description: "通信環境を確認して再試行してください。")
+            Button("再試行") { Task { await loadAge() } }
+                .buttonStyle(BrandPrimaryButtonStyle())
+                .padding(.horizontal, Space.xxl)
+        }
     }
 
     /// ContentUnavailableView(iOS 17+)相当の簡易版。deploymentTarget が iOS 16 のため自前実装。
