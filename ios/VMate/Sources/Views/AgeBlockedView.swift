@@ -10,13 +10,18 @@ struct AgeBlockedView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 18) {
+                // BrandMark(肉球アイコン)はここでは使わない: 年齢制限で弾く画面に
+                // 可愛らしいマスコットマークは文脈的に不適切(お断りの画面はまだ
+                // 「歓迎」のトーンを出すべきではない)。hand.raised.fill(手のひら=
+                // 「ここまで」のジェスチャー)を維持しつつ、warmBrown(コントラスト不足で
+                // 読みにくかった)だけをテーマの標準トークンに差し替える。
                 ZStack {
                     Circle()
-                        .fill(Color.warmBrown.opacity(0.15))
+                        .fill(Color.white.opacity(0.08))
                         .frame(width: 72, height: 72)
                     Image(systemName: "hand.raised.fill")
                         .font(.system(size: 30))
-                        .foregroundStyle(Color.warmBrown.opacity(0.7))
+                        .foregroundStyle(.textSecondary)
                 }
 
                 VStack(spacing: 8) {
@@ -25,7 +30,7 @@ struct AgeBlockedView: View {
                         .foregroundStyle(Color.accentPink)
                     Text("このアプリは13歳未満の方はご利用いただけません。\n大きくなったら、また会えるのを楽しみにしてるね。")
                         .font(.callout)
-                        .foregroundStyle(Color.warmBrown.opacity(0.85))
+                        .foregroundStyle(.textSecondary)
                         .multilineTextAlignment(.center)
                         .lineSpacing(3)
                 }

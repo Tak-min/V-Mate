@@ -190,15 +190,7 @@ struct OnboardingView: View {
 
     private var welcomeStep: some View {
         VStack(spacing: 18) {
-            // シロのアイコン
-            ZStack {
-                Circle()
-                    .fill(LinearGradient.pinkLavender)
-                    .frame(width: 72, height: 72)
-                    .shadow(color: Color.accentPink.opacity(0.4), radius: 10, y: 4)
-                Text("🐾")
-                    .font(.system(size: 34))
-            }
+            BrandMark(iconSize: 32)
 
             VStack(spacing: 8) {
                 Text("はじめまして！")

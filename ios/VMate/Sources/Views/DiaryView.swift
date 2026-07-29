@@ -64,8 +64,7 @@ struct DiaryView: View {
 
     private var emptyView: some View {
         VStack(spacing: Space.lg) {
-            Text("📓")
-                .font(.system(size: 52))
+            BrandMark(diameter: 64, iconSize: 26)
             Text("まだ日記はないみたい")
                 .font(.brandHeading)
                 .foregroundStyle(.textPrimary)
@@ -146,8 +145,9 @@ private struct DiaryEntryCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 8) {
-                Text("🐾")
-                    .font(.system(size: 14))
+                Image(systemName: "pawprint.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.accentPink)
                 Text(formattedDate)
                     .font(.brandCaption.weight(.bold))
                     .foregroundStyle(Color.accentPink)

@@ -186,15 +186,7 @@ struct StoreView: View {
 
     private var heroSection: some View {
         VStack(spacing: Space.md) {
-            ZStack {
-                Circle()
-                    .fill(LinearGradient.pinkLavender)
-                    .frame(width: 72, height: 72)
-                    .shadow(color: Color.accentPink.opacity(0.4), radius: 10, y: 4)
-                Image(systemName: "sparkles")
-                    .font(.system(size: 30))
-                    .foregroundStyle(.white)
-            }
+            BrandMark()
             Text("シロと、もっと。")
                 .font(.brandDisplay)
                 .foregroundStyle(.textPrimary)

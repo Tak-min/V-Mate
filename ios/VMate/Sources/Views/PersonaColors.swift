@@ -9,8 +9,6 @@ extension Color {
     static let accentLavender = Color(red: 0.62, green: 0.55, blue: 0.85)
     /// ウォームアイボリー(アシスタントバブル) — Web版 oklch(97% 0.015 80 / 0.78)
     static let warmIvory = Color(red: 0.98, green: 0.96, blue: 0.93).opacity(0.78)
-    /// ウォームブラウン(テキスト) — Web版 oklch(32% 0.04 50)
-    static let warmBrown = Color(red: 0.35, green: 0.28, blue: 0.22)
 }
 
 extension LinearGradient {

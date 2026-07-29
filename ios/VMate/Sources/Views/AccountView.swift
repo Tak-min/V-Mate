@@ -105,12 +105,24 @@ struct AccountView: View {
     private var proSection: some View {
         VStack(alignment: .leading, spacing: Space.md) {
             sectionHeader("シロ Pro")
-            Button("購入・復元を見る") { storeOpen = true }
-                .font(.brandBodyStrong)
-                .foregroundStyle(Color.accentPink)
-                .padding(Space.lg)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .glassCard()
+            Button { storeOpen = true } label: {
+                HStack(spacing: Space.md) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.accentPink)
+                        .frame(width: 20)
+                    Text("購入・復元を見る")
+                        .font(.brandBodyStrong)
+                        .foregroundStyle(Color.accentPink)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.textTertiary)
+                }
+            }
+            .padding(Space.lg)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassCard()
         }
     }
 
@@ -118,11 +130,19 @@ struct AccountView: View {
         VStack(alignment: .leading, spacing: Space.md) {
             sectionHeader("データ")
             VStack(alignment: .leading, spacing: Space.md) {
-                Button("アカウントとデータを削除", role: .destructive) {
+                Button(role: .destructive) {
                     showDeleteConfirmation = true
+                } label: {
+                    HStack(spacing: Space.md) {
+                        Image(systemName: "trash.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.red)
+                            .frame(width: 20)
+                        Text("アカウントとデータを削除")
+                            .font(.brandBodyStrong)
+                            .foregroundStyle(.red)
+                    }
                 }
-                .font(.brandBodyStrong)
-                .foregroundStyle(.red)
                 Text("会話、記憶、日記、年齢確認情報を削除します。サブスクリプションの解約は App Store で別途行ってください。")
                     .font(.brandCaption)
                     .foregroundStyle(.textSecondary)

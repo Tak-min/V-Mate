@@ -94,6 +94,28 @@ struct BrandPrimaryButtonStyle: ButtonStyle {
     }
 }
 
+/// シロのブランドマーク(肉球アイコン)。オンボーディング/Store/日記の「ヒーロー」枠で
+/// 絵文字(🐾)とSF Symbol(sparkles)がバラバラに使われていた状態を1つに統一する
+/// (2026-07-28 UI監査: アイコン層だけ色/タイポ/余白と同じ統一が及んでいなかったのが
+/// 「ありきたり」感の実体だった。カラー絵文字は他の全アイコンがモノクロSF Symbol+
+/// ブランドカラーで統一されている中で唯一浮いて見える)。
+struct BrandMark: View {
+    var diameter: CGFloat = 72
+    var iconSize: CGFloat = 30
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(LinearGradient.pinkLavender)
+                .frame(width: diameter, height: diameter)
+                .shadow(color: Color.accentPink.opacity(0.4), radius: 10, y: 4)
+            Image(systemName: "pawprint.fill")
+                .font(.system(size: iconSize))
+                .foregroundStyle(.white)
+        }
+    }
+}
+
 /// 裏方シート(Account/Store/Diary)共通のスカフォールド。BrandBackground + 閉じるボタン付き
 /// NavigationStackを1箇所にまとめ、3画面がバラバラのシステムデフォルトスタイルになるのを防ぐ。
 struct BrandScreen<Content: View>: View {
